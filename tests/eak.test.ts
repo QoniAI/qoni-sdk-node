@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   EAK,
   EAKPermissionDeniedError,
@@ -10,6 +10,7 @@ import {
 // Raw wire-type catalog is internal (not a public export) — import via the
 // internal module for the wire-shape fixtures/assertions in this file.
 import { WireEventTypes } from "../src/events";
+import { buildSignedHeaders } from "../src/auth";
 import type { EAKOptions } from "../src";
 import * as sdk from "../src";
 
@@ -34,6 +35,22 @@ function sseResponse(body: string): Response {
 }
 
 describe("EazoAgentKit", () => {
+  it("generates unique signatures for identical requests in the same millisecond", () => {
+    const now = vi.spyOn(Date, "now").mockReturnValue(1_700_000_000_000);
+    try {
+      const credentials = { accessKey: "ak_test", secretKey: "sk_test" };
+      const first = buildSignedHeaders(credentials, "GET", "/api/v3/eak/runtime-config", {});
+      const second = buildSignedHeaders(credentials, "GET", "/api/v3/eak/runtime-config", {});
+
+      expect(Number(second["x-authing-date"])).toBeGreaterThan(
+        Number(first["x-authing-date"]),
+      );
+      expect(second.authorization).not.toBe(first.authorization);
+    } finally {
+      now.mockRestore();
+    }
+  });
+
   it("keeps EazoAgentKit as the public constructor and EAK as its alias", () => {
     expect(EazoAgentKit.name).toBe("EazoAgentKit");
     expect(EAK).toBe(EazoAgentKit);
@@ -105,7 +122,7 @@ describe("EazoAgentKit", () => {
 
     const user = await client.currentUser({ accessToken: "genauth-access-token" });
 
-    expect(seen.url).toBe("https://eak.eazo.ai/oidc/me");
+    expect(seen.url).toBe("https://anima.eazo.ai/oidc/me");
     expect((seen.init?.headers as Record<string, string>).authorization).toBe(
       "Bearer genauth-access-token",
     );
@@ -119,7 +136,7 @@ describe("EazoAgentKit", () => {
       secretKey: "sk_test",
       fetch: (async (url: URL | RequestInfo) => {
         calls.push(String(url));
-        if (String(url) === "https://eak.eazo.ai/dashboard/api/v3/eak/runtime-config") {
+        if (String(url) === "https://anima.eazo.ai/dashboard/api/v3/eak/runtime-config") {
           return jsonResponse({
             data: {
               eakBaseUrl: "https://eak-runtime.example.com",
@@ -146,12 +163,12 @@ describe("EazoAgentKit", () => {
     });
 
     expect(calls).toEqual([
-      "https://eak.eazo.ai/dashboard/api/v3/eak/runtime-config",
-      "https://eak-runtime.example.com/api/v3/eak/delegations",
+      "https://anima.eazo.ai/dashboard/api/v3/eak/runtime-config",
+      "https://anima.eazo.ai/dashboard/api/v3/eak/delegations",
     ]);
   });
 
-  it("preserves base paths returned by runtime config for signed JSON requests", async () => {
+  it("preserves the configured base path for signed JSON requests", async () => {
     const calls: string[] = [];
     const client = new EazoAgentKit({
       accessKey: "ak_test",
@@ -187,7 +204,7 @@ describe("EazoAgentKit", () => {
 
     expect(calls).toEqual([
       "https://eak.example.com/dashboard/api/v3/eak/runtime-config",
-      "https://eak-runtime.example.com/sdk/api/v3/eak/delegations",
+      "https://eak.example.com/dashboard/api/v3/eak/delegations",
     ]);
   });
 
@@ -768,7 +785,7 @@ describe("EazoAgentKit", () => {
             },
           });
         }
-        if (String(url) === "https://eak-runtime.example.com/api/v3/eak/delegations") {
+        if (String(url) === "https://console.example.com/api/v3/eak/delegations") {
           return jsonResponse({
             data: {
               mode: "silent",
@@ -795,7 +812,7 @@ describe("EazoAgentKit", () => {
 
     expect(calls.map((call) => call.url)).toEqual([
       "https://console.example.com/api/v3/eak/runtime-config",
-      "https://eak-runtime.example.com/api/v3/eak/delegations",
+      "https://console.example.com/api/v3/eak/delegations",
       "https://gumem.example.com/api/sessions/default/context?query=memory&details=false",
       "https://webagent.example.com/api/v1/projects/tenant_1/do_anything/sessions",
     ]);
@@ -805,6 +822,45 @@ describe("EazoAgentKit", () => {
     expect((calls[1].init?.headers as Record<string, string>)["x-authing-date"]).toEqual(
       expect.any(String),
     );
+  });
+
+  it("signs tokenless raw EAK requests on the configured host after discovery", async () => {
+    const calls: Array<{ url: string; init?: RequestInit }> = [];
+    const client = new EazoAgentKit({
+      accessKey: "ak_test",
+      secretKey: "sk_test",
+      host: "https://console.example.com/dashboard",
+      fetch: (async (url: URL | RequestInfo, init?: RequestInit) => {
+        calls.push({ url: String(url), init });
+        if (String(url) === "https://console.example.com/dashboard/api/v3/eak/runtime-config") {
+          return jsonResponse({
+            data: {
+              eakBaseUrl: "https://eak-runtime.example.com/dashboard",
+              genauthBaseUrl: "https://tenant-a.genauth.example.com",
+              gumemBaseUrl: "https://gumem.example.com/api",
+              webAgentBaseUrl: "https://webagent.example.com",
+            },
+          });
+        }
+        return jsonResponse({ data: { ok: true } });
+      }) as typeof fetch,
+    });
+
+    await client.request({
+      method: "GET",
+      path: "/api/v3/eak/runtime-config",
+      headers: { "x-custom": "kept" },
+    });
+
+    expect(calls.map((call) => call.url)).toEqual([
+      "https://console.example.com/dashboard/api/v3/eak/runtime-config",
+      "https://console.example.com/dashboard/api/v3/eak/runtime-config",
+    ]);
+    const headers = calls[1].init?.headers as Record<string, string>;
+    expect(headers.authorization).toMatch(/^authing ak_test:/);
+    expect(headers["x-authing-date"]).toEqual(expect.any(String));
+    expect(headers["x-authing-signature-method"]).toBe("HMAC-SHA1");
+    expect(headers["x-custom"]).toBe("kept");
   });
 
   it("uses configured service hosts instead of runtime-config service URLs", async () => {
@@ -829,7 +885,7 @@ describe("EazoAgentKit", () => {
             },
           });
         }
-        if (String(url) === "https://eak-runtime.example.com/api/v3/eak/delegations") {
+        if (String(url) === "https://console.example.com/api/v3/eak/delegations") {
           return jsonResponse({
             data: {
               mode: "silent",
@@ -861,7 +917,7 @@ describe("EazoAgentKit", () => {
 
     expect(calls.map((call) => call.url)).toEqual([
       "https://console.example.com/api/v3/eak/runtime-config",
-      "https://eak-runtime.example.com/api/v3/eak/delegations",
+      "https://console.example.com/api/v3/eak/delegations",
       "https://configured.genauth.example.com/oidc/me",
       "https://configured.gumem.example.com/api/sessions/default/context?query=memory&details=false",
       "https://configured.webagent.example.com/api/v1/projects/tenant_1/do_anything/sessions",

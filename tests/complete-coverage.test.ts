@@ -68,7 +68,7 @@ function createHarness() {
       });
     }
 
-    if (url.pathname === "/api/v3/eak/token-exchange") {
+    if (url.pathname.endsWith("/api/v3/eak/token-exchange")) {
       const body = call.body as { resource?: string; scopes?: string[] };
       return jsonResponse({
         data: {
@@ -87,7 +87,7 @@ function createHarness() {
       });
     }
 
-    if (url.pathname === "/api/v3/eak/genauth/admin-token") {
+    if (url.pathname.endsWith("/api/v3/eak/genauth/admin-token")) {
       return jsonResponse({
         data: { accessToken: "genauth-admin-token", userPoolId: "pool_matrix", expiresIn: 3600 },
       });
@@ -122,7 +122,7 @@ function createHarness() {
       });
     }
 
-    if (url.pathname === "/api/v3/eak/delegations" && call.method === "POST") {
+    if (url.pathname.endsWith("/api/v3/eak/delegations") && call.method === "POST") {
       const body = call.body as { mode?: string; scopes?: string[] };
       if (body.mode === "interactive") {
         return jsonResponse({
@@ -152,7 +152,7 @@ function createHarness() {
       });
     }
 
-    if (url.pathname === "/api/v3/eak/delegations/complete") {
+    if (url.pathname.endsWith("/api/v3/eak/delegations/complete")) {
       return jsonResponse({
         data: {
           mode: "interactive",
@@ -179,7 +179,8 @@ function createHarness() {
   return {
     client,
     calls,
-    byPath: (path: string) => calls.filter((call) => call.pathname === path),
+    byPath: (path: string) =>
+      calls.filter((call) => call.pathname === path || call.pathname.endsWith(path)),
     last: () => calls.at(-1),
   };
 }
@@ -296,7 +297,7 @@ describe("complete public method coverage matrix", () => {
         });
 
         expect(h.last()).toMatchObject({
-          pathname: "/api/custom/resource",
+          pathname: "/dashboard/api/custom/resource",
           method: "PATCH",
           query: { page: "1", enabled: "true" },
           headers: { authorization: "Bearer custom-token", "x-custom": "yes" },

@@ -40,7 +40,7 @@ import {
 import type { GenAuthAccessTokenInput } from "./genauth";
 import { createWebSearchNamespace } from "./web-search";
 
-const DEFAULT_EAK_HOST = "https://eak.eazo.ai/dashboard";
+const DEFAULT_EAK_HOST = "https://anima.eazo.ai/dashboard";
 
 export class EazoAgentKit {
   private readonly fetchImpl: typeof fetch;
@@ -170,6 +170,31 @@ export class EazoAgentKit {
   }
 
   unstableRequest<T = unknown>(input: RawRequestInput): Promise<EAKResponse<T>> {
+    if (!input.token) {
+      const pathname = normalizePath(input.path);
+      const signaturePayload =
+        input.method === "GET" ? (input.query || {}) : (input.body || {});
+      const signedHeaders = buildSignedHeaders(
+        {
+          accessKey: this.accessKey,
+          secretKey: this.secretKey,
+        },
+        input.method,
+        pathname,
+        signaturePayload,
+      );
+      return this.baseUrlFor("eak").then((baseUrl) => this.jsonRequest<T>(baseUrl, pathname, {
+        method: input.method,
+        query: input.query,
+        body: input.body,
+        headers: {
+          ...nonSignatureHeaders(input.headers),
+          ...signedHeaders,
+        },
+        service: "eak",
+        signed: true,
+      }));
+    }
     return this.baseUrlFor("eak").then((baseUrl) => this.jsonRequest<T>(baseUrl, input.path, {
       method: input.method,
       token: input.token,
@@ -535,7 +560,10 @@ export class EazoAgentKit {
     const explicit = this.explicitBaseUrlFor(service);
     if (explicit) return explicit;
     const runtime = await this.runtimeConfig();
-    if (service === "eak") return runtime.eakBaseUrl ?? this.host;
+    // AK/SK signatures are scoped to the configured control-plane endpoint.
+    // Keep signed EAK calls on that trusted boundary: following a cross-origin
+    // runtime URL can strip Authorization on redirect or disclose credentials.
+    if (service === "eak") return this.host;
     const hostOrigin = originBaseUrl(this.host);
     if (service === "genauth") return runtime.genauthBaseUrl ?? hostOrigin;
     if (service === "gumem") return runtime.gumemBaseUrl ?? hostOrigin;
@@ -702,6 +730,22 @@ function requestHeaders(
     headers["content-type"] = "application/json";
   }
   return headers;
+}
+
+function nonSignatureHeaders(
+  headers: Record<string, string> | undefined,
+): Record<string, string> {
+  return Object.fromEntries(
+    Object.entries(headers || {}).filter(([key]) => {
+      const normalized = key.toLowerCase();
+      return (
+        normalized !== "authorization" &&
+        normalized !== "content-type" &&
+        normalized !== "date" &&
+        !normalized.startsWith("x-authing-")
+      );
+    }),
+  );
 }
 
 function requestBody(body: RequestPayload["body"]): BodyInit | undefined {
