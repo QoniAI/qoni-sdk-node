@@ -136,7 +136,7 @@ publish_npm:
 sync_main_or_master_to_fellou:
   extends: .sync_main_or_master
   tags:
-    - us
+    - eak-us
   variables:
     SYNC_SSH_PRIVATE_KEY_FILE: "$FELLOU_SYNC_SSH_PRIVATE_KEY"
     SYNC_TARGET_REPOSITORY: "ssh://git@gitlab.asix.inc:6022/sak/eak-sdk-node.git"
