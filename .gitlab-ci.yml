@@ -113,7 +113,7 @@ publish_npm:
 
       mkdir -p ~/.ssh
       chmod 700 ~/.ssh
-      cp "$SYNC_SSH_PRIVATE_KEY_FILE" ~/.ssh/repository_sync_key
+      awk '{ sub(/\r$/, ""); print }' "$SYNC_SSH_PRIVATE_KEY_FILE" > ~/.ssh/repository_sync_key
       chmod 600 ~/.ssh/repository_sync_key
       printf '%s\n' "$SYNC_TARGET_HOST_KEY" > ~/.ssh/known_hosts
       chmod 600 ~/.ssh/known_hosts
