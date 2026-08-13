@@ -78,6 +78,14 @@ describeLiveE2E("live e2e: Track (semantic surface)", () => {
     expect(Object.keys(data).some((key) => key.includes("_"))).toBe(false);
   });
 
+  it("track.attach() reconnects to the monitor", async () => {
+    const monitor = await ensureMonitor();
+    if (!monitor) return;
+    const attached = await client.track.attach(monitor.id, { token });
+    expect(attached.id).toBe(monitor.id);
+    expect(JSON.stringify(await attached.get())).toContain("Bitcoin");
+  });
+
   it("monitor.refine() is observable on monitor.events()", async () => {
     const monitor = await ensureMonitor();
     if (!monitor) return;
@@ -92,6 +100,15 @@ describeLiveE2E("live e2e: Track (semantic surface)", () => {
       triggerDsl: { on: "change" },
     });
     await eventsPromise;
+  });
+
+  it("monitor.pause() / resume() control scheduled execution", async () => {
+    const monitor = await ensureMonitor();
+    if (!monitor) return;
+    const paused = await monitor.pause();
+    expect(JSON.stringify(paused)).toMatch(/pause/i);
+    const resumed = await monitor.resume();
+    expect(JSON.stringify(resumed)).toMatch(/active|resume/i);
   });
 
   it("monitor.runNow() triggers an immediate tick", async () => {

@@ -14,9 +14,11 @@ import { loadDotEnvLocal, requiredEnv } from "../helpers/env";
 loadDotEnvLocal();
 
 export const liveE2EEnabled = process.env.EAK_LIVE_E2E === "1";
+export const liveRequireAll = process.env.EAK_LIVE_REQUIRE_ALL === "1";
 export const livePrefix = `sdk-live-${Date.now()}`;
 
 export function liveClient(): EazoAgentKit {
+  if (liveRequireAll) requiredEnv("EAK_USER_ACCESS_TOKEN");
   const host = process.env.EAK_HOST?.trim();
   // Point WebAgent data-plane calls at a different deployment (e.g. a local
   // backend) while delegation/token-exchange stay on the EAK gateway.
@@ -224,8 +226,10 @@ export async function allowLiveEnvironmentConstraint<T>(
     return await operation;
   } catch (error) {
     if (!isLiveEnvironmentConstraint(error)) throw error;
+    if (process.env.EAK_LIVE_ALLOW_ENV_CONSTRAINTS !== "1") throw error;
     expect(error.message).toBeTruthy();
     expect(error.code).toBeTruthy();
+    console.warn(`live e2e accepted an environment constraint: ${error.message}`);
     return undefined;
   }
 }

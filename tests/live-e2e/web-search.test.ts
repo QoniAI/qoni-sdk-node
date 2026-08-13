@@ -103,6 +103,14 @@ describeLiveE2E("live e2e: Web Search (semantic surface)", () => {
     expect(status.status).toBeTruthy();
   });
 
+  it("webSearch.attach() reconnects to the run", async () => {
+    const run = await ensureRun();
+    if (!run) return;
+    const attached = await client.webSearch.attach(run.id, { token });
+    expect(attached.id).toBe(run.id);
+    expect((await attached.status()).id).toBe(run.id);
+  });
+
   it("run.events() yields normalized semantic events", async () => {
     const run = await ensureRun();
     if (!run) return;

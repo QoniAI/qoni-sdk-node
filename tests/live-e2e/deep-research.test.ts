@@ -105,6 +105,14 @@ describeLiveE2E("live e2e: Deep Research (semantic surface)", () => {
     expect(status.status).toBeTruthy();
   });
 
+  it("deepResearch.attach() reconnects to the run", async () => {
+    const run = await ensureRun();
+    if (!run) return;
+    const attached = await client.deepResearch.attach(run.id, { token });
+    expect(attached.id).toBe(run.id);
+    expect((await attached.status()).id).toBe(run.id);
+  });
+
   it("run.events() yields normalized semantic events", async () => {
     const run = await ensureRun();
     if (!run) return;
