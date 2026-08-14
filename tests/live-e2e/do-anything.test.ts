@@ -24,14 +24,14 @@ const EXPECTED_TITLE_RE = new RegExp(
   "i",
 );
 
-// A real browsing run (search-box interaction on browserbase) measures
-// ~150s — well past the suite's 120s default testTimeout, so the wait test
+// A real Browserbase navigation can exceed the suite's 120s default testTimeout,
+// so the wait test
 // carries its own budget like the deep-research one does.
 const WAIT_TIMEOUT_MS = Number(process.env.EAK_LIVE_WAIT_TIMEOUT_MS || 360_000);
 const PROMPT =
   process.env.EAK_DO_ANYTHING_PROMPT ||
-  "Open https://en.wikipedia.org in the browser, use the site search to find " +
-    "the article about the UUID standard, open it, and report the article's exact title.";
+  "Open https://en.wikipedia.org/wiki/Universally_unique_identifier in the browser " +
+    "and report the article's exact title.";
 const RUN_OPTIONS = {
   capture: { screenshots: true },
   limits: { maxDurationMinutes: 5 },

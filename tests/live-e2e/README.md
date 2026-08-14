@@ -52,8 +52,8 @@ const { token } = await client.delegateToken({
 const run = await client.doAnything.run({
   token,
   prompt:
-    "Open https://en.wikipedia.org in the browser, use the site search to find " +
-    "the article about the UUID standard, open it, and report the article's exact title.",
+    "Open https://en.wikipedia.org/wiki/Universally_unique_identifier in the browser " +
+    "and report the article's exact title.",
   capture: { screenshots: true },
   limits: { maxDurationMinutes: 5 },
 });
