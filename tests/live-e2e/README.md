@@ -11,6 +11,10 @@ same public calls work end to end and return domain evidence.
   token is supplied.
 - `pnpm test:e2e:release` is the release gate. It additionally requires
   `EAK_USER_ACCESS_TOKEN`, so every listed capability must execute.
+- `pnpm test:e2e:do-anything:release` runs the focused Browser Harness gate.
+  It executes one real `doAnything` task and fails unless the SDK captures the
+  complete Agent/tool trace, Browser Harness script authoring + execution,
+  screenshots, recording, final output, and observability metrics.
 - Environment limitations are failures by default. For diagnosis only,
   `EAK_LIVE_ALLOW_ENV_CONSTRAINTS=1` may accept known credit, concurrency, or
   media-storage constraints; a run using that flag is not release evidence.
@@ -30,6 +34,77 @@ budget variables are documented alongside the tests in `helpers.ts`.
 | Web Search | create/status/events/wait, real domain-filtered results, attach, cancel, wire escape hatch | `web-search.test.ts` |
 | Deep Research | create/status/events/wait, substantive report/artifact, attach, cancel, feedback escape hatch | `deep-research.test.ts` |
 | Track | create/get/refine/pause/resume/events/run-now, recurring scheduler cadence, run history/detail, attach, delete | `track.test.ts` |
+
+## Do Anything: real SDK call and evidence
+
+The focused gate uses the public SDK path below. The prompt and run options are
+real values. The delegated token is intentionally kept in memory and is never
+written to evidence files.
+
+```ts
+const { token } = await client.delegateToken({
+  mode: "silent",
+  user: { id: userId },
+  agent: process.env.EAK_AGENT_ID,
+  scopes: ["webagent.do_anything:read", "webagent.do_anything:manage"],
+});
+
+const run = await client.doAnything.run({
+  token,
+  prompt:
+    "Open https://en.wikipedia.org in the browser, use the site search to find " +
+    "the article about the UUID standard, open it, and report the article's exact title.",
+  capture: { screenshots: true },
+  limits: { maxDurationMinutes: 5 },
+});
+
+const result = await run.wait({
+  timeoutMs: 360_000,
+  onWireEvent: (event) => recorder.recordWireEvent(event),
+  onEvent: (event) => recorder.recordSemanticEvent(event),
+  onReconnect: (info) => recorder.recordReconnect(info),
+  onScreenshot: (image, index) => recorder.recordScreenshot(image, index),
+});
+```
+
+Run it with:
+
+```bash
+pnpm test:e2e:do-anything:release
+```
+
+The default task can be changed with `EAK_DO_ANYTHING_PROMPT`; when changing it,
+set `EAK_DO_ANYTHING_EXPECTED_PATTERN` to a case-insensitive regular expression
+that must match the final Agent output.
+
+Each run writes a self-contained evidence directory under
+`.secrets/runs/do_anything-<run-id>/` (or exactly `EAK_OUT_DIR`):
+
+- `invocation.json` — actual prompt and run options; credentials omitted.
+- `events.raw.jsonl` — every original SSE frame before SDK filtering.
+- `events.semantic.jsonl` — the curated `RunEvent` stream consumed by apps.
+- `result.json` and `status.initial.json` — complete REST run envelopes.
+- `recording.json` — session recording returned by the SDK wire escape hatch.
+- `error.json` — original error name, message, stack, and cause when the run fails.
+- `agent-messages.json` — complete projected Agent/LLM messages and usage fields.
+- `tools.json` — paired tool inputs, outputs/errors, timestamps, and outcomes.
+- `browser-harness.json` — authored Python source plus the matching
+  `browser-harness run ...` command and execution result.
+- `screenshots/` + `screenshots.jsonl` — decoded images and page/step index.
+- `reconnects.jsonl` — resumable SSE reconnect attempts.
+- `metrics.json` — event counts, message/tool counts, Browser Harness proof,
+  latency-to-first-event metrics, model/token usage, cost, failures, and terminal
+  status.
+- `manifest.json` — stable file index for the HTML report generator.
+
+The focused release gate rejects runs that cannot prove all of the following:
+
+1. successful terminal result with non-empty Agent output;
+2. Agent messages plus paired tool-call/tool-result lifecycle;
+3. a newly authored `browser-tools/*.py` file with its actual code;
+4. execution through `browser-harness run browser-tools/*.py`;
+5. at least one decoded browser screenshot and a readable session recording;
+6. no failed tool lifecycle events.
 
 Interactive delegation completion and human-in-the-loop actions need a browser
 or operator to complete the user gesture. They are covered by deterministic

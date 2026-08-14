@@ -62,7 +62,12 @@ export function createWebSearchNamespace(transport: EAKTransport) {
       ),
 
     events: <T = unknown>(
-      input: RuntimeTokenInput & { runId: string; lastEventId?: string; signal?: AbortSignal },
+      input: RuntimeTokenInput & {
+        runId: string;
+        lastEventId?: string;
+        signal?: AbortSignal;
+        onReconnect?: (info: { attempt: number; lastEventId?: string; error: unknown }) => void;
+      },
     ): AsyncIterable<EAKEvent<T>> =>
       transport.webAgentSSE(
         `/web_search/runs/${encodeURIComponent(input.runId)}/events`,
@@ -71,6 +76,7 @@ export function createWebSearchNamespace(transport: EAKTransport) {
           lastEventId: input.lastEventId,
           requiredScopes: ["webagent.web_search:read"],
           signal: input.signal,
+          onReconnect: input.onReconnect,
         },
       ),
 
@@ -95,7 +101,13 @@ export function createWebSearchNamespace(transport: EAKTransport) {
     return {
       getDetail: async () => asRecord((await api.get<unknown>({ token, runId })).data),
       streamEvents: (opts) =>
-        api.events({ token, runId, lastEventId: opts.lastEventId, signal: opts.signal }),
+        api.events({
+          token,
+          runId,
+          lastEventId: opts.lastEventId,
+          signal: opts.signal,
+          onReconnect: opts.onReconnect,
+        }),
       postAction: async () => {
         // webSearch runs never emit interactions; failing loudly beats a
         // confusing 404.
