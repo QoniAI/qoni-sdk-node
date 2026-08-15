@@ -15,6 +15,10 @@ same public calls work end to end and return domain evidence.
   It executes one real `doAnything` task and fails unless the SDK captures the
   complete Agent/tool trace, Browser Harness script authoring + execution,
   screenshots, recording, final output, and observability metrics.
+- `pnpm test:e2e:matrix` runs 10-20 local, public, reproducible Queries through
+  multiple SDK functions. Exact Queries and deployment routing stay in an
+  ignored local document; only the reusable runner, schema, assertions, and
+  evidence contract live in the repository.
 - Environment limitations are failures by default. For diagnosis only,
   `EAK_LIVE_ALLOW_ENV_CONSTRAINTS=1` may accept known credit, concurrency, or
   media-storage constraints; a run using that flag is not release evidence.
@@ -115,3 +119,76 @@ and called live E2E.
 All live cases use unique data prefixes and clean up mutable GenAuth users and
 Track monitors. Raw run evidence is written only under the ignored `.secrets/`
 tree (or `EAK_OUT_DIR`) and must never be committed.
+
+## Local public Query matrix
+
+The matrix deliberately separates reusable product code from local runtime
+details:
+
+| Repository contains | Ignored `.secrets/query-matrix/` contains |
+| --- | --- |
+| SDK function adapters | Exact public Query text |
+| Function input schema | Deployment host, URL, and port |
+| Semantic result assertions | Per-run raw events, outputs, screenshots, and artifacts |
+| Browser Harness evidence gate | Batch and case result files |
+
+Create `.secrets/query-matrix/cases.local.json` (or point
+`EAK_QUERY_MATRIX_FILE` at another ignored JSON file). Credentials are never
+valid matrix fields: `EAK_ACCESS_KEY`, `EAK_SECRET_KEY`, and `EAK_AGENT_ID`
+continue to come from the environment or ignored `.env.local`.
+
+The local document accepts between 10 and 20 cases and at least two of these
+public SDK entry functions:
+
+| `function` | Public input represented by each case | Evidence and checks |
+| --- | --- | --- |
+| `doAnything.run` | `prompt`, `capture`, `limits`, and other documented run options | status/wait/attach/cancel, complete raw + semantic streams, Agent messages, tool parameters/results, Browser Harness authored code + execution, screenshots, recording, output |
+| `webSearch.run` | `prompt`, `maxResultsPerQuery`, site allow/deny lists | status/wait/attach/cancel, raw + semantic streams, complete result items |
+| `deepResearch.run` | `prompt`, depth, output format, audience, domain lists, limits | status/wait/attach/cancel, raw + semantic streams, final report and downloaded artifacts |
+| `track.create` | `prompt`, schedule, extraction schema, tick instructions, trigger/notification options | create/get/attach/runNow/events/runs/run/delete and the completed tick detail |
+
+Use only public HTTPS pages in `publicSources`. A minimal shape is shown below;
+placeholders are intentional so repository history never contains a deployment
+address or a real test Case:
+
+```json
+{
+  "schemaVersion": 1,
+  "runtime": {
+    "eakHost": "<control-plane-base-url>",
+    "webAgentBaseUrl": "<webagent-base-url>",
+    "timeoutMs": 120000
+  },
+  "cases": [
+    {
+      "id": "<stable-public-case-id>",
+      "title": "<human-readable-purpose>",
+      "function": "doAnything.run",
+      "publicSources": ["https://<public-source>/"],
+      "input": {
+        "prompt": "<public-reproducible-query>",
+        "capture": { "screenshots": true },
+        "limits": { "maxDurationMinutes": 5 }
+      },
+      "assertions": {
+        "expectedText": ["<deterministic-public-result>"],
+        "requireScreenshots": true,
+        "requireBrowserHarness": true
+      },
+      "timeoutMs": 360000
+    }
+  ]
+}
+```
+
+Run the matrix sequentially (to respect browser concurrency limits):
+
+```bash
+pnpm test:e2e:matrix
+```
+
+Each batch is written to
+`.secrets/query-matrix/runs/query-matrix-<timestamp>/`. `summary.json` reports
+pass/fail by SDK function; every child directory contains the exact local Case,
+actual invocation result, raw SSE frames, semantic events, function touchpoints,
+and any screenshots/artifacts. None of these files belong in a commit.

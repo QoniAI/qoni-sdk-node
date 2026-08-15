@@ -17,18 +17,23 @@ export const liveE2EEnabled = process.env.EAK_LIVE_E2E === "1";
 export const liveRequireAll = process.env.EAK_LIVE_REQUIRE_ALL === "1";
 export const livePrefix = `sdk-live-${Date.now()}`;
 
-export function liveClient(): EazoAgentKit {
+export function liveClient(overrides: {
+  host?: string;
+  webAgentBaseUrl?: string;
+  timeoutMs?: number;
+} = {}): EazoAgentKit {
   if (liveRequireAll) requiredEnv("EAK_USER_ACCESS_TOKEN");
-  const host = process.env.EAK_HOST?.trim();
+  const host = overrides.host || process.env.EAK_HOST?.trim();
   // Point WebAgent data-plane calls at a different deployment (e.g. a local
   // backend) while delegation/token-exchange stay on the EAK gateway.
-  const webAgentBaseUrl = process.env.EAK_WEBAGENT_BASE_URL?.trim();
+  const webAgentBaseUrl =
+    overrides.webAgentBaseUrl || process.env.EAK_WEBAGENT_BASE_URL?.trim();
   return new EazoAgentKit({
     accessKey: requiredEnv("EAK_ACCESS_KEY"),
     secretKey: requiredEnv("EAK_SECRET_KEY"),
     ...(host ? { host } : {}),
     ...(webAgentBaseUrl ? { webAgentBaseUrl } : {}),
-    timeoutMs: Number(process.env.EAK_TIMEOUT_MS || 120_000),
+    timeoutMs: overrides.timeoutMs ?? Number(process.env.EAK_TIMEOUT_MS || 120_000),
   });
 }
 
