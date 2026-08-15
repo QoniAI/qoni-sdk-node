@@ -1,6 +1,10 @@
 import fs from "node:fs";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import type { JsonObject, MonitorHandle } from "../../src";
+import type { JsonObject, MonitorHandle, TrackCreateOptions } from "../../src";
+import {
+  loadQueryMatrix,
+  selectQueryMatrixCase,
+} from "../helpers/query-matrix";
 import {
   allowLiveEnvironmentConstraint,
   collectRunEvents,
@@ -12,6 +16,12 @@ import {
 } from "./helpers";
 
 const describeLiveE2E = liveE2EEnabled ? describe : describe.skip;
+const focusedMatrix = liveE2EEnabled ? loadQueryMatrix() : undefined;
+const focusedCase = focusedMatrix
+  ? selectQueryMatrixCase(focusedMatrix, "track.create", process.env.EAK_TRACK_CASE_ID)
+  : undefined;
+const createInput = focusedCase?.input as (JsonObject & { prompt: string }) | undefined;
+const trackCaseTimeoutMs = focusedCase?.timeoutMs ?? focusedMatrix?.runtime.timeoutMs ?? 220_000;
 
 describeLiveE2E("live e2e: Track (semantic surface)", () => {
   let client: ReturnType<typeof liveClient>;
@@ -20,7 +30,7 @@ describeLiveE2E("live e2e: Track (semantic surface)", () => {
   let deleted = false;
 
   beforeAll(async () => {
-    client = liveClient();
+    client = liveClient(focusedMatrix?.runtime);
     token = (await delegateLiveToken(client, trackScopes)).token;
   });
 
@@ -34,28 +44,12 @@ describeLiveE2E("live e2e: Track (semantic surface)", () => {
   // every later operation goes through the MonitorHandle.
   function ensureMonitor() {
     monitorReady ??= (async () => {
+      if (!createInput) throw new Error("Focused Track Case was not loaded");
       const monitor = await allowLiveEnvironmentConstraint(
         client.track.create({
           token,
-          // Plain natural-language intent — no nonce: the intent feeds LLM
-          // alignment, and traceability comes from monitor.id.
-          // 60s is the backend minimum interval; the price moves every tick,
-          // so the change trigger fires on real scheduled ticks.
-          // No target_urls: the agent-driven tick path finds the price from
-          // the instructions alone. Direct mode skips the alignment dialogue,
-          // so the fields alignment would derive must be supplied here:
-          // extractionSchema (else ticks extract {}) and tickInstructions
-          // (else ticks fall back to the legacy scrape path, which needs URLs).
-          // Top-level keys are camelCase (the SDK snake-cases them); nested
-          // values are wire-shaped passthrough.
-          prompt: "Monitor the live Bitcoin price and notify on any change",
-          notifyChannel: { kind: "console_inbox" },
-          schedule: { kind: "interval", interval_seconds: 60 },
-          extractionSchema: { btc_price_usd: "number" },
-          tickInstructions:
-            "Find the current Bitcoin price in USD from a public price page and report it as btc_price_usd.",
-          triggerDsl: { on: "change" },
-        }),
+          ...createInput,
+        } as TrackCreateOptions),
       );
       return monitor ?? undefined;
     })();
@@ -72,8 +66,9 @@ describeLiveE2E("live e2e: Track (semantic surface)", () => {
     const monitor = await ensureMonitor();
     if (!monitor) return;
     const data = await monitor.get();
-    // Domain content: the monitor we created, not just a 200.
-    expect(JSON.stringify(data)).toContain("Bitcoin");
+    if (!createInput) throw new Error("Focused Track Case was not loaded");
+    // Domain content: the ignored local monitor definition, not just a 200.
+    expect(JSON.stringify(data)).toContain(createInput.prompt);
     // Normalized camelCase — no snake_case keys at the top level.
     expect(Object.keys(data).some((key) => key.includes("_"))).toBe(false);
   });
@@ -83,7 +78,8 @@ describeLiveE2E("live e2e: Track (semantic surface)", () => {
     if (!monitor) return;
     const attached = await client.track.attach(monitor.id, { token });
     expect(attached.id).toBe(monitor.id);
-    expect(JSON.stringify(await attached.get())).toContain("Bitcoin");
+    if (!createInput) throw new Error("Focused Track Case was not loaded");
+    expect(JSON.stringify(await attached.get())).toContain(createInput.prompt);
   });
 
   it("monitor.refine() is observable on monitor.events()", async () => {
@@ -159,7 +155,7 @@ describeLiveE2E("live e2e: Track (semantic surface)", () => {
       () => controller.abort(),
       // First fresh tick can arrive within seconds (immediate on re-register);
       // the second only after a full interval. Budget ~3 intervals of headroom.
-      Number(process.env.EAK_LIVE_TRACK_TICK_TIMEOUT_MS || 220_000),
+      trackCaseTimeoutMs,
     );
     try {
       // Monitor streams have no terminal event — the caller decides when to
@@ -220,7 +216,7 @@ describeLiveE2E("live e2e: Track (semantic surface)", () => {
     // Upper bound stays lenient: a slow tick run can push the next started_at out.
     expect(gapSeconds).toBeGreaterThanOrEqual(INTERVAL_SECONDS * 0.75);
     expect(gapSeconds).toBeLessThanOrEqual(INTERVAL_SECONDS * 3);
-  }, 260_000);
+  }, trackCaseTimeoutMs + 40_000);
 
   it("monitor.runs() / monitor.run() expose tick runs read-only", async () => {
     const monitor = await ensureMonitor();

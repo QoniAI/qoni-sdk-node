@@ -23,7 +23,7 @@ describe("Do Anything live evidence recorder", () => {
     const recorder = createDoAnythingEvidenceRecorder({
       dir,
       runId: "run_1",
-      prompt: "Open Wikipedia and report the UUID article title.",
+      prompt: "Configured public browser task",
       request: {
         capture: { screenshots: true },
         limits: { maxDurationMinutes: 5 },
@@ -48,7 +48,7 @@ describe("Do Anything live evidence recorder", () => {
         kind: "agent_core.write",
         label: "write",
         params: {
-          path: "browser-tools/read_uuid.py",
+          path: "browser-tools/task.py",
           content: "from agent_helpers import get_browser\n",
         },
       }),
@@ -56,35 +56,35 @@ describe("Do Anything live evidence recorder", () => {
         action_id: "write_1",
         kind: "agent_core.write",
         label: "write",
-        params: { path: "browser-tools/read_uuid.py" },
+        params: { path: "browser-tools/task.py" },
         result: { ok: true, summary: "wrote browser script" },
       }),
       wire(4, "run.action.started", {
         action_id: "bash_1",
         kind: "agent_core.bash",
         label: "bash",
-        params: { command: "browser-harness run browser-tools/read_uuid.py" },
+        params: { command: "browser-harness run browser-tools/task.py" },
       }),
       wire(5, "run.action.completed", {
         action_id: "bash_1",
         kind: "agent_core.bash",
         label: "bash",
-        params: { command: "browser-harness run browser-tools/read_uuid.py" },
+        params: { command: "browser-harness run browser-tools/task.py" },
         result: {
           ok: true,
           summary: "browser script completed",
-          browser_script: { path: "browser-tools/read_uuid.py", sha256: "abc123" },
+          browser_script: { path: "browser-tools/task.py", sha256: "abc123" },
         },
       }),
       wire(6, "run.screenshot", {
         artifact_id: "shot_1",
-        page_url: "https://en.wikipedia.org/wiki/Universally_unique_identifier",
+        page_url: "https://public-source.invalid/result",
         step: 1,
       }),
       wire(7, "run.completed", {
         terminal_reason: "done",
         is_task_successful: true,
-        output: "Universally unique identifier",
+        output: "Configured public result",
       }),
     ];
     for (const event of events) recorder.recordWireEvent(event);
@@ -95,7 +95,7 @@ describe("Do Anything live evidence recorder", () => {
       {
         bytes: new Uint8Array(Buffer.from("jpeg-bytes")),
         mime: "image/jpeg",
-        pageUrl: "https://en.wikipedia.org/wiki/Universally_unique_identifier",
+        pageUrl: "https://public-source.invalid/result",
         step: 1,
       },
       0,
@@ -144,11 +144,11 @@ describe("Do Anything live evidence recorder", () => {
     expect(fs.existsSync(path.join(dir, "browser-harness.json"))).toBe(true);
 
     const invocation = JSON.parse(fs.readFileSync(path.join(dir, "invocation.json"), "utf8"));
-    expect(invocation.prompt).toBe("Open Wikipedia and report the UUID article title.");
+    expect(invocation.prompt).toBe("Configured public browser task");
     expect(invocation.request.capture).toEqual({ screenshots: true });
     expect(invocation.request).not.toHaveProperty("token");
     expect(fs.readFileSync(path.join(dir, "events.raw.jsonl"), "utf8")).toContain(
-      "browser-harness run browser-tools/read_uuid.py",
+      "browser-harness run browser-tools/task.py",
     );
     const messages = JSON.parse(fs.readFileSync(path.join(dir, "agent-messages.json"), "utf8"));
     expect(messages).toMatchObject([
@@ -159,25 +159,25 @@ describe("Do Anything live evidence recorder", () => {
     expect(tools[0]).toMatchObject({
       actionId: "write_1",
       kind: "agent_core.write",
-      params: { path: "browser-tools/read_uuid.py" },
+      params: { path: "browser-tools/task.py" },
       outcome: "completed",
     });
     expect(tools[1]).toMatchObject({
       actionId: "bash_1",
       kind: "agent_core.bash",
-      params: { command: "browser-harness run browser-tools/read_uuid.py" },
+      params: { command: "browser-harness run browser-tools/task.py" },
       outcome: "completed",
     });
     const harness = JSON.parse(fs.readFileSync(path.join(dir, "browser-harness.json"), "utf8"));
     expect(harness.authoring[0]).toMatchObject({
       actionId: "write_1",
-      path: "browser-tools/read_uuid.py",
+      path: "browser-tools/task.py",
       code: "from agent_helpers import get_browser\n",
     });
     expect(harness.executions[0]).toMatchObject({
       actionId: "bash_1",
-      command: "browser-harness run browser-tools/read_uuid.py",
-      result: { browser_script: { path: "browser-tools/read_uuid.py" } },
+      command: "browser-harness run browser-tools/task.py",
+      result: { browser_script: { path: "browser-tools/task.py" } },
     });
     expect(() => assertCompleteDoAnythingEvidence(summary)).not.toThrow();
   });

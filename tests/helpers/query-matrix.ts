@@ -20,7 +20,7 @@ export type QueryMatrixFunction =
 
 export interface QueryMatrixRuntime {
   /** EAK control-plane base URL. Kept in the ignored local document. */
-  eakHost?: string;
+  eakHost: string;
   /** WebAgent data-plane base URL. Kept in the ignored local document. */
   webAgentBaseUrl: string;
   timeoutMs?: number;
@@ -64,6 +64,35 @@ export function loadQueryMatrix(
   return parseQueryMatrix(JSON.parse(fs.readFileSync(file, "utf8")) as unknown);
 }
 
+/**
+ * Resolve the ignored local Case used by a focused live suite. When no id is
+ * supplied, the first Case for the requested SDK function is used. Keeping
+ * this selection here prevents focused tests from embedding their own Query,
+ * public source, deployment URL, or expected result.
+ */
+export function selectQueryMatrixCase(
+  document: QueryMatrixDocument,
+  functionName: QueryMatrixFunction,
+  caseId?: string,
+): QueryMatrixCase {
+  if (caseId) {
+    const selected = document.cases.find((item) => item.id === caseId);
+    if (!selected) throw new Error(`Query matrix does not contain case id: ${caseId}`);
+    if (selected.function !== functionName) {
+      throw new Error(
+        `Query matrix case ${caseId} exercises ${selected.function}, not ${functionName}`,
+      );
+    }
+    return selected;
+  }
+
+  const selected = document.cases.find((item) => item.function === functionName);
+  if (!selected) {
+    throw new Error(`Query matrix does not contain a ${functionName} case`);
+  }
+  return selected;
+}
+
 export function parseQueryMatrix(value: unknown): QueryMatrixDocument {
   const document = record(value, "query matrix");
   if (document.schemaVersion !== 1) {
@@ -73,9 +102,7 @@ export function parseQueryMatrix(value: unknown): QueryMatrixDocument {
   const runtimeRecord = record(document.runtime, "query matrix runtime");
   const runtime: QueryMatrixRuntime = {
     webAgentBaseUrl: validRuntimeUrl(runtimeRecord.webAgentBaseUrl, "webAgentBaseUrl"),
-    ...(runtimeRecord.eakHost === undefined
-      ? {}
-      : { eakHost: validRuntimeUrl(runtimeRecord.eakHost, "eakHost") }),
+    eakHost: validRuntimeUrl(runtimeRecord.eakHost, "eakHost"),
     ...(runtimeRecord.timeoutMs === undefined
       ? {}
       : { timeoutMs: positiveInteger(runtimeRecord.timeoutMs, "runtime.timeoutMs") }),

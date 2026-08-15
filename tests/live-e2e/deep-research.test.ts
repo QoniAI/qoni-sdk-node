@@ -1,6 +1,11 @@
 import fs from "node:fs";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import type { JsonObject, RunHandle, RunResult } from "../../src";
+import type { DeepResearchRunOptions, JsonObject, RunHandle, RunResult } from "../../src";
+import {
+  loadQueryMatrix,
+  selectQueryMatrixCase,
+} from "../helpers/query-matrix";
+import { assertQueryMatrixOutput } from "../helpers/query-matrix-runner";
 import {
   allowLiveEnvironmentConstraint,
   collectRunEvents,
@@ -12,13 +17,20 @@ import {
 } from "./helpers";
 
 const describeLiveE2E = liveE2EEnabled ? describe : describe.skip;
+const focusedMatrix = liveE2EEnabled ? loadQueryMatrix() : undefined;
+const focusedCase = focusedMatrix
+  ? selectQueryMatrixCase(
+      focusedMatrix,
+      "deepResearch.run",
+      process.env.EAK_DEEP_RESEARCH_CASE_ID,
+    )
+  : undefined;
+const runInput = focusedCase?.input as (JsonObject & { prompt: string }) | undefined;
 
 // A deepResearch run takes 3-7 real minutes (PLAN flows straight to GATHER —
 // there is no outline-approval gate), so it gets a budget independent of the
 // generic stream timeout the other products use.
-const DR_WAIT_TIMEOUT_MS = Number(
-  process.env.EAK_LIVE_DEEP_RESEARCH_WAIT_TIMEOUT_MS || 600_000,
-);
+const DR_WAIT_TIMEOUT_MS = focusedCase?.timeoutMs ?? focusedMatrix?.runtime.timeoutMs ?? 600_000;
 
 describeLiveE2E("live e2e: Deep Research (semantic surface)", () => {
   let client: ReturnType<typeof liveClient>;
@@ -29,7 +41,7 @@ describeLiveE2E("live e2e: Deep Research (semantic surface)", () => {
   let recordedFile: string | undefined;
 
   beforeAll(async () => {
-    client = liveClient();
+    client = liveClient(focusedMatrix?.runtime);
     token = (await delegateLiveToken(client, deepResearchScopes)).token;
   });
 
@@ -42,26 +54,12 @@ describeLiveE2E("live e2e: Deep Research (semantic surface)", () => {
   // every later operation goes through the run.
   function ensureRun() {
     runReady ??= (async () => {
+      if (!runInput) throw new Error("Focused Deep Research Case was not loaded");
       const run = await allowLiveEnvironmentConstraint(
         client.deepResearch.run({
           token,
-          // Plain researchable topic — no nonce: the topic fans out into real
-          // web searches where a nonce only adds noise; run traceability
-          // comes from run.id.
-          prompt: "simply summarize the public example.com page in one paragraph",
-          // "light" shrinks the outline section count and the per-section
-          // gather budget — standard depth fans this trivial topic into a
-          // multi-section plan that runs well past any sane test budget.
-          depth: "light",
-          outputFormat: "report",
-          targetAudience: "SDK maintainers",
-          limits: {
-            maxDurationMinutes: Number(
-              process.env.EAK_LIVE_DEEP_RESEARCH_MAX_DURATION_MINUTES || 10,
-            ),
-          },
-          domainWhitelist: ["example.com"],
-        }),
+          ...runInput,
+        } as DeepResearchRunOptions),
       );
       return run ?? undefined;
     })();
@@ -129,11 +127,8 @@ describeLiveE2E("live e2e: Deep Research (semantic surface)", () => {
       if (!result) return;
 
       expect(result.status).toBe("succeeded");
-      // Domain content: a report, not a status flip. The settled output must
-      // be substantial prose about the researched page.
-      const reportText = JSON.stringify(result.output ?? "");
-      expect(reportText.length).toBeGreaterThan(200);
-      expect(reportText.toLowerCase()).toContain("example");
+      if (!focusedCase) throw new Error("Focused Deep Research Case was not loaded");
+      assertQueryMatrixOutput(focusedCase, result.output);
 
       // Deliverables ride on the settled result (contract §4): deepResearch
       // produces artifacts; content is fetched lazily through the run.
@@ -178,7 +173,6 @@ describeLiveE2E("live e2e: Deep Research (semantic surface)", () => {
       token,
       runId: run.id,
       rating: 5,
-      feedbackText: "SDK live e2e feedback",
     });
   });
 });

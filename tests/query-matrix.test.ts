@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   parseQueryMatrix,
+  selectQueryMatrixCase,
   type QueryMatrixDocument,
 } from "./helpers/query-matrix";
 import {
@@ -81,6 +82,18 @@ describe("query matrix local configuration", () => {
     const tooSmall = validDocument();
     tooSmall.cases = tooSmall.cases.slice(0, 9);
     expect(() => parseQueryMatrix(tooSmall)).toThrow(/10 and 20/i);
+  });
+
+  it("selects focused live cases without embedding Query data in test code", () => {
+    const document = parseQueryMatrix(validDocument());
+
+    expect(selectQueryMatrixCase(document, "webSearch.run").id).toBe("public-case-5");
+    expect(selectQueryMatrixCase(document, "deepResearch.run", "public-case-8").id).toBe(
+      "public-case-8",
+    );
+    expect(() =>
+      selectQueryMatrixCase(document, "doAnything.run", "public-case-8"),
+    ).toThrow(/not doAnything\.run/);
   });
 });
 

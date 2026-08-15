@@ -1,7 +1,12 @@
 import fs from "node:fs";
 import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import type { JsonObject, RunHandle, RunResult } from "../../src";
+import type { DoAnythingRunOptions, JsonObject, RunHandle, RunResult } from "../../src";
+import {
+  loadQueryMatrix,
+  selectQueryMatrixCase,
+} from "../helpers/query-matrix";
+import { assertQueryMatrixOutput } from "../helpers/query-matrix-runner";
 import {
   allowLiveEnvironmentConstraint,
   collectRunEvents,
@@ -17,25 +22,22 @@ import {
 } from "../helpers/do-anything-evidence";
 
 const describeLiveE2E = liveE2EEnabled ? describe : describe.skip;
-
-// The exact Wikipedia article title the browsing task below must surface.
-const EXPECTED_TITLE_RE = new RegExp(
-  process.env.EAK_DO_ANYTHING_EXPECTED_PATTERN || "universally unique identifier",
-  "i",
-);
+const focusedMatrix = liveE2EEnabled ? loadQueryMatrix() : undefined;
+const focusedCase = focusedMatrix
+  ? selectQueryMatrixCase(
+      focusedMatrix,
+      "doAnything.run",
+      process.env.EAK_DO_ANYTHING_CASE_ID,
+    )
+  : undefined;
+const runInput = focusedCase?.input as (JsonObject & { prompt: string }) | undefined;
+const prompt = runInput?.prompt ?? "";
+const { prompt: _configuredPrompt, ...runOptions } = runInput ?? { prompt: "" };
 
 // A real Browserbase navigation can exceed the suite's 120s default testTimeout,
 // so the wait test
 // carries its own budget like the deep-research one does.
-const WAIT_TIMEOUT_MS = Number(process.env.EAK_LIVE_WAIT_TIMEOUT_MS || 360_000);
-const PROMPT =
-  process.env.EAK_DO_ANYTHING_PROMPT ||
-  "Open https://en.wikipedia.org/wiki/Universally_unique_identifier in the browser " +
-    "and report the article's exact title.";
-const RUN_OPTIONS = {
-  capture: { screenshots: true },
-  limits: { maxDurationMinutes: 5 },
-} as const;
+const WAIT_TIMEOUT_MS = focusedCase?.timeoutMs ?? focusedMatrix?.runtime.timeoutMs ?? 360_000;
 
 // Live coverage of the frozen contract's mainline (public-surface doc §2/§4):
 // run() → RunHandle → wait(), token passed once at the entry call, screenshots
@@ -50,7 +52,7 @@ describeLiveE2E("live e2e: Do Anything (semantic surface)", () => {
   let runStartedAt: string | undefined;
 
   beforeAll(async () => {
-    client = liveClient();
+    client = liveClient(focusedMatrix?.runtime);
     token = (await delegateLiveToken(client, doAnythingScopes)).token;
   });
 
@@ -63,17 +65,14 @@ describeLiveE2E("live e2e: Do Anything (semantic surface)", () => {
   // every later operation goes through the run.
   function ensureRun() {
     runReady ??= (async () => {
+      if (!runInput) throw new Error("Focused Do Anything Case was not loaded");
       runStartedAt = new Date().toISOString();
       const run = await allowLiveEnvironmentConstraint(
         client.doAnything.run({
           token,
-          // A task that REQUIRES browsing (search box interaction): plain
-          // URL-fetch phrasings get routed to the fetch/textify agents, which
-          // never produce screenshots. The answer is still deterministic —
-          // the article's exact title.
-          prompt: PROMPT,
-          ...RUN_OPTIONS,
-        }),
+          prompt,
+          ...runOptions,
+        } as DoAnythingRunOptions),
       );
       return run ?? undefined;
     })();
@@ -95,8 +94,8 @@ describeLiveE2E("live e2e: Do Anything (semantic surface)", () => {
       const recorder = createDoAnythingEvidenceRecorder({
         dir,
         runId: run.id,
-        prompt: PROMPT,
-        request: RUN_OPTIONS,
+        prompt,
+        request: runOptions,
         startedAt: runStartedAt,
       });
       recordedDir = recorder.dir;
@@ -138,7 +137,7 @@ describeLiveE2E("live e2e: Do Anything (semantic surface)", () => {
     return resultReady;
   }
 
-  it("doAnything.run({ token, instruction, capture, limits }) returns a run", async () => {
+  it("doAnything.run({ token, prompt, ...configuredInput }) returns a run", async () => {
     const run = await ensureRun();
     if (!run) return;
     expect(run.id).toBeTruthy();
@@ -164,15 +163,14 @@ describeLiveE2E("live e2e: Do Anything (semantic surface)", () => {
   });
 
   it(
-    "run.wait() returns the article title, raw events and screenshots on disk",
+    "run.wait() returns configured domain evidence, raw events and screenshots on disk",
     async () => {
       const result = await ensureResult();
       if (!result) return;
 
-      // Real domain content, not a status echo: the answer must contain the
-      // expected task result (override the pattern with the prompt when needed).
       expect(result.status).toBe("succeeded");
-      expect(JSON.stringify(result.output ?? "")).toMatch(EXPECTED_TITLE_RE);
+      if (!focusedCase) throw new Error("Focused Do Anything Case was not loaded");
+      assertQueryMatrixOutput(focusedCase, result.output);
 
       // A release-valid Browser Harness run must leave complete local evidence.
       expect(evidenceSummary?.screenshotCount).toBeGreaterThan(0);

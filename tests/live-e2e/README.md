@@ -7,8 +7,9 @@ same public calls work end to end and return domain evidence.
 ## Profiles
 
 - `pnpm test:e2e` is the normal live suite. It requires real AK/SK and agent
-  credentials. `currentUser` is visibly skipped when no logged-in user access
-  token is supplied.
+  credentials plus the ignored local Query matrix described below.
+  `currentUser` is visibly skipped when no logged-in user access token is
+  supplied.
 - `pnpm test:e2e:release` is the release gate. It additionally requires
   `EAK_USER_ACCESS_TOKEN`, so every listed capability must execute.
 - `pnpm test:e2e:do-anything:release` runs the focused Browser Harness gate.
@@ -24,8 +25,9 @@ same public calls work end to end and return domain evidence.
   media-storage constraints; a run using that flag is not release evidence.
 
 Required variables are `EAK_ACCESS_KEY`, `EAK_SECRET_KEY`, and `EAK_AGENT_ID`.
-The release profile also requires `EAK_USER_ACCESS_TOKEN`. Optional routing and
-budget variables are documented alongside the tests in `helpers.ts`.
+The release profile also requires `EAK_USER_ACCESS_TOKEN`. Exact Query text,
+expected public results, runtime URLs, ports, and per-Case budgets come only
+from the ignored local matrix file. They must not be copied into test source.
 
 ## Capability matrix
 
@@ -41,9 +43,10 @@ budget variables are documented alongside the tests in `helpers.ts`.
 
 ## Do Anything: real SDK call and evidence
 
-The focused gate uses the public SDK path below. The prompt and run options are
-real values. The delegated token is intentionally kept in memory and is never
-written to evidence files.
+The focused gate selects a `doAnything.run` Case from the ignored local matrix
+and passes that Case's actual input to the public SDK. The delegated token is
+kept in memory and is never written to evidence files. The code stays generic;
+the local evidence contains the exact invocation that actually ran.
 
 ```ts
 const { token } = await client.delegateToken({
@@ -53,17 +56,12 @@ const { token } = await client.delegateToken({
   scopes: ["webagent.do_anything:read", "webagent.do_anything:manage"],
 });
 
-const run = await client.doAnything.run({
-  token,
-  prompt:
-    "Open https://en.wikipedia.org/wiki/Universally_unique_identifier in the browser " +
-    "and report the article's exact title.",
-  capture: { screenshots: true },
-  limits: { maxDurationMinutes: 5 },
-});
+const matrix = loadQueryMatrix();
+const testCase = selectQueryMatrixCase(matrix, "doAnything.run");
+const run = await client.doAnything.run({ token, ...testCase.input });
 
 const result = await run.wait({
-  timeoutMs: 360_000,
+  timeoutMs: testCase.timeoutMs ?? matrix.runtime.timeoutMs,
   onWireEvent: (event) => recorder.recordWireEvent(event),
   onEvent: (event) => recorder.recordSemanticEvent(event),
   onReconnect: (info) => recorder.recordReconnect(info),
@@ -77,9 +75,9 @@ Run it with:
 pnpm test:e2e:do-anything:release
 ```
 
-The default task can be changed with `EAK_DO_ANYTHING_PROMPT`; when changing it,
-set `EAK_DO_ANYTHING_EXPECTED_PATTERN` to a case-insensitive regular expression
-that must match the final Agent output.
+Set `EAK_DO_ANYTHING_CASE_ID` to choose a specific local `doAnything.run` Case;
+otherwise the first matching Case is used. Web Search, Deep Research, and Track
+follow the same rule with their product-specific `EAK_*_CASE_ID` selector.
 
 Each run writes a self-contained evidence directory under
 `.secrets/runs/do_anything-<run-id>/` (or exactly `EAK_OUT_DIR`):
