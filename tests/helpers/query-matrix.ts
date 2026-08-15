@@ -33,6 +33,8 @@ export interface QueryMatrixAssertions {
   minResults?: number;
   requireScreenshots?: boolean;
   requireBrowserHarness?: boolean;
+  /** Reject research output that declares incomplete or partial sections. */
+  requireComplete?: boolean;
 }
 
 export interface QueryMatrixCase {
@@ -205,6 +207,9 @@ function parseAssertions(value: JsonObject, index: number): QueryMatrixAssertion
   }
   if (value.requireBrowserHarness !== undefined) {
     out.requireBrowserHarness = boolean(value.requireBrowserHarness, "requireBrowserHarness");
+  }
+  if (value.requireComplete !== undefined) {
+    out.requireComplete = boolean(value.requireComplete, "requireComplete");
   }
   if (Object.keys(out).length === 0) {
     throw new Error(`cases[${index}].assertions must define at least one assertion`);

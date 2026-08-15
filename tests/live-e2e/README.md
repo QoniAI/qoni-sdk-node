@@ -142,7 +142,7 @@ public SDK entry functions:
 | --- | --- | --- |
 | `doAnything.run` | `prompt`, `capture`, `limits`, and other documented run options | status/wait/attach/cancel, complete raw + semantic streams, Agent messages, tool parameters/results, Browser Harness authored code + execution, screenshots, recording, output |
 | `webSearch.run` | `prompt`, `maxResultsPerQuery`, site allow/deny lists | status/wait/attach/cancel, raw + semantic streams, complete result items |
-| `deepResearch.run` | `prompt`, depth, output format, audience, domain lists, limits | status/wait/attach/cancel, raw + semantic streams, final report and downloaded artifacts |
+| `deepResearch.run` | `prompt`, depth, output format, audience, domain lists, limits | status/wait/attach/cancel, raw + semantic streams, final report and downloaded artifacts; set `requireComplete` to reject declared partial sections |
 | `track.create` | `prompt`, schedule, extraction schema, tick instructions, trigger/notification options | create/get/attach/runNow/events/runs/run/delete and the completed tick detail |
 
 Use only public HTTPS pages in `publicSources`. A minimal shape is shown below;

@@ -102,6 +102,43 @@ export function assertQueryMatrixOutput(
       `${item.id}: returned ${extras.resultCount ?? 0} results, expected at least ${item.assertions.minResults}`,
     );
   }
+  if (item.assertions.requireComplete) {
+    const incomplete = findIncompleteDeliverable(output);
+    if (incomplete) {
+      throw new Error(`${item.id}: partial or incomplete deliverable — ${incomplete}`);
+    }
+  }
+}
+
+function findIncompleteDeliverable(value: unknown, seen = new Set<unknown>()): string | undefined {
+  if (!value || typeof value !== "object" || seen.has(value)) return undefined;
+  seen.add(value);
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      const nested = findIncompleteDeliverable(item, seen);
+      if (nested) return nested;
+    }
+    return undefined;
+  }
+
+  const object = value as JsonObject;
+  if (object.isComplete === false || object.is_complete === false) {
+    return "is_complete=false";
+  }
+  const partial = object.partialSections ?? object.partial_sections;
+  if (Array.isArray(partial) && partial.length > 0) {
+    return partial.map((section) => {
+      if (!isRecord(section)) return JSON.stringify(section);
+      const id = section.sectionId ?? section.section_id ?? "unknown-section";
+      const reason = section.reason ?? "unspecified reason";
+      return `${String(id)}: ${String(reason)}`;
+    }).join(", ");
+  }
+  for (const nested of Object.values(object)) {
+    const incomplete = findIncompleteDeliverable(nested, seen);
+    if (incomplete) return incomplete;
+  }
+  return undefined;
 }
 
 export function searchResultItems(output: unknown): JsonObject[] {

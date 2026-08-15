@@ -218,6 +218,40 @@ describe("Do Anything live evidence recorder", () => {
     ).toThrow(/Browser Harness script authoring/i);
   });
 
+  it("preserves Browser Harness authoring when the backend redacts the local path", () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "eak-do-anything-redacted-path-"));
+    temporaryDirectories.push(dir);
+    const recorder = createDoAnythingEvidenceRecorder({
+      dir,
+      runId: "run_redacted_path",
+      prompt: "Configured public browser task",
+      request: { capture: { screenshots: true } },
+      startedAt: "2026-08-14T01:00:00.000Z",
+    });
+
+    recorder.recordWireEvent(wire(1, "run.action.started", {
+      action_id: "write_redacted",
+      kind: "agent_core.write",
+      label: "write",
+      params: {
+        path: "[LOCAL_PATH]",
+        content: "from agent_helpers import get_browser\n",
+      },
+    }));
+    const summary = recorder.finalize("2026-08-14T01:00:01.000Z");
+
+    expect(summary.browserHarnessAuthoringCount).toBe(1);
+    const harness = JSON.parse(fs.readFileSync(path.join(dir, "browser-harness.json"), "utf8"));
+    expect(harness.authoring).toEqual([
+      {
+        actionId: "write_redacted",
+        path: "[LOCAL_PATH]",
+        pathRedacted: true,
+        code: "from agent_helpers import get_browser\n",
+      },
+    ]);
+  });
+
   it("preserves the original failure details for partial live evidence", () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "eak-do-anything-error-"));
     temporaryDirectories.push(dir);

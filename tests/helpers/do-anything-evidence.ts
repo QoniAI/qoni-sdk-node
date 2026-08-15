@@ -336,13 +336,14 @@ function browserHarnessAuthoring(payload: JsonObject): JsonObject | undefined {
   const kind = text(payload.kind).toLowerCase();
   const params = asRecord(payload.params);
   const file = text(params.path || params.file_path || params.filePath);
+  const pathRedacted = file === "[LOCAL_PATH]";
   if (!(
     (kind.endsWith(".write") || kind.endsWith(".write_file")) &&
-    /^browser-tools\/[A-Za-z][A-Za-z0-9_-]{0,63}\.py$/.test(file) &&
+    (pathRedacted || /^browser-tools\/[A-Za-z][A-Za-z0-9_-]{0,63}\.py$/.test(file)) &&
     typeof params.content === "string" &&
     params.content.length > 0
   )) return undefined;
-  return { path: file, code: params.content };
+  return { path: file, ...(pathRedacted ? { pathRedacted: true } : {}), code: params.content };
 }
 
 function browserHarnessExecutionCommand(payload: JsonObject): string | undefined {

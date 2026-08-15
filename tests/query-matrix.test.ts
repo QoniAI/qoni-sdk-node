@@ -122,6 +122,31 @@ describe("query matrix result assertions", () => {
     );
   });
 
+  it("rejects partial Deep Research deliverables when completeness is required", () => {
+    const item = validDocument().cases[7];
+    item.assertions = { expectedText: ["example"], requireComplete: true };
+
+    expect(() => assertQueryMatrixOutput(item, {
+      final: {
+        final_md: "Example research result",
+        partial_sections: [{ section_id: "s2", reason: "single-source" }],
+      },
+    })).toThrow(/partial.*s2.*single-source/i);
+  });
+
+  it("accepts an explicitly complete Deep Research deliverable", () => {
+    const item = validDocument().cases[7];
+    item.assertions = { expectedText: ["example"], requireComplete: true };
+
+    expect(() => assertQueryMatrixOutput(item, {
+      final: {
+        final_md: "Example research result",
+        is_complete: true,
+        partial_sections: [],
+      },
+    })).not.toThrow();
+  });
+
   it("surfaces the backend failure detail before output assertions", () => {
     const item = validDocument().cases[7];
 
