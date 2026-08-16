@@ -5,11 +5,15 @@ import {
   gumemScopes,
   liveE2EEnabled,
   liveClient,
+  liveRequireAll,
+  liveRuntime,
   livePrefix,
 } from "./helpers";
 
 const describeLiveE2E = liveE2EEnabled ? describe : describe.skip;
 const itWithUserAccessToken = process.env.EAK_USER_ACCESS_TOKEN ? it : it.skip;
+const rawRequestPath = liveRuntime?.rawRequestPath;
+const itWithRawRequestPath = rawRequestPath || liveRequireAll ? it : it.skip;
 
 describeLiveE2E("live e2e: auth and GUMem", () => {
   let client: ReturnType<typeof liveClient>;
@@ -75,6 +79,28 @@ describeLiveE2E("live e2e: auth and GUMem", () => {
     const accessToken = process.env.EAK_USER_ACCESS_TOKEN!;
     const user = await client.currentUser({ accessToken });
     expect(user.data).toBeTruthy();
+  });
+
+  itWithUserAccessToken("genauth.userInfo({ accessToken }) resolves the same login", async () => {
+    const accessToken = process.env.EAK_USER_ACCESS_TOKEN!;
+    const user = await client.genauth.userInfo<Record<string, unknown>>({ accessToken });
+    expect(user.data).toBeTruthy();
+  });
+
+  it("resolveAnyBoundUser() resolves a real userpool member", async () => {
+    await expect(client.resolveAnyBoundUser()).resolves.toMatch(/\S/);
+  });
+
+  itWithRawRequestPath("request({ method, path }) executes a configured signed request", async () => {
+    if (!rawRequestPath) throw new Error("runtime.rawRequestPath is required for strict live E2E");
+    const response = await client.request({ method: "GET", path: rawRequestPath });
+    expect(response.data).toBeTruthy();
+  });
+
+  itWithRawRequestPath("unstableRequest({ method, path }) remains a working alias", async () => {
+    if (!rawRequestPath) throw new Error("runtime.rawRequestPath is required for strict live E2E");
+    const response = await client.unstableRequest({ method: "GET", path: rawRequestPath });
+    expect(response.data).toBeTruthy();
   });
 
   it("gumem.createSession({ userId, sessionId, title, metadata })", async () => {

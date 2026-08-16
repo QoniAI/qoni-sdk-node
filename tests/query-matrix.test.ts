@@ -17,6 +17,7 @@ function validDocument(): QueryMatrixDocument {
     runtime: {
       eakHost: "https://gateway.invalid",
       webAgentBaseUrl: "https://webagent.invalid",
+      rawRequestPath: "/api/runtime-config",
     },
     cases: Array.from({ length: 10 }, (_, index) => ({
       id: `public-case-${index + 1}`,
@@ -55,6 +56,12 @@ describe("query matrix local configuration", () => {
     };
 
     expect(() => parseQueryMatrix(document)).toThrow(/runtime routing.*runtime/i);
+  });
+
+  it("rejects a full URL where rawRequestPath requires a local path", () => {
+    const document = validDocument();
+    document.runtime.rawRequestPath = "https://runtime.invalid/api/config";
+    expect(() => parseQueryMatrix(document)).toThrow(/absolute URL path, not a URL/i);
   });
 
   it("rejects credential-like fields anywhere in the local manifest", () => {

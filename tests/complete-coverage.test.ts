@@ -93,6 +93,13 @@ function createHarness() {
       });
     }
 
+    if (url.pathname.endsWith("/api/user/actions/stream")) {
+      return new Response(
+        '{"content":"first action"}\n{"content":"second action"}\n',
+        { status: 200, headers: { "content-type": "application/x-ndjson" } },
+      );
+    }
+
     if (url.pathname === "/oidc/me") {
       return jsonResponse({ data: { id: "user_matrix", name: "Matrix User" } });
     }
@@ -456,7 +463,15 @@ describe("complete public method coverage matrix", () => {
         });
         await h.client.gumem.actions.record({ token, user_id: "user_matrix", event_type: "view" });
         await h.client.gumem.actions.recall({ token, user_id: "user_matrix", query: "view" });
-        await h.client.gumem.actions.stream({ token, user_id: "user_matrix", limit: 3 });
+        const streamed = await h.client.gumem.actions.stream<{ content: string }[]>({
+          token,
+          user_id: "user_matrix",
+          limit: 3,
+        });
+        expect(streamed.data).toEqual([
+          { content: "first action" },
+          { content: "second action" },
+        ]);
 
         const gumemCalls = h.calls.filter((call) => call.url.startsWith("https://gumem.example.com"));
         expect(gumemCalls).toMatchObject([

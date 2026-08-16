@@ -29,17 +29,61 @@ The release profile also requires `EAK_USER_ACCESS_TOKEN`. Exact Query text,
 expected public results, runtime URLs, ports, and per-Case budgets come only
 from the ignored local matrix file. They must not be copied into test source.
 
+## Per-function HTTP evidence (opt-in)
+
+`EAK_LIVE_EVIDENCE_DIR=<dir>` turns on a recorder that wraps the SDK's
+injectable `fetch` and appends one JSONL record per real HTTP round trip, tagged
+with the vitest test that caused it (`expect.getState().currentTestName`).
+It is **off by default**: with the variable unset, `liveClient()` passes no
+`fetch` override and the suite behaves exactly as it did before.
+
+```bash
+EAK_LIVE_E2E=1 EAK_LIVE_EVIDENCE_DIR=/tmp/eak-evidence \
+  vitest run --coverage=false --fileParallelism=false --maxWorkers=1 \
+    --reporter=json --outputFile=/tmp/eak-evidence/vitest.json tests/live-e2e/
+```
+
+- `evidence.ts` — the recorder. It records in two phases (`kind:"call"` when the
+  response headers arrive, `kind:"body"` when the body ends, joined on `id`), so
+  a long-lived SSE stream still leaves evidence if the process dies mid-stream.
+  One file per PID, because vitest uses a worker process per test file.
+- `redact.ts` — allow-list redaction. URLs keep only their pathname plus a host
+  alias, headers are allow-listed, bodies are walked recursively with
+  credential-keyed values replaced and *learned*, and the serialized line gets a
+  final structural pass (JWT / Bearer / IPv4 / EC2 DNS / Browserbase URLs /
+  local absolute paths). Captured records are meant to be publishable, so
+  redaction is a gate, not a nicety.
+- `function-map.ts` — generated mapping from every catalogued public function to
+  the `describe > it` blocks that cover it. Attributing a recorded call to a
+  function is a join on that mapping, never a fuzzy match on the test title.
+- `../live-evidence.test.ts` (mock suite) — asserts the mapping covers all 94
+  catalogued functions, that every referenced test resolves to a real block in
+  the live sources, and that redaction removes planted credentials both at the
+  unit level and across a full recorded round trip.
+
+Tuning: `EAK_LIVE_EVIDENCE_MAX_BODY_CHARS` (default 4000) and
+`EAK_LIVE_EVIDENCE_MAX_STREAM_CHARS` (default 8000) cap what is stored;
+`responseBytes` always reports the untruncated size.
+
 ## Capability matrix
 
 | Area | Real behavior asserted | Test file |
 | --- | --- | --- |
-| Delegation and identity | silent delegation, OIDC discovery, JWKS, delegation introspection, current user | `auth-gumem.test.ts` |
+| Delegation and identity | silent delegation, OIDC discovery, JWKS, delegation introspection, current user/userinfo, bound-user resolution, configured signed raw requests | `auth-gumem.test.ts` |
 | GenAuth users | list/get/batch/create/update/delete, with mutation read-back | `genauth-users.test.ts` |
 | GUMem | session, synchronous message persistence and recall, resource upload, action record/recall/stream | `auth-gumem.test.ts` |
 | Do Anything | create/status/events/wait, real browser content, screenshots, attach, cancel, wire escape hatch | `do-anything.test.ts` |
 | Web Search | create/status/events/wait, real domain-filtered results, attach, cancel, wire escape hatch | `web-search.test.ts` |
 | Deep Research | create/status/events/wait, substantive report/artifact, attach, cancel, feedback escape hatch | `deep-research.test.ts` |
 | Track | create/get/refine/pause/resume/events/run-now, recurring scheduler cadence, run history/detail, attach, delete | `track.test.ts` |
+| Wire escape hatch | every `<product>.api.*` method: snake_case create/read envelopes, raw SSE streams, tick history, session artifacts/recording, report artifacts, and the documented refusal codes for state-illegal calls | `wire-api.test.ts` |
+| Delegation | silent delegation via both entry points and both `eak.*` aliases, token claims, interactive authorization grant, and the exchange route's refusal without a human-approved code | `delegation.test.ts` |
+| Interactions (HITL) | a backend-emitted `run.interaction` reaching `wait({ onInteraction })`, `run.interactionHandle()`, `can()`, and the dead-affordance guard on all 11 action methods | `interactions.test.ts` |
+
+> The action methods on `InteractionHandle` are covered on their **guard** path
+> only: this deployment never emits a *pending* interaction that declares
+> actions, so the HTTP POST behind `answer()` / `confirmSignedIn()` / … stays
+> unverified. `interactions.test.ts` records what was tried to induce one.
 
 ## Do Anything: real SDK call and evidence
 
@@ -155,6 +199,7 @@ address or a real test Case:
   "runtime": {
     "eakHost": "<control-plane-base-url>",
     "webAgentBaseUrl": "<webagent-base-url>",
+    "rawRequestPath": "<safe-control-plane-path>",
     "timeoutMs": 120000
   },
   "cases": [

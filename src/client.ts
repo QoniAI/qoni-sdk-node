@@ -765,6 +765,19 @@ function isBodyInit(value: unknown): value is BodyInit {
 }
 
 async function readJson(response: Response): Promise<unknown> {
+  const contentType = response.headers.get("content-type")?.toLowerCase() || "";
+  if (contentType.includes("ndjson") || contentType.includes("jsonl")) {
+    const body = await response.text();
+    if (!body.trim()) return [];
+    try {
+      return body
+        .split(/\r?\n/)
+        .filter((line) => line.trim().length > 0)
+        .map((line) => JSON.parse(line));
+    } catch {
+      return undefined;
+    }
+  }
   return response.json().catch(() => undefined);
 }
 

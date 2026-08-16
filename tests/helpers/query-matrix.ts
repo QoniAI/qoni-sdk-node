@@ -23,6 +23,8 @@ export interface QueryMatrixRuntime {
   eakHost: string;
   /** WebAgent data-plane base URL. Kept in the ignored local document. */
   webAgentBaseUrl: string;
+  /** Safe control-plane path used by request()/unstableRequest() live probes. */
+  rawRequestPath?: string;
   timeoutMs?: number;
 }
 
@@ -105,6 +107,9 @@ export function parseQueryMatrix(value: unknown): QueryMatrixDocument {
   const runtime: QueryMatrixRuntime = {
     webAgentBaseUrl: validRuntimeUrl(runtimeRecord.webAgentBaseUrl, "webAgentBaseUrl"),
     eakHost: validRuntimeUrl(runtimeRecord.eakHost, "eakHost"),
+    ...(runtimeRecord.rawRequestPath === undefined
+      ? {}
+      : { rawRequestPath: runtimePath(runtimeRecord.rawRequestPath, "rawRequestPath") }),
     ...(runtimeRecord.timeoutMs === undefined
       ? {}
       : { timeoutMs: positiveInteger(runtimeRecord.timeoutMs, "runtime.timeoutMs") }),
@@ -133,6 +138,14 @@ export function parseQueryMatrix(value: unknown): QueryMatrixDocument {
   }
 
   return { schemaVersion: 1, runtime, cases };
+}
+
+function runtimePath(value: unknown, label: string): string {
+  const pathname = nonEmptyString(value, `runtime.${label}`);
+  if (!pathname.startsWith("/") || pathname.startsWith("//") || pathname.includes("://")) {
+    throw new Error(`runtime.${label} must be an absolute URL path, not a URL`);
+  }
+  return pathname;
 }
 
 function parseCase(value: unknown, index: number): QueryMatrixCase {
