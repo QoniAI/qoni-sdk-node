@@ -21,6 +21,8 @@ const allowedWirePatterns = [
   new RegExp(`/api/v3/${legacyLower}(?=/|[\\s\"'\\x60]|$)`, "g"),
   new RegExp(`${legacyLower}_delegation_token`, "g"),
   new RegExp(`${legacyLower}_tenant_id`, "g"),
+  // Infrastructure runner tag. Keep until the GitLab runner itself is renamed.
+  new RegExp(`${legacyLower}-us`, "g"),
   new RegExp(
     `${legacyLower}\\.(?:auth|delegation|genauth|token_exchange)(?:\\.[a-z0-9_]+)+`,
     "g",

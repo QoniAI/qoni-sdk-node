@@ -2,7 +2,7 @@ image: node:20
 
 default:
   tags:
-    - us
+    - eak-us
 
 stages:
   - verify
@@ -144,6 +144,8 @@ sync_main_or_master_to_fellou:
     SYNC_TARGET_HOST_KEY: "[gitlab.asix.inc]:6022 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJPT8mi8hCLKAg7gMVOzOsFFiQAsU/sEmWSykPsdyWGV"
   rules:
     - if: '$CI_SERVER_HOST == "gitlab.authing-inc.co" && $CI_PIPELINE_SOURCE == "push" && ($CI_COMMIT_BRANCH == "main" || $CI_COMMIT_BRANCH == "master")'
+      when: manual
+      allow_failure: true
     - when: never
 
 sync_main_or_master_to_authing:
