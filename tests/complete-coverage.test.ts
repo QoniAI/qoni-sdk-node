@@ -57,10 +57,10 @@ function createHarness() {
     };
     calls.push(call);
 
-    if (url.pathname.endsWith("/api/v3/qoni/runtime-config")) {
+    if (url.pathname.endsWith("/api/v3/eak/runtime-config")) {
       return jsonResponse({
         data: {
-          qoniBaseUrl: "https://qoni.example.com",
+          eakBaseUrl: "https://qoni.example.com",
           genauthBaseUrl: "https://genauth.example.com",
           gumemBaseUrl: "https://gumem.example.com",
           webAgentBaseUrl: "https://webagent.example.com",
@@ -68,7 +68,7 @@ function createHarness() {
       });
     }
 
-    if (url.pathname.endsWith("/api/v3/qoni/token-exchange")) {
+    if (url.pathname.endsWith("/api/v3/eak/token-exchange")) {
       const body = call.body as { resource?: string; scopes?: string[] };
       return jsonResponse({
         data: {
@@ -87,7 +87,7 @@ function createHarness() {
       });
     }
 
-    if (url.pathname.endsWith("/api/v3/qoni/genauth/admin-token")) {
+    if (url.pathname.endsWith("/api/v3/eak/genauth/admin-token")) {
       return jsonResponse({
         data: { accessToken: "genauth-admin-token", userPoolId: "pool_matrix", expiresIn: 3600 },
       });
@@ -129,7 +129,7 @@ function createHarness() {
       });
     }
 
-    if (url.pathname.endsWith("/api/v3/qoni/delegations") && call.method === "POST") {
+    if (url.pathname.endsWith("/api/v3/eak/delegations") && call.method === "POST") {
       const body = call.body as { mode?: string; scopes?: string[] };
       if (body.mode === "interactive") {
         return jsonResponse({
@@ -147,7 +147,7 @@ function createHarness() {
           mode: "silent",
           tokenType: "Bearer",
           token: jwt({
-            token_type: "qoni_delegation_token",
+            token_type: "eak_delegation_token",
             sub: "user_matrix",
             webagent_tenant_id: "tenant_matrix",
           }),
@@ -159,12 +159,12 @@ function createHarness() {
       });
     }
 
-    if (url.pathname.endsWith("/api/v3/qoni/delegations/complete")) {
+    if (url.pathname.endsWith("/api/v3/eak/delegations/complete")) {
       return jsonResponse({
         data: {
           mode: "interactive",
           tokenType: "Bearer",
-          token: jwt({ token_type: "qoni_delegation_token", webagent_tenant_id: "tenant_matrix" }),
+          token: jwt({ token_type: "eak_delegation_token", webagent_tenant_id: "tenant_matrix" }),
           expiresIn: 3600,
           grantId: "grant_matrix",
           auditId: "audit_matrix",
@@ -219,7 +219,7 @@ function normalizeHeaders(headers: HeadersInit | undefined): Record<string, stri
 
 function delegationToken(): string {
   return jwt({
-    token_type: "qoni_delegation_token",
+    token_type: "eak_delegation_token",
     sub: "user_matrix",
     webagent_tenant_id: "tenant_matrix",
   });
@@ -254,7 +254,7 @@ describe("complete public method coverage matrix", () => {
           state: "business_state",
         });
 
-        const call = h.byPath("/api/v3/qoni/delegations")[0];
+        const call = h.byPath("/api/v3/eak/delegations")[0];
         expect(call.method).toBe("POST");
         expect(call.headers.authorization).toMatch(/^authing ak_matrix:/);
         expect(call.body).toMatchObject({
@@ -282,7 +282,7 @@ describe("complete public method coverage matrix", () => {
           state: "state_matrix",
         });
 
-        expect(h.byPath("/api/v3/qoni/delegations/complete")[0].body).toEqual({
+        expect(h.byPath("/api/v3/eak/delegations/complete")[0].body).toEqual({
           grantId: "grant_matrix",
           code: "code_matrix",
           state: "state_matrix",
@@ -328,7 +328,7 @@ describe("complete public method coverage matrix", () => {
           { pathname: "/oidc/.well-known/jwks.json", method: "GET" },
           { pathname: "/oidc/.well-known/openid-configuration", method: "GET" },
           {
-            pathname: "/api/v3/qoni/delegations/introspect",
+            pathname: "/api/v3/eak/delegations/introspect",
             method: "POST",
             body: { token: "legacy-token" },
           },
@@ -375,7 +375,7 @@ describe("complete public method coverage matrix", () => {
           userIds: ["user_matrix"],
         });
 
-        expect(h.byPath("/api/v3/qoni/genauth/admin-token")).toHaveLength(1);
+        expect(h.byPath("/api/v3/eak/genauth/admin-token")).toHaveLength(1);
         expect(h.calls.slice(-7)).toMatchObject([
           {
             pathname: "/api/v3/list-users",
@@ -778,7 +778,7 @@ describe("complete public method coverage matrix", () => {
   describe("stable error behavior", () => {
     it("maps HTTP and envelope errors to typed SDK errors", async () => {
       const cases = [
-        { status: 401, code: "qoni.auth.invalid", klass: QoniAuthError },
+        { status: 401, code: "eak.auth.invalid", klass: QoniAuthError },
         { status: 403, code: "delegation.required", klass: QoniDelegationRequiredError },
         { status: 403, code: "scope is not allowed", klass: QoniPermissionDeniedError },
         { status: 401, code: "token expired", klass: QoniTokenExpiredError },

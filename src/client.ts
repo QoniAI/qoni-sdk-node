@@ -113,7 +113,7 @@ export class QoniAgentKit {
       return Promise.reject(err);
     }
     return this.signedPost<DelegateAgentResponse>(
-      "/api/v3/qoni/delegations",
+      "/api/v3/eak/delegations",
       body,
     ).then(normalizeDelegateAgentTokenResponse);
   }
@@ -127,7 +127,7 @@ export class QoniAgentKit {
     input: CompleteDelegateTokenInput,
   ): Promise<QoniResponse<DelegateTokenResponse>> {
     return this.signedPost<DelegateTokenResponse>(
-      "/api/v3/qoni/delegations/complete",
+      "/api/v3/eak/delegations/complete",
       input,
     ).then(
       normalizeDelegateAgentTokenResponse,
@@ -159,7 +159,7 @@ export class QoniAgentKit {
       throw new QoniError(
         "resolveAnyBoundUser: the credential-bound GenAuth userpool returned no users. " +
           "Create a user in the userpool, or pass a real userId to delegateToken.",
-        { code: "qoni.genauth.no_bound_users" },
+        { code: "eak.genauth.no_bound_users" },
       );
     }
     return userId;
@@ -605,7 +605,7 @@ export class QoniAgentKit {
   }
 
   private async fetchRuntimeConfig(): Promise<ResolvedRuntimeConfig> {
-    const pathname = "/api/v3/qoni/runtime-config";
+    const pathname = "/api/v3/eak/runtime-config";
     const headers = buildSignedHeaders(
       {
         accessKey: this.accessKey,
@@ -657,7 +657,7 @@ export class QoniAgentKit {
     const cached = this.productTokenCache.get(cacheKey);
     if (cached && cached.expiresAt > Date.now() + 30_000) return cached.token;
 
-    const response = await this.signedPost<unknown>("/api/v3/qoni/token-exchange", {
+    const response = await this.signedPost<unknown>("/api/v3/eak/token-exchange", {
       subjectToken: runtimeToken,
       resource: service === "gumem" ? "gumem" : "webagent",
       scopes,
@@ -685,7 +685,7 @@ export class QoniAgentKit {
       return { accessToken: cached.accessToken, userPoolId: cached.userPoolId };
     }
 
-    const response = await this.signedPost<unknown>("/api/v3/qoni/genauth/admin-token", {});
+    const response = await this.signedPost<unknown>("/api/v3/eak/genauth/admin-token", {});
     const payload = response.data;
     const accessToken = readAccessToken(payload);
     const userPoolId =
@@ -712,7 +712,7 @@ export class QoniAgentKit {
 export { QoniAgentKit as Qoni };
 
 interface ResolvedRuntimeConfig {
-  qoniBaseUrl?: string;
+  eakBaseUrl?: string;
   genauthBaseUrl?: string;
   gumemBaseUrl?: string;
   webAgentBaseUrl?: string;
@@ -876,7 +876,7 @@ function normalizeRuntimeConfig(payload: unknown): ResolvedRuntimeConfig {
   if (!isJsonObject(data)) return {};
   const config = data as QoniRuntimeConfig;
   return {
-    qoniBaseUrl: runtimeServiceUrl(config, "qoni", "qoniBaseUrl"),
+    eakBaseUrl: runtimeServiceUrl(config, "eak", "eakBaseUrl"),
     genauthBaseUrl: runtimeServiceUrl(config, "genauth", "genauthBaseUrl"),
     gumemBaseUrl: runtimeServiceUrl(config, "gumem", "gumemBaseUrl"),
     webAgentBaseUrl:
@@ -1016,7 +1016,7 @@ function safeDecodeJwtPayload(token: string): JsonObject | undefined {
 }
 
 function isQoniDelegationToken(token: string): boolean {
-  return safeDecodeJwtPayload(token)?.token_type === "qoni_delegation_token";
+  return safeDecodeJwtPayload(token)?.token_type === "eak_delegation_token";
 }
 
 function readAccessToken(payload: unknown): string | undefined {

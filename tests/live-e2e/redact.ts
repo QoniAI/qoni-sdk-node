@@ -195,7 +195,7 @@ export function createSecretLedger(initial: Iterable<unknown> = []): SecretLedge
 }
 
 /**
- * Keys whose value is a DEPLOYMENT ENDPOINT. `GET /api/v3/qoni/runtime-config`
+ * Keys whose value is a DEPLOYMENT ENDPOINT. `GET /api/v3/eak/runtime-config`
  * answers with every base URL the SDK will then talk to, so without this the
  * very first recorded response would hand the reader the real Qoni / GenAuth /
  * GUMem / WebAgent hostnames.

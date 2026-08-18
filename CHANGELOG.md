@@ -25,8 +25,11 @@ compatible fixes.
 - Rename the package from its previous product name to `@qoniai/qoni`.
 - Rename the primary constructor and all branded exports to `QoniAgentKit`,
   `Qoni`, and the corresponding `Qoni*` types, constants, and error classes.
-- Rename the product namespace to `client.qoni`, environment variables to
-  `QONI_*`, and SDK gateway routes to `/api/v3/qoni/*`.
+- Rename the product namespace to `client.qoni` and environment variables to
+  `QONI_*`. The current server wire contract remains unchanged: SDK gateway
+  routes stay under `/api/v3/eak/*`, delegation tokens retain
+  `eak_delegation_token` and `eak_tenant_id`, and backend `eak.*` error codes
+  pass through as-is.
 - Rename the bundled integration skill to `qoni-sdk` and update repository,
   package publishing, smoke-test, and runtime-discovery metadata.
 
@@ -101,7 +104,7 @@ Documentation-only release; no SDK code changes.
 
 - README delegation examples passed `user: { subject: userId }`, but `UserRef`
   requires `id` and the SDK only reads `user.id` — as written the silent
-  delegation throws `qoni.delegation.user_id_required`. Corrected to
+  delegation throws `eak.delegation.user_id_required`. Corrected to
   `user: { id: userId }` in both README.md and README.zh-CN.md.
 - Replaced non-runnable placeholder example prompts (an undefined "customer
   website", a literal `…`, a fake `example.com/pricing`) with concrete,
@@ -190,8 +193,8 @@ streaming. **Breaking** — see below.
 - `qoni.resolveAnyBoundUser()` — returns a real user id from the credential-bound
   GenAuth userpool, for demos / smoke tests that need a `userId` for silent
   `delegateToken` without hardcoding one.
-- Onboarding hints: errors for `qoni.delegation.user_not_bound` and
-  `qoni.genauth.userpool_binding_missing` now append a one-line, actionable hint
+- Onboarding hints: errors for `eak.delegation.user_not_bound` and
+  `eak.genauth.userpool_binding_missing` now append a one-line, actionable hint
   to the message (e.g. pointing at `resolveAnyBoundUser` / `currentUser`).
 - `QoniError.code` is now typed as `QoniErrorCode` — a union of the known SDK /
   backend codes plus `(string & {})` — so you get literal autocomplete and can
@@ -207,7 +210,7 @@ Initial public release of `@qoniai/qoni`.
 - Server-side `QoniAgentKit` constructor for Qoni Agent delegation and product
   runtime calls.
 - Runtime service discovery from the Qoni Console gateway through
-  `GET /api/v3/qoni/runtime-config`.
+  `GET /api/v3/eak/runtime-config`.
 - One-step `delegateToken` flow for binding a GenAuth user, Agent identity,
   scope list, expiry, and audit metadata.
 - Automatic product-token exchange before GUMem and WebAgent runtime requests,

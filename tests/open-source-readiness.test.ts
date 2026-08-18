@@ -88,31 +88,49 @@ describe("open-source readiness", () => {
     });
 
     expect(readme).toContain("agent must be a string");
-    expect(readme).toContain("qoni.delegation.user_not_bound");
-    expect(readme).toContain("qoni.token_exchange.upstream_failed");
+    expect(readme).toContain("eak.delegation.user_not_bound");
+    expect(readme).toContain("eak.token_exchange.upstream_failed");
     expect(readme).toContain("grant_type is not enabled");
     expect(readme).toContain("QONI_USER_ID");
     expect(readme).not.toContain('userId: "user_1"');
     expect(readme).toContain("genauth.users.list");
-    expect(readme).toContain("/api/v3/qoni/genauth/admin-token");
+    expect(readme).toContain("/api/v3/eak/genauth/admin-token");
     expect(zhReadme).toContain("agent must be a string");
-    expect(zhReadme).toContain("qoni.delegation.user_not_bound");
-    expect(zhReadme).toContain("qoni.token_exchange.upstream_failed");
+    expect(zhReadme).toContain("eak.delegation.user_not_bound");
+    expect(zhReadme).toContain("eak.token_exchange.upstream_failed");
     expect(zhReadme).toContain("grant_type is not enabled");
     expect(zhReadme).toContain("QONI_USER_ID");
     expect(zhReadme).not.toContain('userId: "user_1"');
     expect(zhReadme).toContain("genauth.users.list");
-    expect(zhReadme).toContain("/api/v3/qoni/genauth/admin-token");
+    expect(zhReadme).toContain("/api/v3/eak/genauth/admin-token");
     expect(skill).toContain("QONI_USER_ID");
-    expect(skill).toContain("qoni.token_exchange.upstream_failed");
+    expect(skill).toContain("eak.token_exchange.upstream_failed");
     expect(skill).toContain("grant_type is not enabled");
     expect(skill).toContain("genauth.users.*");
-    expect(skill).toContain("/api/v3/qoni/genauth/admin-token");
+    expect(skill).toContain("/api/v3/eak/genauth/admin-token");
 
     [readme, zhReadme, skill].forEach((text) => {
       expect(text).toContain("QoniAgentKit");
       expect(text).not.toContain("QnoiAgentKit");
     });
+  });
+
+  it("keeps the public Qoni API on the currently deployed server wire contract", () => {
+    const client = readText("src/client.ts");
+    const types = readText("src/types.ts");
+    const smoke = readText("scripts/qoni-auth-gum-smoke.mjs");
+
+    [client, smoke].forEach((text) => {
+      expect(text).toContain("/api/v3/eak/runtime-config");
+      expect(text).toContain("/api/v3/eak/delegations");
+      expect(text).toContain("eak_delegation_token");
+      expect(text).not.toContain("/api/v3/qoni/");
+      expect(text).not.toContain("qoni_delegation_token");
+      expect(text).not.toContain("qoni_tenant_id");
+    });
+    expect(types).toContain("eakBaseUrl?: string");
+    expect(types).toContain("eak?: string | { baseUrl?: string; url?: string; host?: string }");
+    expect(smoke).toContain("eak_tenant_id");
   });
 
   it("allows manual branch release jobs while keeping branch sync optional", () => {

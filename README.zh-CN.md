@@ -15,12 +15,18 @@ AK/SK 必须只保存在可信服务端，不能下发到浏览器、移动端�
 Qoni 把 Agent 授权模型收敛成几个稳定边界：
 
 - 一个 SDK 入口：`new QoniAgentKit({ accessKey, secretKey })`。
-- 一条发现路径：`host` 可在私有化或本地部署中覆盖 Qoni Console/SDK 网关，SDK 通过 `/api/v3/qoni/runtime-config` 获取 GenAuth、GUMem、WebAgent 等运行时地址。
+- 一条发现路径：`host` 可在私有化或本地部署中覆盖 Qoni Console/SDK 网关，SDK 通过 `/api/v3/eak/runtime-config` 获取 GenAuth、GUMem、WebAgent 等运行时地址。
 - 一个授权入口：调用 `delegateToken`；silent 模式直接返回 `data.token`，interactive 模式返回授权 URL，之后由业务服务端完成兑换。
 - 一条管理面路径：调用 `genauth.users.*`，SDK 会先用 AK/SK 换取 GenAuth management token，再调用 GenAuth v3 users API。
 - 一组能力命名空间：`genauth`、`gumem`、`webSearch`、`doAnything`、`track`。
 - 一组可读的 scope 字符串：让最小授权边界直接出现在业务代码里。
 - 一致的错误和审计字段：`requestId`、`traceId`、`auditId`、`retryable`。
+
+公开 npm 包和 JavaScript API 使用 Qoni 品牌。当前服务端协议尚未迁移，
+因此内部签名路由继续使用 `/api/v3/eak/*`，delegation token claim 继续使用
+`eak_delegation_token`，服务端返回的 `eak.*` 错误码也保持原样透传。业务代码
+不应改写 `eak_tenant_id` 等现有 wire claim，只应使用公开的 Qoni API，不要
+自行拼装这些内部 wire 值。
 
 ## 安装
 
@@ -84,7 +90,7 @@ const qoni = new QoniAgentKit({
 
 ### GenAuth 用户管理
 
-`genauth.users.*` 属于管理面能力，不需要 `QONI_USER_ID` 或 `delegateToken`。SDK 会在内部签名请求 `POST /api/v3/qoni/genauth/admin-token`，请求体是 `{}`，拿到 GenAuth management token 和 `userPoolId` 后再调用 GenAuth v3 users API。
+`genauth.users.*` 属于管理面能力，不需要 `QONI_USER_ID` 或 `delegateToken`。SDK 会在内部签名请求 `POST /api/v3/eak/genauth/admin-token`，请求体是 `{}`，拿到 GenAuth management token 和 `userPoolId` 后再调用 GenAuth v3 users API。
 
 ```ts
 const users = await qoni.genauth.users.list({
@@ -194,8 +200,11 @@ const reattached = await qoni.doAnything.attach(run.id, { token }); // 仅凭 ru
 SDK 会签名请求：
 
 ```text
-GET /api/v3/qoni/runtime-config
+GET /api/v3/eak/runtime-config
 ```
+
+该路径是与当前服务端保持兼容的内部协议边界，不代表公开 SDK 品牌或
+JavaScript 命名空间。
 
 返回值提供 Qoni runtime、GenAuth、GUMem、WebAgent 等服务地址。普通业务代码不需要分别配置这些产品 URL。
 
@@ -453,7 +462,7 @@ const created = await client.genauth.users.create({
 });
 ```
 
-`currentUser`、`genauth.userInfo` 使用 GenAuth access token 读取已登录用户身份。`genauth.users.*` 也属于管理面能力，但业务代码仍然用 Qoni AK/SK 初始化 SDK：SDK 会签名请求 `POST /api/v3/qoni/genauth/admin-token`，请求体是空 JSON `{}`，拿到标准 GenAuth management token 和 `userPoolId`，再携带 `Authorization: Bearer ...` 与 `x-authing-userpool-id` 调用 GenAuth v3 用户管理 API。这里不传 `resource`、`actions`、`expiresIn` 或 `QONI_USER_ID`。GUMem/WebAgent/Track 等运行时能力才使用 `delegateToken` 返回的 token。
+`currentUser`、`genauth.userInfo` 使用 GenAuth access token 读取已登录用户身份。`genauth.users.*` 也属于管理面能力，但业务代码仍然用 Qoni AK/SK 初始化 SDK：SDK 会签名请求 `POST /api/v3/eak/genauth/admin-token`，请求体是空 JSON `{}`，拿到标准 GenAuth management token 和 `userPoolId`，再携带 `Authorization: Bearer ...` 与 `x-authing-userpool-id` 调用 GenAuth v3 用户管理 API。这里不传 `resource`、`actions`、`expiresIn` 或 `QONI_USER_ID`。GUMem/WebAgent/Track 等运行时能力才使用 `delegateToken` 返回的 token。
 
 ## API 概览
 
@@ -678,10 +687,10 @@ try {
 | 错误 | 含义 | 下一步 |
 | --- | --- | --- |
 | `agent must be a string` | 当前线上 delegation API 期望 `agent` 是字符串 ID。 | 使用 `agent: "memory-agent"`，不要传对象。 |
-| `qoni.delegation.user_not_bound` | `userId` 不属于该 Qoni credential 绑定的 GenAuth userpool。 | 使用 `currentUser` 返回的真实用户 ID，或确认用户来自同一个绑定 userpool。 |
-| `qoni.genauth.userpool_binding_missing` | AK/SK 没有绑定 GenAuth userpool，`genauth.users.*` 无法换取 management token。 | 先把 Qoni credential 绑定到目标 GenAuth userpool。 |
-| `qoni.genauth.userpool_owner_missing` | 绑定的 GenAuth userpool 找不到可用于签发 management token 的 owner 用户。 | 修复 GenAuth userpool owner 数据或绑定。 |
-| `qoni.token_exchange.upstream_failed` 且包含 `unauthorized_client` 或 `grant_type is not enabled` | Delegation 已成功，但 managed delegation app 缺少 token-exchange grant，或租户绑定发生漂移。 | 先修复 managed delegation app 绑定，再调用 GUMem 或 WebAgent 产品能力。 |
+| `eak.delegation.user_not_bound` | `userId` 不属于该 Qoni credential 绑定的 GenAuth userpool。 | 使用 `currentUser` 返回的真实用户 ID，或确认用户来自同一个绑定 userpool。 |
+| `eak.genauth.userpool_binding_missing` | AK/SK 没有绑定 GenAuth userpool，`genauth.users.*` 无法换取 management token。 | 先把 Qoni credential 绑定到目标 GenAuth userpool。 |
+| `eak.genauth.userpool_owner_missing` | 绑定的 GenAuth userpool 找不到可用于签发 management token 的 owner 用户。 | 修复 GenAuth userpool owner 数据或绑定。 |
+| `eak.token_exchange.upstream_failed` 且包含 `unauthorized_client` 或 `grant_type is not enabled` | Delegation 已成功，但 managed delegation app 缺少 token-exchange grant，或租户绑定发生漂移。 | 先修复 managed delegation app 绑定，再调用 GUMem 或 WebAgent 产品能力。 |
 | `delegation.required` | GUMem/WebAgent 调用没有传 `token`。 | 把 `delegation.data.token` 传给产品能力方法。 |
 | `direct delegation token deprecated` | 应用直接把 Qoni delegation token 打到了产品服务。 | 通过 SDK 调产品能力，让 SDK 在内部完成 token exchange。 |
 

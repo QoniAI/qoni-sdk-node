@@ -39,8 +39,8 @@ describe("QoniAgentKit", () => {
     const now = vi.spyOn(Date, "now").mockReturnValue(1_700_000_000_000);
     try {
       const credentials = { accessKey: "ak_test", secretKey: "sk_test" };
-      const first = buildSignedHeaders(credentials, "GET", "/api/v3/qoni/runtime-config", {});
-      const second = buildSignedHeaders(credentials, "GET", "/api/v3/qoni/runtime-config", {});
+      const first = buildSignedHeaders(credentials, "GET", "/api/v3/eak/runtime-config", {});
+      const second = buildSignedHeaders(credentials, "GET", "/api/v3/eak/runtime-config", {});
 
       expect(Number(second["x-authing-date"])).toBeGreaterThan(
         Number(first["x-authing-date"]),
@@ -89,7 +89,7 @@ describe("QoniAgentKit", () => {
       mode: "silent",
     });
 
-    expect(seen.url).toBe("https://qoni.example.com/api/v3/qoni/delegations");
+    expect(seen.url).toBe("https://qoni.example.com/api/v3/eak/delegations");
     expect(seen.init?.method).toBe("POST");
     const headers = seen.init?.headers as Record<string, string>;
     expect(headers.authorization).toMatch(/^authing ak_test:/);
@@ -136,10 +136,10 @@ describe("QoniAgentKit", () => {
       secretKey: "sk_test",
       fetch: (async (url: URL | RequestInfo) => {
         calls.push(String(url));
-        if (String(url) === "https://anima.eazo.ai/dashboard/api/v3/qoni/runtime-config") {
+        if (String(url) === "https://anima.eazo.ai/dashboard/api/v3/eak/runtime-config") {
           return jsonResponse({
             data: {
-              qoniBaseUrl: "https://qoni-runtime.example.com",
+              eakBaseUrl: "https://qoni-runtime.example.com",
             },
           });
         }
@@ -163,8 +163,8 @@ describe("QoniAgentKit", () => {
     });
 
     expect(calls).toEqual([
-      "https://anima.eazo.ai/dashboard/api/v3/qoni/runtime-config",
-      "https://anima.eazo.ai/dashboard/api/v3/qoni/delegations",
+      "https://anima.eazo.ai/dashboard/api/v3/eak/runtime-config",
+      "https://anima.eazo.ai/dashboard/api/v3/eak/delegations",
     ]);
   });
 
@@ -176,10 +176,10 @@ describe("QoniAgentKit", () => {
       host: "https://qoni.example.com/dashboard",
       fetch: (async (url: URL | RequestInfo) => {
         calls.push(String(url));
-        if (String(url) === "https://qoni.example.com/dashboard/api/v3/qoni/runtime-config") {
+        if (String(url) === "https://qoni.example.com/dashboard/api/v3/eak/runtime-config") {
           return jsonResponse({
             data: {
-              qoniBaseUrl: "https://qoni-runtime.example.com/sdk",
+              eakBaseUrl: "https://qoni-runtime.example.com/sdk",
             },
           });
         }
@@ -203,8 +203,8 @@ describe("QoniAgentKit", () => {
     });
 
     expect(calls).toEqual([
-      "https://qoni.example.com/dashboard/api/v3/qoni/runtime-config",
-      "https://qoni.example.com/dashboard/api/v3/qoni/delegations",
+      "https://qoni.example.com/dashboard/api/v3/eak/runtime-config",
+      "https://qoni.example.com/dashboard/api/v3/eak/delegations",
     ]);
   });
 
@@ -270,7 +270,7 @@ describe("QoniAgentKit", () => {
       scopes: ["gumem.memory:read", "webagent.do_anything:manage"],
     });
 
-    expect(seen.url).toBe("https://qoni.example.com/api/v3/qoni/delegations");
+    expect(seen.url).toBe("https://qoni.example.com/api/v3/eak/delegations");
     expect(seen.init?.method).toBe("POST");
     expect(seen.body).toEqual({
       mode: "interactive",
@@ -479,7 +479,7 @@ describe("QoniAgentKit", () => {
       fetch: (async () =>
         jsonResponse({
           statusCode: 403,
-          apiCode: "qoni.delegation.user_not_bound",
+          apiCode: "eak.delegation.user_not_bound",
           message: "userId is not valid for this Qoni credential",
           requestId: "req_user_not_bound",
         })) as typeof fetch,
@@ -494,7 +494,7 @@ describe("QoniAgentKit", () => {
       }),
     ).rejects.toMatchObject({
       name: "QoniPermissionDeniedError",
-      code: "qoni.delegation.user_not_bound",
+      code: "eak.delegation.user_not_bound",
       // The backend message is preserved, with an actionable onboarding hint appended.
       message: expect.stringContaining("userId is not valid for this Qoni credential"),
       status: 403,
@@ -588,11 +588,11 @@ describe("QoniAgentKit", () => {
 
     expect(calls).toEqual([
       {
-        url: "https://qoni.example.com/api/v3/qoni/delegations/complete",
+        url: "https://qoni.example.com/api/v3/eak/delegations/complete",
         body: { grantId: "grant_1", code: "code_1", state: "state_1" },
       },
       {
-        url: "https://qoni.example.com/api/v3/qoni/delegations/complete",
+        url: "https://qoni.example.com/api/v3/eak/delegations/complete",
         body: { grantId: "grant_2", code: "code_2", state: "state_2" },
       },
     ]);
@@ -629,7 +629,7 @@ describe("QoniAgentKit", () => {
 
     expect(calls.map((call) => call.url)).toEqual([
       "https://qoni.example.com/oidc/me",
-      "https://qoni.example.com/api/v3/qoni/delegations/introspect",
+      "https://qoni.example.com/api/v3/eak/delegations/introspect",
     ]);
     expect(calls[0].init?.method).toBe("GET");
     expect((calls[0].init?.headers as Record<string, string>).authorization).toBe(
@@ -652,7 +652,7 @@ describe("QoniAgentKit", () => {
       fetch: (async (url: URL | RequestInfo, init?: RequestInit) => {
         const body = init?.body ? JSON.parse(String(init.body)) : undefined;
         calls.push({ url: String(url), init, body });
-        if (String(url) === "https://qoni.example.com/api/v3/qoni/genauth/admin-token") {
+        if (String(url) === "https://qoni.example.com/api/v3/eak/genauth/admin-token") {
           return jsonResponse({
             data: {
               accessToken: "genauth-admin-token",
@@ -669,7 +669,7 @@ describe("QoniAgentKit", () => {
 
     expect(result.data).toMatchObject({ totalCount: 1 });
     expect(calls.map((call) => call.url)).toEqual([
-      "https://qoni.example.com/api/v3/qoni/genauth/admin-token",
+      "https://qoni.example.com/api/v3/eak/genauth/admin-token",
       "https://tenant-a.genauth.example.com/api/v3/list-users",
     ]);
     expect(calls[0].body).toEqual({});
@@ -697,7 +697,7 @@ describe("QoniAgentKit", () => {
       fetch: (async (url: URL | RequestInfo, init?: RequestInit) => {
         const body = init?.body ? JSON.parse(String(init.body)) : undefined;
         calls.push({ url: String(url), init, body });
-        if (String(url) === "https://qoni.example.com/api/v3/qoni/genauth/admin-token") {
+        if (String(url) === "https://qoni.example.com/api/v3/eak/genauth/admin-token") {
           return jsonResponse({
             data: {
               accessToken: "genauth-admin-token",
@@ -718,7 +718,7 @@ describe("QoniAgentKit", () => {
     await client.genauth.users.deleteBatch({ userIds: ["user_1"] });
 
     expect(calls.map((call) => call.url)).toEqual([
-      "https://qoni.example.com/api/v3/qoni/genauth/admin-token",
+      "https://qoni.example.com/api/v3/eak/genauth/admin-token",
       "https://tenant-a.genauth.example.com/api/v3/get-user?userId=user_1",
       "https://tenant-a.genauth.example.com/api/v3/create-user",
       "https://tenant-a.genauth.example.com/api/v3/create-users-batch",
@@ -744,7 +744,7 @@ describe("QoniAgentKit", () => {
       genauthBaseUrl: "https://tenant-a.genauth.example.com",
       fetch: (async (url: URL | RequestInfo) => {
         calls.push(String(url));
-        if (String(url) === "https://qoni.example.com/api/v3/qoni/genauth/admin-token") {
+        if (String(url) === "https://qoni.example.com/api/v3/eak/genauth/admin-token") {
           return jsonResponse({
             data: {
               token: "cached-genauth-admin-token",
@@ -760,7 +760,7 @@ describe("QoniAgentKit", () => {
     await client.genauth.users.list({ page: 2 });
 
     expect(calls).toEqual([
-      "https://qoni.example.com/api/v3/qoni/genauth/admin-token",
+      "https://qoni.example.com/api/v3/eak/genauth/admin-token",
       "https://tenant-a.genauth.example.com/api/v3/list-users",
       "https://tenant-a.genauth.example.com/api/v3/list-users",
     ]);
@@ -775,17 +775,17 @@ describe("QoniAgentKit", () => {
       host: "https://console.example.com",
       fetch: (async (url: URL | RequestInfo, init?: RequestInit) => {
         calls.push({ url: String(url), init });
-        if (String(url) === "https://console.example.com/api/v3/qoni/runtime-config") {
+        if (String(url) === "https://console.example.com/api/v3/eak/runtime-config") {
           return jsonResponse({
             data: {
-              qoniBaseUrl: "https://qoni-runtime.example.com",
+              eakBaseUrl: "https://qoni-runtime.example.com",
               genauthBaseUrl: "https://tenant-a.genauth.example.com",
               gumemBaseUrl: "https://gumem.example.com/api",
               webAgentBaseUrl: "https://webagent.example.com",
             },
           });
         }
-        if (String(url) === "https://console.example.com/api/v3/qoni/delegations") {
+        if (String(url) === "https://console.example.com/api/v3/eak/delegations") {
           return jsonResponse({
             data: {
               mode: "silent",
@@ -811,8 +811,8 @@ describe("QoniAgentKit", () => {
     await client.doAnything.api.createSession({ token });
 
     expect(calls.map((call) => call.url)).toEqual([
-      "https://console.example.com/api/v3/qoni/runtime-config",
-      "https://console.example.com/api/v3/qoni/delegations",
+      "https://console.example.com/api/v3/eak/runtime-config",
+      "https://console.example.com/api/v3/eak/delegations",
       "https://gumem.example.com/api/sessions/default/context?query=memory&details=false",
       "https://webagent.example.com/api/v1/projects/tenant_1/do_anything/sessions",
     ]);
@@ -832,10 +832,10 @@ describe("QoniAgentKit", () => {
       host: "https://console.example.com/dashboard",
       fetch: (async (url: URL | RequestInfo, init?: RequestInit) => {
         calls.push({ url: String(url), init });
-        if (String(url) === "https://console.example.com/dashboard/api/v3/qoni/runtime-config") {
+        if (String(url) === "https://console.example.com/dashboard/api/v3/eak/runtime-config") {
           return jsonResponse({
             data: {
-              qoniBaseUrl: "https://qoni-runtime.example.com/dashboard",
+              eakBaseUrl: "https://qoni-runtime.example.com/dashboard",
               genauthBaseUrl: "https://tenant-a.genauth.example.com",
               gumemBaseUrl: "https://gumem.example.com/api",
               webAgentBaseUrl: "https://webagent.example.com",
@@ -848,13 +848,13 @@ describe("QoniAgentKit", () => {
 
     await client.request({
       method: "GET",
-      path: "/api/v3/qoni/runtime-config",
+      path: "/api/v3/eak/runtime-config",
       headers: { "x-custom": "kept" },
     });
 
     expect(calls.map((call) => call.url)).toEqual([
-      "https://console.example.com/dashboard/api/v3/qoni/runtime-config",
-      "https://console.example.com/dashboard/api/v3/qoni/runtime-config",
+      "https://console.example.com/dashboard/api/v3/eak/runtime-config",
+      "https://console.example.com/dashboard/api/v3/eak/runtime-config",
     ]);
     const headers = calls[1].init?.headers as Record<string, string>;
     expect(headers.authorization).toMatch(/^authing ak_test:/);
@@ -875,17 +875,17 @@ describe("QoniAgentKit", () => {
       webAgentHost: "https://configured.webagent.example.com",
       fetch: (async (url: URL | RequestInfo, init?: RequestInit) => {
         calls.push({ url: String(url), init });
-        if (String(url) === "https://console.example.com/api/v3/qoni/runtime-config") {
+        if (String(url) === "https://console.example.com/api/v3/eak/runtime-config") {
           return jsonResponse({
             data: {
-              qoniBaseUrl: "https://qoni-runtime.example.com",
+              eakBaseUrl: "https://qoni-runtime.example.com",
               genauthBaseUrl: "https://runtime.genauth.example.com",
               gumemBaseUrl: "https://runtime.gumem.example.com/api",
               webAgentBaseUrl: "https://runtime.webagent.example.com",
             },
           });
         }
-        if (String(url) === "https://console.example.com/api/v3/qoni/delegations") {
+        if (String(url) === "https://console.example.com/api/v3/eak/delegations") {
           return jsonResponse({
             data: {
               mode: "silent",
@@ -916,8 +916,8 @@ describe("QoniAgentKit", () => {
     await client.doAnything.api.createSession({ token });
 
     expect(calls.map((call) => call.url)).toEqual([
-      "https://console.example.com/api/v3/qoni/runtime-config",
-      "https://console.example.com/api/v3/qoni/delegations",
+      "https://console.example.com/api/v3/eak/runtime-config",
+      "https://console.example.com/api/v3/eak/delegations",
       "https://configured.genauth.example.com/oidc/me",
       "https://configured.gumem.example.com/api/sessions/default/context?query=memory&details=false",
       "https://configured.webagent.example.com/api/v1/projects/tenant_1/do_anything/sessions",
@@ -945,9 +945,9 @@ describe("QoniAgentKit", () => {
 
   it("exchanges Qoni delegation tokens before calling Gumem", async () => {
     const delegationToken = jwt({
-      token_type: "qoni_delegation_token",
+      token_type: "eak_delegation_token",
       aud: "genauth:token-exchange",
-      qoni_tenant_id: "qoni_tnt_1",
+      eak_tenant_id: "tenant_1",
     });
     const productToken = jwt({
       aud: "gumem",
@@ -967,7 +967,7 @@ describe("QoniAgentKit", () => {
             : JSON.parse(String(init.body))
           : undefined;
         calls.push({ url: String(url), init, body });
-        if (String(url) === "https://qoni.example.com/api/v3/qoni/token-exchange") {
+        if (String(url) === "https://qoni.example.com/api/v3/eak/token-exchange") {
           return jsonResponse({
             data: {
               accessToken: productToken,
@@ -986,7 +986,7 @@ describe("QoniAgentKit", () => {
     await client.gumem.recall({ token: delegationToken, sessionId: "default", query: "memory" });
 
     expect(calls.map((call) => call.url)).toEqual([
-      "https://qoni.example.com/api/v3/qoni/token-exchange",
+      "https://qoni.example.com/api/v3/eak/token-exchange",
       "https://gumem.example.com/api/sessions/default/context?query=memory&details=false",
     ]);
     expect(calls[0].body).toEqual({
@@ -1004,9 +1004,9 @@ describe("QoniAgentKit", () => {
 
   it("surfaces upstream token exchange configuration errors in the thrown message", async () => {
     const delegationToken = jwt({
-      token_type: "qoni_delegation_token",
+      token_type: "eak_delegation_token",
       aud: "genauth:token-exchange",
-      qoni_tenant_id: "qoni_tnt_1",
+      eak_tenant_id: "tenant_1",
     });
     const client = new QoniAgentKit({
       accessKey: "ak_test",
@@ -1017,7 +1017,7 @@ describe("QoniAgentKit", () => {
       fetch: (async () =>
         jsonResponse({
           statusCode: 400,
-          code: "qoni.token_exchange.upstream_failed",
+          code: "eak.token_exchange.upstream_failed",
           message: "OIDC token exchange failed",
           requestId: "req_token_exchange",
           details: {
@@ -1035,7 +1035,7 @@ describe("QoniAgentKit", () => {
       client.gumem.recall({ token: delegationToken, sessionId: "default", query: "memory" }),
     ).rejects.toMatchObject({
       name: "QoniValidationError",
-      code: "qoni.token_exchange.upstream_failed",
+      code: "eak.token_exchange.upstream_failed",
       status: 400,
       requestId: "req_token_exchange",
       message: expect.stringContaining("grant_type is not enabled"),
@@ -1065,7 +1065,7 @@ describe("QoniAgentKit", () => {
   });
 
   it("routes local Qoni token exchanges through the Qoni endpoint", async () => {
-    const delegationToken = jwt({ token_type: "qoni_delegation_token" });
+    const delegationToken = jwt({ token_type: "eak_delegation_token" });
     const productToken = jwt({ aud: "gumem" });
     const calls: Array<{ url: string; init?: RequestInit; body?: unknown }> = [];
     const client = new QoniAgentKit({
@@ -1077,7 +1077,7 @@ describe("QoniAgentKit", () => {
       fetch: (async (url: URL | RequestInfo, init?: RequestInit) => {
         const body = init?.body ? JSON.parse(String(init.body)) : undefined;
         calls.push({ url: String(url), init, body });
-        if (String(url) === "http://127.0.0.1:3000/api/v3/qoni/token-exchange") {
+        if (String(url) === "http://127.0.0.1:3000/api/v3/eak/token-exchange") {
           return jsonResponse({ data: { accessToken: productToken, expiresIn: 3600 } });
         }
         return jsonResponse({ data: { ok: true } });
@@ -1086,7 +1086,7 @@ describe("QoniAgentKit", () => {
 
     await client.gumem.recall({ token: delegationToken, sessionId: "default", query: "memory" });
 
-    expect(calls[0].url).toBe("http://127.0.0.1:3000/api/v3/qoni/token-exchange");
+    expect(calls[0].url).toBe("http://127.0.0.1:3000/api/v3/eak/token-exchange");
     expect((calls[0].init?.headers as Record<string, string>).Host).toBe(
       "core.genauth.localhost:3000",
     );
@@ -1150,7 +1150,7 @@ describe("QoniAgentKit", () => {
     expect(
       buildStringToSign(
         "POST",
-        "/api/v3/qoni/delegations",
+        "/api/v3/eak/delegations",
         {
           "x-authing-date": "1",
           "x-authing-signature-method": "HMAC-SHA1",
@@ -1159,7 +1159,7 @@ describe("QoniAgentKit", () => {
         { b: "2", a: "1" },
       ),
     ).toBe(
-      "POST\nx-authing-date:1\nx-authing-signature-method:HMAC-SHA1\nx-authing-signature-version:1.0\n/api/v3/qoni/delegations?a=1&b=2",
+      "POST\nx-authing-date:1\nx-authing-signature-method:HMAC-SHA1\nx-authing-signature-version:1.0\n/api/v3/eak/delegations?a=1&b=2",
     );
   });
 
@@ -1214,9 +1214,9 @@ describe("QoniAgentKit", () => {
 
   it("uses canonical WebAgent scopes when exchanging delegation tokens", async () => {
     const delegationToken = jwt({
-      token_type: "qoni_delegation_token",
+      token_type: "eak_delegation_token",
       aud: "genauth:token-exchange",
-      qoni_tenant_id: "qoni_tnt_1",
+      eak_tenant_id: "tenant_1",
     });
     const productToken = jwt({
       aud: "webagent",
@@ -1230,7 +1230,7 @@ describe("QoniAgentKit", () => {
       qoniBaseUrl: "https://qoni.example.com",
       webAgentBaseUrl: "https://webagent.example.com",
       fetch: (async (url: URL | RequestInfo, init?: RequestInit) => {
-        if (String(url) === "https://qoni.example.com/api/v3/qoni/token-exchange") {
+        if (String(url) === "https://qoni.example.com/api/v3/eak/token-exchange") {
           exchanges.push(JSON.parse(String(init?.body)));
           return jsonResponse({
             data: { accessToken: productToken, expiresIn: 3600 },
@@ -1697,7 +1697,7 @@ describe("QoniAgentKit", () => {
       qoniBaseUrl: "https://qoni.example.com",
       genauthBaseUrl: "https://tenant-a.genauth.example.com",
       fetch: (async (url: URL | RequestInfo) => {
-        if (String(url) === "https://qoni.example.com/api/v3/qoni/genauth/admin-token") {
+        if (String(url) === "https://qoni.example.com/api/v3/eak/genauth/admin-token") {
           return jsonResponse({ data: { accessToken: "admin", userPoolId: "up_1" } });
         }
         return jsonResponse({ data: { list: [{ userId: "user_real_1" }], totalCount: 1 } });

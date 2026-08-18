@@ -28,7 +28,7 @@ import {
  *    what `completeDelegateToken` exchanges. The grant creation half is fully
  *    live. The exchange half CANNOT be completed from a test process — see the
  *    comment on the exchange test — so it is covered on its real rejection
- *    path: the request is genuinely sent to `/api/v3/qoni/delegations/complete`
+ *    path: the request is genuinely sent to `/api/v3/eak/delegations/complete`
  *    and the backend's documented refusal is asserted. No code is fabricated.
  */
 
@@ -48,7 +48,7 @@ function jwtClaims(token: string): JsonObject {
 /** Assert a minted delegation token really is a scoped token for `userId`. */
 function expectDelegationToken(token: string, userId: string, agent: string): void {
   const claims = jwtClaims(token);
-  expect(claims.token_type).toBe("qoni_delegation_token");
+  expect(claims.token_type).toBe("eak_delegation_token");
   expect(claims.sub, "the token is minted for the delegated user").toBe(userId);
   expect(claims.agent_id, "the audit label rides in the token").toBe(agent);
   expect(claims.scope, "the granted scopes are the requested ones").toEqual([...webSearchScopes]);
@@ -149,10 +149,10 @@ describeLiveE2E("live e2e: delegation (silent, interactive, and the qoni.* alias
     "completeDelegateToken() and its aliases reach the exchange route and are refused without a human-approved code",
     async () => {
       // WHY THIS IS A NEGATIVE-PATH TEST (not a fabricated success):
-      // `POST /api/v3/qoni/delegations/complete` exchanges an authorization
+      // `POST /api/v3/eak/delegations/complete` exchanges an authorization
       // `code` that ONLY the Qoni Console issues after a signed-in end user
       // clicks approve on `authorizationUrl`. Verified against this deployment:
-      //   * `POST /api/v3/qoni/delegations/{grantId}/approve` exists, but it
+      //   * `POST /api/v3/eak/delegations/{grantId}/approve` exists, but it
       //     307s to `/delegations/{grantId}/login` for every non-browser
       //     credential we hold (AK/SK signature, `QONI_USER_ACCESS_TOKEN` as
       //     Bearer, as `x-genauth-token`, and as a session cookie).
@@ -200,7 +200,7 @@ describeLiveE2E("live e2e: delegation (silent, interactive, and the qoni.* alias
         const error = caught as QoniError;
         // The exact backend contract — not a generic transport failure.
         expect(error.status, `${label} status`).toBe(400);
-        expect(error.code, `${label} code`).toBe("qoni.delegation.grant_invalid_or_expired");
+        expect(error.code, `${label} code`).toBe("eak.delegation.grant_invalid_or_expired");
         expect(error.message).toContain("delegation grant is invalid or expired");
       }
     },

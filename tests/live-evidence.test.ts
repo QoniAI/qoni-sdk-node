@@ -152,7 +152,7 @@ describe("live evidence: redaction", () => {
         node: "ip-172-31-4-5.us-west-2.compute.internal",
         addr: "203.0.113.77",
         akEcho: "AK-live-0123456789abcdef",
-        endpoint: "https://qoni.internal.example.com/dashboard/api/v3/qoni/delegations",
+        endpoint: "https://qoni.internal.example.com/dashboard/api/v3/eak/delegations",
       },
     };
 

@@ -96,7 +96,8 @@ const completed = await qoni.completeDelegateToken({
 ## Runtime Discovery
 
 - `host` points to the Qoni Console/SDK gateway, not directly to GenAuth, GUMem, or WebAgent.
-- The SDK signs `GET /api/v3/qoni/runtime-config` with AK/SK, caches returned service URLs, and routes downstream calls internally.
+- The SDK signs `GET /api/v3/eak/runtime-config` with AK/SK, caches returned service URLs, and routes downstream calls internally.
+- Public package/API identifiers use Qoni, but the deployed server wire contract has not migrated. Keep `/api/v3/eak/*`, `eak_delegation_token`, `eak_tenant_id`, and backend `eak.*` error codes unchanged; do not teach callers to construct these internal values.
 - Do not configure `genauthBaseUrl`, `gumemBaseUrl`, `webAgentBaseUrl`, or `qoniBaseUrl` in normal integrations. Use those only for focused tests or migration debugging.
 - Product namespaces require an explicit `token` field. The SDK does not read a constructor-level token or `delegateAgent` config.
 - The online delegation API currently expects `agent` to be a string id, for example `agent: "memory-agent"`. Do not teach object-shaped Agent metadata unless the backend API has been updated to accept it.
@@ -104,9 +105,9 @@ const completed = await qoni.completeDelegateToken({
 ## Token Roles
 
 - GenAuth access token: proves the logged-in user to `currentUser` and `genauth.userInfo`.
-- Qoni-derived GenAuth management token: produced internally by SDK-managed `POST /api/v3/qoni/genauth/admin-token` with body `{}` for `genauth.users.*`; application code should not supply or persist it in normal flows.
+- Qoni-derived GenAuth management token: produced internally by SDK-managed `POST /api/v3/eak/genauth/admin-token` with body `{}` for `genauth.users.*`; application code should not supply or persist it in normal flows.
 - Qoni delegation token: returned directly by silent `delegateToken`, or by server-side `completeDelegateToken({ grantId, code, state })` after an interactive grant; pass it as `token` to GUMem/WebAgent/Web Search/Do Anything/Track calls.
-- Product access token: produced by the SDK through `/api/v3/qoni/token-exchange` when a raw Qoni delegation token is used for a product call. Do not hand-roll this exchange in application code.
+- Product access token: produced by the SDK through `/api/v3/eak/token-exchange` when a raw Qoni delegation token is used for a product call. Do not hand-roll this exchange in application code.
 - Direct product token: acceptable only when a product service already issued it or a test is intentionally bypassing delegation.
 
 ## Management Plane Vs Runtime
@@ -264,9 +265,9 @@ where it sits in the hierarchy.
 For local stacks, first pin the real service boundary:
 
 1. `QONI_HOST` should normally be the local Qoni Console/BFF gateway, for example `http://127.0.0.1:3100`.
-2. Confirm `GET /api/v3/qoni/runtime-config` returns the GenAuth userpool issuer plus GUMem/WebAgent URLs that the product services validate.
+2. Confirm `GET /api/v3/eak/runtime-config` returns the GenAuth userpool issuer plus GUMem/WebAgent URLs that the product services validate.
 3. If a request URL ends with `.genauth.localhost`, the SDK rewrites it to `127.0.0.1` and preserves the original `Host` header. Set `QONI_LOCAL_GENAUTH_TARGET_HOST=host.docker.internal` when the target must be reached from a containerized product service. Set `QONI_LOCAL_GENAUTH_REWRITE=false` only when DNS already resolves correctly.
-4. If runtime-config works but `delegateToken` returns 403, inspect user binding, scope/resource binding, tenant binding, and any `apiCode` such as `qoni.delegation.user_not_bound`.
+4. If runtime-config works but `delegateToken` returns 403, inspect user binding, scope/resource binding, tenant binding, and any `apiCode` such as `eak.delegation.user_not_bound`.
 5. If GUMem/WebAgent says `direct delegation token deprecated`, the integration is bypassing the SDK-managed product token exchange or calling the product service with a raw delegation token directly.
 
 ## Common Mistakes
@@ -285,7 +286,7 @@ For local stacks, first pin the real service boundary:
 For a real hosted GUMem smoke, require:
 
 - `QONI_ACCESS_KEY` and `QONI_SECRET_KEY` — the only mandatory inputs.
-- Optional `QONI_USER_ID`, a real user from the GenAuth userpool bound to the Qoni credential. A delegation token is always bound to a real user, but you do not have to supply this: with only AK/SK, call `qoni.resolveAnyBoundUser()` (lists the bound userpool and returns the first user id) — that is exactly what a smoke needs. Set `QONI_USER_ID` only to pin a specific user or skip the lookup. A placeholder like `user_1` fails with `qoni.delegation.user_not_bound` (the SDK appends a hint pointing at `resolveAnyBoundUser` / `currentUser`). In real app code, resolve the actual logged-in user via `currentUser` instead of picking the first userpool member.
+- Optional `QONI_USER_ID`, a real user from the GenAuth userpool bound to the Qoni credential. A delegation token is always bound to a real user, but you do not have to supply this: with only AK/SK, call `qoni.resolveAnyBoundUser()` (lists the bound userpool and returns the first user id) — that is exactly what a smoke needs. Set `QONI_USER_ID` only to pin a specific user or skip the lookup. A placeholder like `user_1` fails with `eak.delegation.user_not_bound` (the SDK appends a hint pointing at `resolveAnyBoundUser` / `currentUser`). In real app code, resolve the actual logged-in user via `currentUser` instead of picking the first userpool member.
 - Optional `QONI_HOST`; use it only for private or local Qoni deployments.
 - Optional `QONI_AGENT_ID`; default examples can use `memory-agent`, but the credential and product binding must allow the requested scopes.
 
@@ -294,10 +295,10 @@ If the first real request fails:
 | Error | Meaning | Next step |
 | --- | --- | --- |
 | `agent must be a string` | The online delegation API expects a string Agent id. | Use `agent: "memory-agent"`. |
-| `qoni.delegation.user_not_bound` | The user id is not in the credential-bound userpool. | Resolve the real user via `currentUser` or the same GenAuth userpool. |
-| `qoni.genauth.userpool_binding_missing` | The AK/SK is not bound to a GenAuth userpool. | Bind the Qoni credential to the target GenAuth userpool before `genauth.users.*`. |
-| `qoni.genauth.userpool_owner_missing` | The bound userpool owner cannot be resolved. | Fix the GenAuth userpool owner data or binding. |
-| `qoni.token_exchange.upstream_failed` with `unauthorized_client` or `grant_type is not enabled` | Delegation succeeded, but the managed delegation app is missing token-exchange grant support or has drifted from the tenant binding. | Repair the managed delegation app binding before calling GUMem or WebAgent product capabilities. |
+| `eak.delegation.user_not_bound` | The user id is not in the credential-bound userpool. | Resolve the real user via `currentUser` or the same GenAuth userpool. |
+| `eak.genauth.userpool_binding_missing` | The AK/SK is not bound to a GenAuth userpool. | Bind the Qoni credential to the target GenAuth userpool before `genauth.users.*`. |
+| `eak.genauth.userpool_owner_missing` | The bound userpool owner cannot be resolved. | Fix the GenAuth userpool owner data or binding. |
+| `eak.token_exchange.upstream_failed` with `unauthorized_client` or `grant_type is not enabled` | Delegation succeeded, but the managed delegation app is missing token-exchange grant support or has drifted from the tenant binding. | Repair the managed delegation app binding before calling GUMem or WebAgent product capabilities. |
 | `delegation.required` | A product namespace call omitted `token`. | Pass `delegation.data.token`. |
 | `direct delegation token deprecated` | The app bypassed SDK-managed token exchange. | Call GUMem/WebAgent through the SDK namespace. |
 
@@ -317,7 +318,7 @@ For skill or docs changes that teach integration, also validate from a fresh con
 1. Pack the current SDK into a temporary directory with `pnpm pack --pack-destination <tmp-dir>`.
 2. Create a clean Node.js 18+ TypeScript project outside the SDK repo.
 3. Install the packed tarball.
-4. Add a small mocked integration that imports from `@qoniai/qoni`, constructs `QoniAgentKit`, returns runtime-config from `host`, calls `delegateToken`, passes `delegation.data.token` to GUMem/WebAgent calls, and asserts product token exchange plus WebAgent tenant routing. Also cover `genauth.users.list()` by mocking `POST /api/v3/qoni/genauth/admin-token` with body `{}` and a returned `userPoolId`.
+4. Add a small mocked integration that imports from `@qoniai/qoni`, constructs `QoniAgentKit`, returns runtime-config from `host`, calls `delegateToken`, passes `delegation.data.token` to GUMem/WebAgent calls, and asserts product token exchange plus WebAgent tenant routing. Also cover `genauth.users.list()` by mocking `POST /api/v3/eak/genauth/admin-token` with body `{}` and a returned `userPoolId`.
 5. Run the consumer project's typecheck and test command.
 
 Prefer mocked fetch-based tests for normal verification. Use real GenAuth/GUMem/WebAgent services only for explicit smoke tests, and never hard-code real secrets in repository files.

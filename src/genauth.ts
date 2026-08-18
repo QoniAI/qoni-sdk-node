@@ -55,7 +55,7 @@ export function createGenAuthNamespace(
     introspectDelegationToken: <T = unknown>(
       input: GenAuthDelegationIntrospectionInput,
     ): Promise<QoniResponse<T>> =>
-      transport.genauthJson("POST", "/api/v3/qoni/delegations/introspect", undefined, {
+      transport.genauthJson("POST", "/api/v3/eak/delegations/introspect", undefined, {
         body: { token: requiredDelegationToken(input) },
       }),
 

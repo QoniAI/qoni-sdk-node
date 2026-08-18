@@ -39,12 +39,13 @@ export interface QoniOptions {
 }
 
 export interface QoniRuntimeConfig {
-  qoniBaseUrl?: string;
+  /** Current control-plane wire field. Keep until the server contract migrates. */
+  eakBaseUrl?: string;
   genauthBaseUrl?: string;
   gumemBaseUrl?: string;
   webAgentBaseUrl?: string;
   services?: {
-    qoni?: string | { baseUrl?: string; url?: string; host?: string };
+    eak?: string | { baseUrl?: string; url?: string; host?: string };
     genauth?: string | { baseUrl?: string; url?: string; host?: string };
     gumem?: string | { baseUrl?: string; url?: string; host?: string };
     webAgent?: string | { baseUrl?: string; url?: string; host?: string };

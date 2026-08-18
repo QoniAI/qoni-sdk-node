@@ -2,7 +2,7 @@ import { KNOWN_SCOPES } from "./scopes";
 import { isJsonObject, type JsonObject } from "./types";
 
 /**
- * Known `QoniError.code` values. The SDK assigns the `*.*` codes; the `qoni.*`
+ * Known `QoniError.code` values. The SDK assigns the `*.*` codes; the `eak.*`
  * codes are backend apiCodes surfaced verbatim. The trailing `(string & {})`
  * keeps `code` assignable from any string (the backend may add new codes)
  * while still giving literal autocomplete and letting you write an exhaustive
@@ -20,11 +20,11 @@ export type QoniErrorCode =
   | "timeout"
   | "not_found"
   | "conflict"
-  | "qoni.delegation.user_not_bound"
-  | "qoni.genauth.userpool_binding_missing"
-  | "qoni.genauth.userpool_owner_missing"
-  | "qoni.genauth.no_bound_users"
-  | "qoni.token_exchange.upstream_failed"
+  | "eak.delegation.user_not_bound"
+  | "eak.genauth.userpool_binding_missing"
+  | "eak.genauth.userpool_owner_missing"
+  | "eak.genauth.no_bound_users"
+  | "eak.token_exchange.upstream_failed"
   // eslint-disable-next-line @typescript-eslint/ban-types
   | (string & {});
 
@@ -207,10 +207,10 @@ function appendUpstreamDescription(message: string, source: unknown): string {
 // Common first-run pitfalls get an actionable, one-line hint appended to the
 // error message so integrators aren't left guessing where to look.
 const ONBOARDING_HINTS: Record<string, string> = {
-  "qoni.delegation.user_not_bound":
+  "eak.delegation.user_not_bound":
     "Hint: the userId is not in the GenAuth userpool bound to this credential. " +
     "Resolve a real user with qoni.resolveAnyBoundUser() (demo/smoke) or qoni.currentUser({ accessToken }).",
-  "qoni.genauth.userpool_binding_missing":
+  "eak.genauth.userpool_binding_missing":
     "Hint: bind the Qoni credential to a GenAuth userpool before calling genauth.users.*.",
 };
 

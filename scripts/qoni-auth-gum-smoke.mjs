@@ -311,10 +311,10 @@ function createMockQoniServer(state) {
     });
 
     const baseUrl = `http://${request.headers.host}`;
-    if (request.method === "GET" && url.pathname === "/api/v3/qoni/runtime-config") {
+    if (request.method === "GET" && url.pathname === "/api/v3/eak/runtime-config") {
       json(response, {
         data: {
-          qoniBaseUrl: baseUrl,
+          eakBaseUrl: baseUrl,
           genauthBaseUrl: baseUrl,
           gumemBaseUrl: `${baseUrl}/gumem`,
           webAgentBaseUrl: `${baseUrl}/webagent`,
@@ -334,7 +334,7 @@ function createMockQoniServer(state) {
       return;
     }
 
-    if (request.method === "POST" && url.pathname === "/api/v3/qoni/delegations") {
+    if (request.method === "POST" && url.pathname === "/api/v3/eak/delegations") {
       if (parsedBody.mode === "interactive") {
         json(response, {
           data: {
@@ -353,10 +353,10 @@ function createMockQoniServer(state) {
           mode: "silent",
           tokenType: "Bearer",
           token: jwt({
-            token_type: "qoni_delegation_token",
+            token_type: "eak_delegation_token",
             aud: "genauth:token-exchange",
             sub: parsedBody.userId,
-            qoni_tenant_id: "qoni_tnt_smoke",
+            eak_tenant_id: "tenant_smoke",
           }),
           expiresIn: 3600,
           grantId: "grant_silent_smoke",
@@ -368,16 +368,16 @@ function createMockQoniServer(state) {
       return;
     }
 
-    if (request.method === "POST" && url.pathname === "/api/v3/qoni/delegations/complete") {
+    if (request.method === "POST" && url.pathname === "/api/v3/eak/delegations/complete") {
       json(response, {
         data: {
           mode: "interactive",
           tokenType: "Bearer",
           delegateAgentToken: jwt({
-            token_type: "qoni_delegation_token",
+            token_type: "eak_delegation_token",
             aud: "genauth:token-exchange",
             sub: "visible_user_smoke",
-            qoni_tenant_id: "qoni_tnt_smoke",
+            eak_tenant_id: "tenant_smoke",
           }),
           expiresIn: 3600,
           grantId: parsedBody.grantId,
@@ -388,7 +388,7 @@ function createMockQoniServer(state) {
       return;
     }
 
-    if (request.method === "POST" && url.pathname === "/api/v3/qoni/delegations/introspect") {
+    if (request.method === "POST" && url.pathname === "/api/v3/eak/delegations/introspect") {
       json(response, {
         data: {
           active: true,
@@ -399,7 +399,7 @@ function createMockQoniServer(state) {
       return;
     }
 
-    if (request.method === "POST" && url.pathname === "/api/v3/qoni/token-exchange") {
+    if (request.method === "POST" && url.pathname === "/api/v3/eak/token-exchange") {
       state.tokenExchanges.push(parsedBody);
       const scopeKey = Array.isArray(parsedBody.scopes) ? parsedBody.scopes.join("_") : "none";
       json(response, {
@@ -506,12 +506,12 @@ function createMockQoniServer(state) {
 function assertCallsCoverMockFlow(state) {
   const paths = state.calls.map((call) => `${call.method} ${call.path}`);
   for (const expected of [
-    "GET /api/v3/qoni/runtime-config",
+    "GET /api/v3/eak/runtime-config",
     "GET /oidc/me",
-    "POST /api/v3/qoni/delegations",
-    "POST /api/v3/qoni/delegations/complete",
-    "POST /api/v3/qoni/delegations/introspect",
-    "POST /api/v3/qoni/token-exchange",
+    "POST /api/v3/eak/delegations",
+    "POST /api/v3/eak/delegations/complete",
+    "POST /api/v3/eak/delegations/introspect",
+    "POST /api/v3/eak/token-exchange",
     "POST /gumem/api/sessions",
     "POST /gumem/api/resources",
     "POST /gumem/api/user/actions",

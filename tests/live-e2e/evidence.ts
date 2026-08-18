@@ -142,7 +142,7 @@ export function createEvidenceRecorder(dir: string): EvidenceRecorder {
     }
   }
 
-  // `GET /api/v3/qoni/runtime-config` answers with every downstream base URL.
+  // `GET /api/v3/eak/runtime-config` answers with every downstream base URL.
   // Feeding those back in gives later records a meaningful `hostAlias` AND —
   // more importantly — teaches the ledger the real hostnames so they are
   // scrubbed everywhere else.

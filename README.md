@@ -20,12 +20,19 @@ Agents that perform real work need more than a backend API key. They need a user
 Qoni keeps that model small:
 
 - One SDK entry: `new QoniAgentKit({ accessKey, secretKey })`.
-- One discovery path: `host` can override the Qoni Console/SDK gateway for private or local deployments, and the SDK reads downstream runtime URLs from `/api/v3/qoni/runtime-config`.
+- One discovery path: `host` can override the Qoni Console/SDK gateway for private or local deployments, and the SDK reads downstream runtime URLs from `/api/v3/eak/runtime-config`.
 - One delegation entry: call `delegateToken`; silent mode returns `data.token`, while interactive mode returns an authorization URL and later completes on your server.
 - One management path: call `genauth.users.*`, and the SDK exchanges AK/SK for a GenAuth management token before calling GenAuth v3 users APIs.
 - Capability-first namespaces: `genauth`, `gumem`, `webSearch`, `doAnything`, and `track`.
 - Readable scope strings for least-privilege authorization.
 - Typed errors with `requestId`, `traceId`, `auditId`, and `retryable`.
+
+The public package and API use the Qoni brand. The deployed server protocol has
+not migrated yet, so internal signed routes remain under `/api/v3/eak/*`, the
+delegation token claim remains `eak_delegation_token`, and existing `eak.*`
+backend error codes are surfaced unchanged. Existing wire claims such as
+`eak_tenant_id` also remain unchanged. Applications should use the public
+Qoni API and must not construct these internal wire values themselves.
 
 ## Installation
 
@@ -90,7 +97,7 @@ const qoni = new QoniAgentKit({
 
 ### GenAuth User Management
 
-`genauth.users.*` is a management-plane capability. It does not need `QONI_USER_ID` or `delegateToken`; the SDK signs `POST /api/v3/qoni/genauth/admin-token` with `{}` internally, receives a GenAuth management token plus `userPoolId`, and then calls GenAuth v3 users APIs.
+`genauth.users.*` is a management-plane capability. It does not need `QONI_USER_ID` or `delegateToken`; the SDK signs `POST /api/v3/eak/genauth/admin-token` with `{}` internally, receives a GenAuth management token plus `userPoolId`, and then calls GenAuth v3 users APIs.
 
 ```ts
 const users = await qoni.genauth.users.list({
@@ -215,8 +222,11 @@ const reattached = await qoni.doAnything.attach(run.id, { token }); // re-attach
 The SDK signs a request to:
 
 ```text
-GET /api/v3/qoni/runtime-config
+GET /api/v3/eak/runtime-config
 ```
+
+This path is an intentional compatibility boundary with the current server; it
+is not the public SDK brand or JavaScript namespace.
 
 The response provides runtime base URLs for Qoni, GenAuth, GUMem, and WebAgent. Application code should not configure those product URLs separately for normal usage.
 
@@ -482,7 +492,7 @@ const created = await client.genauth.users.create({
 });
 ```
 
-`currentUser` and `genauth.userInfo` use a GenAuth access token because they read the logged-in user's identity. `genauth.users.*` is a management-plane capability, but application code still authenticates the SDK with Qoni AK/SK: the SDK signs `POST /api/v3/qoni/genauth/admin-token` with an empty JSON body `{}`, receives a standard GenAuth management token plus `userPoolId`, then calls GenAuth v3 user management APIs with `Authorization: Bearer ...` and `x-authing-userpool-id`. It does not send `resource`, `actions`, `expiresIn`, or `QONI_USER_ID`. Runtime capability calls such as GUMem/WebAgent use `delegateToken` output instead.
+`currentUser` and `genauth.userInfo` use a GenAuth access token because they read the logged-in user's identity. `genauth.users.*` is a management-plane capability, but application code still authenticates the SDK with Qoni AK/SK: the SDK signs `POST /api/v3/eak/genauth/admin-token` with an empty JSON body `{}`, receives a standard GenAuth management token plus `userPoolId`, then calls GenAuth v3 user management APIs with `Authorization: Bearer ...` and `x-authing-userpool-id`. It does not send `resource`, `actions`, `expiresIn`, or `QONI_USER_ID`. Runtime capability calls such as GUMem/WebAgent use `delegateToken` output instead.
 
 ## API Surface
 
@@ -740,10 +750,10 @@ Common first-run errors:
 | Error | Meaning | Next step |
 | --- | --- | --- |
 | `agent must be a string` | The online delegation API currently expects `agent` to be a string id. | Pass `agent: "memory-agent"` rather than an object. |
-| `qoni.delegation.user_not_bound` | The `userId` is not in the GenAuth userpool bound to this Qoni credential. | Use a real user id from `currentUser` or from the same bound userpool. |
-| `qoni.genauth.userpool_binding_missing` | The AK/SK is not bound to a GenAuth userpool, so `genauth.users.*` cannot obtain a management token. | Bind the Qoni credential to the target GenAuth userpool before calling user management APIs. |
-| `qoni.genauth.userpool_owner_missing` | The bound GenAuth userpool has no resolvable owner user for management-token signing. | Fix the GenAuth userpool owner data or binding. |
-| `qoni.token_exchange.upstream_failed` with `unauthorized_client` or `grant_type is not enabled` | Delegation succeeded, but the managed delegation app is missing token-exchange grant support or has drifted from the tenant binding. | Repair the managed delegation app binding before calling GUMem or WebAgent product capabilities. |
+| `eak.delegation.user_not_bound` | The `userId` is not in the GenAuth userpool bound to this Qoni credential. | Use a real user id from `currentUser` or from the same bound userpool. |
+| `eak.genauth.userpool_binding_missing` | The AK/SK is not bound to a GenAuth userpool, so `genauth.users.*` cannot obtain a management token. | Bind the Qoni credential to the target GenAuth userpool before calling user management APIs. |
+| `eak.genauth.userpool_owner_missing` | The bound GenAuth userpool has no resolvable owner user for management-token signing. | Fix the GenAuth userpool owner data or binding. |
+| `eak.token_exchange.upstream_failed` with `unauthorized_client` or `grant_type is not enabled` | Delegation succeeded, but the managed delegation app is missing token-exchange grant support or has drifted from the tenant binding. | Repair the managed delegation app binding before calling GUMem or WebAgent product capabilities. |
 | `delegation.required` | A GUMem/WebAgent call was made without `token`. | Pass `delegation.data.token` to the product namespace call. |
 | `direct delegation token deprecated` | Application code is calling a product service directly with an Qoni delegation token. | Call the product through the SDK so token exchange is handled internally. |
 
