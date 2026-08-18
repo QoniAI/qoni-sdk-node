@@ -46,17 +46,18 @@ describeLiveE2E("live e2e: GenAuth users", () => {
 
   it("genauth.users.get({ userId })", async () => {
     const user = await client.genauth.users.get({ userId: existingUserId });
-    expect(user.data).toBeTruthy();
+    expect(JSON.stringify(user.data)).toContain(existingUserId);
   });
 
   it("genauth.users.getBatch({ userIds })", async () => {
     const users = await client.genauth.users.getBatch({ userIds: [existingUserId] });
-    expect(users.data).toBeTruthy();
+    expect(JSON.stringify(users.data)).toContain(existingUserId);
   });
 
   it("genauth.users.create({ username, password })", async () => {
     const userId = await ensureCreatedUser();
-    expect(userId).toBeTruthy();
+    const created = await client.genauth.users.get({ userId });
+    expect(JSON.stringify(created.data)).toContain(userId);
   });
 
   it("genauth.users.createBatch({ users })", async () => {
@@ -65,15 +66,19 @@ describeLiveE2E("live e2e: GenAuth users", () => {
     });
     const batchId = firstUserId(createdBatch.data) || extractId(createdBatch.data, "batch GenAuth user");
     createdUserIds.add(batchId);
-    expect(batchId).toBeTruthy();
+    const created = await client.genauth.users.get({ userId: batchId });
+    expect(JSON.stringify(created.data)).toContain(batchId);
   });
 
   it("genauth.users.update({ userId, nickname })", async () => {
     const userId = await ensureCreatedUser();
+    const nickname = `${livePrefix}-updated`;
     await client.genauth.users.update({
       userId,
-      nickname: `${livePrefix}-updated`,
+      nickname,
     });
+    const updated = await client.genauth.users.get({ userId });
+    expect(JSON.stringify(updated.data)).toContain(nickname);
   });
 
   it("genauth.users.deleteBatch({ userIds })", async () => {
@@ -85,5 +90,6 @@ describeLiveE2E("live e2e: GenAuth users", () => {
     createdUserIds.add(userId);
     await client.genauth.users.deleteBatch({ userIds: [userId] });
     createdUserIds.delete(userId);
+    await expect(client.genauth.users.get({ userId })).rejects.toMatchObject({ status: 404 });
   });
 });

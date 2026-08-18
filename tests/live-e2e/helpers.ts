@@ -10,23 +10,37 @@ import {
 } from "../../src";
 import type { JsonObject, RunEvent } from "../../src";
 import { loadDotEnvLocal, requiredEnv } from "../helpers/env";
+import { loadQueryMatrix } from "../helpers/query-matrix";
+import { evidenceRecorder } from "./evidence";
 
 loadDotEnvLocal();
 
 export const liveE2EEnabled = process.env.EAK_LIVE_E2E === "1";
+export const liveRequireAll = process.env.EAK_LIVE_REQUIRE_ALL === "1";
 export const livePrefix = `sdk-live-${Date.now()}`;
+export const liveRuntime = liveE2EEnabled ? loadQueryMatrix().runtime : undefined;
 
-export function liveClient(): EazoAgentKit {
-  const host = process.env.EAK_HOST?.trim();
-  // Point WebAgent data-plane calls at a different deployment (e.g. a local
-  // backend) while delegation/token-exchange stay on the EAK gateway.
-  const webAgentBaseUrl = process.env.EAK_WEBAGENT_BASE_URL?.trim();
+export function liveClient(overrides: {
+  host?: string;
+  webAgentBaseUrl?: string;
+  timeoutMs?: number;
+} = {}): EazoAgentKit {
+  if (liveRequireAll) requiredEnv("EAK_USER_ACCESS_TOKEN");
+  const host = overrides.host || liveRuntime?.eakHost;
+  const webAgentBaseUrl = overrides.webAgentBaseUrl || liveRuntime?.webAgentBaseUrl;
+  // Off unless EAK_LIVE_EVIDENCE_DIR is set: with the variable unset this is
+  // `undefined`, no `fetch` override is passed, and the client is built exactly
+  // as it was before the recorder existed.
+  const recorder = evidenceRecorder();
+  recorder?.registerHost(host, "eak");
+  recorder?.registerHost(webAgentBaseUrl, "webagent");
   return new EazoAgentKit({
     accessKey: requiredEnv("EAK_ACCESS_KEY"),
     secretKey: requiredEnv("EAK_SECRET_KEY"),
     ...(host ? { host } : {}),
     ...(webAgentBaseUrl ? { webAgentBaseUrl } : {}),
-    timeoutMs: Number(process.env.EAK_TIMEOUT_MS || 120_000),
+    ...(recorder ? { fetch: recorder.wrapFetch(fetch) } : {}),
+    timeoutMs: overrides.timeoutMs ?? liveRuntime?.timeoutMs ?? 120_000,
   });
 }
 
@@ -224,8 +238,10 @@ export async function allowLiveEnvironmentConstraint<T>(
     return await operation;
   } catch (error) {
     if (!isLiveEnvironmentConstraint(error)) throw error;
+    if (process.env.EAK_LIVE_ALLOW_ENV_CONSTRAINTS !== "1") throw error;
     expect(error.message).toBeTruthy();
     expect(error.code).toBeTruthy();
+    console.warn(`live e2e accepted an environment constraint: ${error.message}`);
     return undefined;
   }
 }

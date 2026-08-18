@@ -1,6 +1,11 @@
 import fs from "node:fs";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import type { JsonObject, RunHandle, RunResult } from "../../src";
+import type { JsonObject, RunHandle, RunResult, WebSearchRunOptions } from "../../src";
+import {
+  loadQueryMatrix,
+  selectQueryMatrixCase,
+} from "../helpers/query-matrix";
+import { assertQueryMatrixOutput } from "../helpers/query-matrix-runner";
 import {
   allowLiveEnvironmentConstraint,
   collectRunEvents,
@@ -12,8 +17,18 @@ import {
 } from "./helpers";
 
 const describeLiveE2E = liveE2EEnabled ? describe : describe.skip;
-
-const SITE_WHITELIST = ["eazo.ai", "authing.cn"];
+const focusedMatrix = liveE2EEnabled ? loadQueryMatrix() : undefined;
+const focusedCase = focusedMatrix
+  ? selectQueryMatrixCase(focusedMatrix, "webSearch.run", process.env.EAK_WEB_SEARCH_CASE_ID)
+  : undefined;
+const runInput = focusedCase?.input as
+  | (JsonObject & {
+      prompt: string | string[];
+      maxResultsPerQuery?: number;
+      siteWhitelist?: string[];
+    })
+  | undefined;
+const waitTimeoutMs = focusedCase?.timeoutMs ?? focusedMatrix?.runtime.timeoutMs ?? 120_000;
 
 // The settled `result.output` for webSearch is the wire output object
 // ({ engines, queries, results: [...] }). Dig the result items out without
@@ -39,7 +54,7 @@ describeLiveE2E("live e2e: Web Search (semantic surface)", () => {
   let recordedFile: string | undefined;
 
   beforeAll(async () => {
-    client = liveClient();
+    client = liveClient(focusedMatrix?.runtime);
     token = (await delegateLiveToken(client, webSearchScopes)).token;
   });
 
@@ -52,16 +67,12 @@ describeLiveE2E("live e2e: Web Search (semantic surface)", () => {
   // every later operation goes through the run.
   function ensureRun() {
     runReady ??= (async () => {
+      if (!runInput) throw new Error("Focused Web Search Case was not loaded");
       const run = await allowLiveEnvironmentConstraint(
         client.webSearch.run({
           token,
-          // A real, evergreen query that search engines can always match.
-          // Do NOT embed a nonce here: engines tokenize it into noise and
-          // return 0 hits nondeterministically; traceability comes from run.id.
-          prompt: "EAK SDK quickstart guide",
-          maxResultsPerQuery: 1,
-          siteWhitelist: SITE_WHITELIST,
-        }),
+          ...runInput,
+        } as WebSearchRunOptions),
       );
       return run ?? undefined;
     })();
@@ -79,7 +90,7 @@ describeLiveE2E("live e2e: Web Search (semantic surface)", () => {
       recordedFile = recorder.file;
       console.log(`recording run ${run.id} → ${recorder.dir}`);
       const result = await run.wait({
-        timeoutMs: Number(process.env.EAK_LIVE_STREAM_TIMEOUT_MS || 120_000),
+        timeoutMs: waitTimeoutMs,
         onEvent: (event) => recorder.record(event),
       });
       recordedEvents = recorder.count();
@@ -103,6 +114,14 @@ describeLiveE2E("live e2e: Web Search (semantic surface)", () => {
     expect(status.status).toBeTruthy();
   });
 
+  it("webSearch.attach() reconnects to the run", async () => {
+    const run = await ensureRun();
+    if (!run) return;
+    const attached = await client.webSearch.attach(run.id, { token });
+    expect(attached.id).toBe(run.id);
+    expect((await attached.status()).id).toBe(run.id);
+  });
+
   it("run.events() yields normalized semantic events", async () => {
     const run = await ensureRun();
     if (!run) return;
@@ -119,21 +138,26 @@ describeLiveE2E("live e2e: Web Search (semantic surface)", () => {
     expect(result.status).toBe("succeeded");
     expect(result.artifacts).toEqual([]);
 
-    // Domain content, not a status flip: the run was created with
-    // maxResultsPerQuery: 1 and a site whitelist — assert the server honored
-    // both and produced real result items.
+    if (!focusedCase || !runInput) throw new Error("Focused Web Search Case was not loaded");
     const items = searchResultItems(result.output);
-    expect(items.length, "search should return at least one result").toBeGreaterThan(0);
-    expect(items.length).toBeLessThanOrEqual(1);
+    assertQueryMatrixOutput(focusedCase, result.output, { resultCount: items.length });
+    const queryCount = Array.isArray(runInput.prompt) ? runInput.prompt.length : 1;
+    if (runInput.maxResultsPerQuery !== undefined) {
+      expect(items.length).toBeLessThanOrEqual(runInput.maxResultsPerQuery * queryCount);
+    }
     for (const item of items) {
       expect(typeof item.url, "result.url").toBe("string");
       expect(typeof item.title, "result.title").toBe("string");
       expect(String(item.title).length).toBeGreaterThan(0);
-      const host = new URL(String(item.url)).hostname.toLowerCase();
-      expect(
-        SITE_WHITELIST.some((d) => host === d || host.endsWith(`.${d}`)),
-        `result ${String(item.url)} is off-whitelist`,
-      ).toBe(true);
+      if (runInput.siteWhitelist?.length) {
+        const host = new URL(String(item.url)).hostname.toLowerCase();
+        expect(
+          runInput.siteWhitelist.some((domain) =>
+            host === domain.toLowerCase() || host.endsWith(`.${domain.toLowerCase()}`)
+          ),
+          `result host is outside the configured whitelist`,
+        ).toBe(true);
+      }
     }
 
     // The recorder ran inside wait() — raw wire envelopes are on disk.

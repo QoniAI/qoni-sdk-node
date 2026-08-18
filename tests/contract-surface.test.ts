@@ -53,7 +53,18 @@ describe("frozen contract surface", () => {
 
   it("MonitorHandle has exactly the contract §6 methods", () => {
     expect(prototypeMethods(MonitorHandle)).toEqual(
-      ["delete", "events", "get", "interactionHandle", "run", "runNow", "runs", "update"].sort(),
+      [
+        "delete",
+        "events",
+        "get",
+        "interactionHandle",
+        "pause",
+        "refine",
+        "resume",
+        "run",
+        "runNow",
+        "runs",
+      ].sort(),
     );
   });
 });

@@ -45,10 +45,14 @@ describe("open-source readiness", () => {
     );
     expect(pkg.publishConfig).toEqual({ access: "public" });
     expect(pkg.scripts).toMatchObject({
-      "test:mock": "vitest run --coverage=false tests/eak.test.ts tests/semantic-surface.test.ts tests/open-source-readiness.test.ts tests/complete-coverage.test.ts tests/event-catalog.test.ts tests/interactions.test.ts",
+      "test:mock": "vitest run --coverage=false tests/eak.test.ts tests/semantic-surface.test.ts tests/open-source-readiness.test.ts tests/complete-coverage.test.ts tests/event-catalog.test.ts tests/interactions.test.ts tests/contract-surface.test.ts tests/sse-abort.test.ts tests/do-anything-evidence.test.ts tests/query-matrix.test.ts tests/live-evidence.test.ts",
       "test:e2e": "EAK_LIVE_E2E=1 vitest run --coverage=false --fileParallelism=false --maxWorkers=1 --testTimeout=120000 tests/live-e2e/*.test.ts",
+      "test:e2e:do-anything": "EAK_LIVE_E2E=1 vitest run --coverage=false --fileParallelism=false --maxWorkers=1 --testTimeout=120000 tests/live-e2e/do-anything.test.ts",
+      "test:e2e:do-anything:release": "EAK_LIVE_E2E=1 EAK_LIVE_ALLOW_ENV_CONSTRAINTS=0 vitest run --coverage=false --fileParallelism=false --maxWorkers=1 --testTimeout=120000 tests/live-e2e/do-anything.test.ts",
+      "test:e2e:matrix": "EAK_LIVE_E2E=1 EAK_QUERY_MATRIX=1 EAK_LIVE_ALLOW_ENV_CONSTRAINTS=0 vitest run --coverage=false --fileParallelism=false --maxWorkers=1 tests/live-e2e/query-matrix.test.ts",
+      "test:e2e:release": "EAK_LIVE_E2E=1 EAK_LIVE_REQUIRE_ALL=1 EAK_LIVE_ALLOW_ENV_CONSTRAINTS=0 vitest run --coverage=false --fileParallelism=false --maxWorkers=1 --testTimeout=120000 tests/live-e2e/*.test.ts",
       "test:package": "vitest run --coverage=false tests/package-surface.test.ts",
-      "test:ci": "pnpm test:mock",
+      "test:ci": "pnpm test:mock && pnpm test:package",
       "pack:dry-run": "pnpm build && pnpm pack --dry-run",
       prepack: "pnpm build",
     });

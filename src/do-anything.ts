@@ -249,6 +249,7 @@ export function createDoAnythingNamespace(transport: EAKTransport) {
           runId,
           lastEventId: opts.lastEventId,
           signal: opts.signal,
+          onReconnect: opts.onReconnect,
           // Skip screenshot rows in backfill when the caller did not opt in.
           includeScreenshots: capture?.screenshots ? undefined : false,
         }),
