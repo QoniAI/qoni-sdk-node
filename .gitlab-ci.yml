@@ -85,8 +85,8 @@ publish_npm:
     - pnpm config set store-dir .pnpm-store
     - pnpm install --frozen-lockfile
   script:
-    - test -n "$NPM_TOKEN"
-    - printf '//registry.npmjs.org/:_authToken=%s\n' "$NPM_TOKEN" > .npmrc
+    - test -n "$QONI_NPM_TOKEN"
+    - printf '//registry.npmjs.org/:_authToken=%s\n' "$QONI_NPM_TOKEN" > .npmrc
     - npm whoami
     - npm org ls qoniai --json
     - npm access list packages @qoniai --json

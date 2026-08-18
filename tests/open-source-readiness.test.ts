@@ -122,6 +122,9 @@ describe("open-source readiness", () => {
     expect(ci).toContain('git push --no-thin github "${CI_COMMIT_SHA}:refs/heads/${CI_COMMIT_REF_NAME}"');
     expect(ci).toMatch(/- if: '\$CI_COMMIT_BRANCH'\n\s+when: manual\n\s+allow_failure: true/);
     expect(ci).toContain("npm whoami");
+    expect(ci).toContain('test -n "$QONI_NPM_TOKEN"');
+    expect(ci).toContain('"$QONI_NPM_TOKEN" > .npmrc');
+    expect(ci).not.toMatch(/\$NPM_TOKEN\b/);
     expect(ci).toContain("npm org ls qoniai --json");
     expect(ci).not.toContain("typecheck:examples");
   });
