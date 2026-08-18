@@ -1,7 +1,12 @@
 import fs from "node:fs";
 import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import type { JsonObject, RunHandle, RunResult } from "../../src";
+import type { DoAnythingRunOptions, JsonObject, RunHandle, RunResult } from "../../src";
+import {
+  loadQueryMatrix,
+  selectQueryMatrixCase,
+} from "../helpers/query-matrix";
+import { assertQueryMatrixOutput } from "../helpers/query-matrix-runner";
 import {
   allowLiveEnvironmentConstraint,
   collectRunEvents,
@@ -9,18 +14,30 @@ import {
   doAnythingScopes,
   liveE2EEnabled,
   liveClient,
-  openRawEventRecorder,
 } from "./helpers";
+import type { DoAnythingEvidenceSummary } from "../helpers/do-anything-evidence";
+import {
+  assertCompleteDoAnythingEvidence,
+  createDoAnythingEvidenceRecorder,
+} from "../helpers/do-anything-evidence";
 
 const describeLiveE2E = liveE2EEnabled ? describe : describe.skip;
+const focusedMatrix = liveE2EEnabled ? loadQueryMatrix() : undefined;
+const focusedCase = focusedMatrix
+  ? selectQueryMatrixCase(
+      focusedMatrix,
+      "doAnything.run",
+      process.env.QONI_DO_ANYTHING_CASE_ID,
+    )
+  : undefined;
+const runInput = focusedCase?.input as (JsonObject & { prompt: string }) | undefined;
+const prompt = runInput?.prompt ?? "";
+const { prompt: _configuredPrompt, ...runOptions } = runInput ?? { prompt: "" };
 
-// The exact Wikipedia article title the browsing task below must surface.
-const EXPECTED_TITLE_RE = /universally unique identifier/i;
-
-// A real browsing run (search-box interaction on browserbase) measures
-// ~150s — well past the suite's 120s default testTimeout, so the wait test
+// A real Browserbase navigation can exceed the suite's 120s default testTimeout,
+// so the wait test
 // carries its own budget like the deep-research one does.
-const WAIT_TIMEOUT_MS = Number(process.env.QONI_LIVE_WAIT_TIMEOUT_MS || 360_000);
+const WAIT_TIMEOUT_MS = focusedCase?.timeoutMs ?? focusedMatrix?.runtime.timeoutMs ?? 360_000;
 
 // Live coverage of the frozen contract's mainline (public-surface doc §2/§4):
 // run() → RunHandle → wait(), token passed once at the entry call, screenshots
@@ -30,12 +47,12 @@ describeLiveE2E("live e2e: Do Anything (semantic surface)", () => {
   let token: string;
   let runReady: Promise<RunHandle | undefined> | undefined;
   let resultReady: Promise<RunResult | undefined> | undefined;
-  let recordedEvents = 0;
-  let savedScreenshots = 0;
+  let evidenceSummary: DoAnythingEvidenceSummary | undefined;
   let recordedDir: string | undefined;
+  let runStartedAt: string | undefined;
 
   beforeAll(async () => {
-    client = liveClient();
+    client = liveClient(focusedMatrix?.runtime);
     token = (await delegateLiveToken(client, doAnythingScopes)).token;
   });
 
@@ -48,58 +65,79 @@ describeLiveE2E("live e2e: Do Anything (semantic surface)", () => {
   // every later operation goes through the run.
   function ensureRun() {
     runReady ??= (async () => {
+      if (!runInput) throw new Error("Focused Do Anything Case was not loaded");
+      runStartedAt = new Date().toISOString();
       const run = await allowLiveEnvironmentConstraint(
         client.doAnything.run({
           token,
-          // A task that REQUIRES browsing (search box interaction): plain
-          // URL-fetch phrasings get routed to the fetch/textify agents, which
-          // never produce screenshots. The answer is still deterministic —
-          // the article's exact title.
-          prompt:
-            "Open https://en.wikipedia.org in the browser, use the site search to find " +
-            "the article about the UUID standard, open it, and report the article's exact title.",
-          capture: { screenshots: true },
-          limits: { maxDurationMinutes: 5 },
-        }),
+          prompt,
+          ...runOptions,
+        } as DoAnythingRunOptions),
       );
       return run ?? undefined;
     })();
     return runReady;
   }
 
-  // One wait() shared across the file. Records the raw wire stream and the
-  // decoded per-step screenshots to disk while waiting — every semantic event
-  // carries the original wire envelope on `event.raw`, and `capture` +
-  // `onScreenshot` deliver decoded image bytes; no api.* needed.
+  // One wait() shared across the file. The SDK exposes BOTH layers here:
+  // `onWireEvent` receives the unfiltered SSE trace (Agent messages, tool
+  // params/results, LLM usage, Browser Harness authoring/execution), while
+  // `onEvent` receives the curated semantic stream. Media and the final REST
+  // snapshots are stored beside those streams for a self-contained report.
   function ensureResult() {
     resultReady ??= (async () => {
       const run = await ensureRun();
       if (!run) return undefined;
-      const recorder = openRawEventRecorder(`do_anything-${run.id}`);
+      const dir =
+        process.env.QONI_OUT_DIR ||
+        path.join(process.cwd(), ".secrets", "runs", `do_anything-${run.id}`);
+      const recorder = createDoAnythingEvidenceRecorder({
+        dir,
+        runId: run.id,
+        prompt,
+        request: runOptions,
+        startedAt: runStartedAt,
+      });
       recordedDir = recorder.dir;
       console.log(`recording run ${run.id} → ${recorder.dir}`);
-      const result = await run.wait({
-        timeoutMs: WAIT_TIMEOUT_MS,
-        onEvent: (event) => recorder.record(event),
-        onScreenshot: (image) => {
-          expect(image.bytes.byteLength).toBeGreaterThan(0);
-          expect(image.mime).toMatch(/^image\//);
-          savedScreenshots++;
-          const name = `${String(savedScreenshots).padStart(4, "0")}.jpg`;
-          fs.writeFileSync(path.join(recorder.dir, name), image.bytes);
-          console.log(`  saved screenshot ${name}`);
-        },
-      });
-      recordedEvents = recorder.count();
-      console.log(
-        `recorded ${recordedEvents} events (${savedScreenshots} screenshots) → ${recorder.file}`,
-      );
-      return result;
+      try {
+        recorder.recordInitialStatus(await run.status());
+        const result = await run.wait({
+          timeoutMs: WAIT_TIMEOUT_MS,
+          onWireEvent: (event) => recorder.recordWireEvent(event),
+          onEvent: (event) => recorder.recordSemanticEvent(event),
+          onReconnect: (info) => recorder.recordReconnect(info),
+          onScreenshot: (image, index) => {
+            expect(image.bytes.byteLength).toBeGreaterThan(0);
+            expect(image.mime).toMatch(/^image\//);
+            recorder.recordScreenshot(image, index);
+          },
+        });
+        recorder.recordResult(result);
+        if (!run.sessionRef?.sessionId) {
+          throw new Error("Do Anything E2E run did not expose a session id for recording");
+        }
+        const recording = await client.doAnything.api.readRecording({
+          token,
+          sessionId: run.sessionRef.sessionId,
+        });
+        recorder.recordRecording(recording.data);
+        evidenceSummary = recorder.finalize();
+        assertCompleteDoAnythingEvidence(evidenceSummary);
+        console.log(`complete Do Anything evidence → ${recorder.dir}`);
+        console.log(JSON.stringify(evidenceSummary, null, 2));
+        return result;
+      } catch (error) {
+        recorder.recordError(error);
+        evidenceSummary = recorder.finalize();
+        console.error(`partial Do Anything evidence → ${recorder.dir}`);
+        throw error;
+      }
     })();
     return resultReady;
   }
 
-  it("doAnything.run({ token, instruction, capture, limits }) returns a run", async () => {
+  it("doAnything.run({ token, prompt, ...configuredInput }) returns a run", async () => {
     const run = await ensureRun();
     if (!run) return;
     expect(run.id).toBeTruthy();
@@ -125,22 +163,23 @@ describeLiveE2E("live e2e: Do Anything (semantic surface)", () => {
   });
 
   it(
-    "run.wait() returns the article title, raw events and screenshots on disk",
+    "run.wait() returns configured domain evidence, raw events and screenshots on disk",
     async () => {
-    const result = await ensureResult();
-    if (!result) return;
+      const result = await ensureResult();
+      if (!result) return;
 
-    // Real domain content, not a status echo: the answer must contain the
-    // exact title of the article the agent navigated to.
-    expect(result.status).toBe("succeeded");
-    expect(JSON.stringify(result.output ?? "")).toMatch(EXPECTED_TITLE_RE);
+      expect(result.status).toBe("succeeded");
+      if (!focusedCase) throw new Error("Focused Do Anything Case was not loaded");
+      assertQueryMatrixOutput(focusedCase, result.output);
 
-    // capture: { screenshots: true } must produce at least one decoded
-    // per-step screenshot — silently delivering none is the wire-enum
-    // foot-gun the capture switch exists to remove.
-    expect(savedScreenshots).toBeGreaterThan(0);
-    expect(recordedEvents).toBeGreaterThan(0);
-    expect(recordedDir && fs.existsSync(path.join(recordedDir, "events.jsonl"))).toBe(true);
+      // A release-valid Browser Harness run must leave complete local evidence.
+      expect(evidenceSummary?.screenshotCount).toBeGreaterThan(0);
+      expect(evidenceSummary?.rawEventCount).toBeGreaterThan(0);
+      expect(evidenceSummary?.assistantMessageCount).toBeGreaterThan(0);
+      expect(evidenceSummary?.browserHarnessAuthoringCount).toBeGreaterThan(0);
+      expect(evidenceSummary?.browserHarnessExecutionCount).toBeGreaterThan(0);
+      expect(recordedDir && fs.existsSync(path.join(recordedDir, "events.raw.jsonl"))).toBe(true);
+      expect(recordedDir && fs.existsSync(path.join(recordedDir, "metrics.json"))).toBe(true);
     },
     WAIT_TIMEOUT_MS + 60_000,
   );

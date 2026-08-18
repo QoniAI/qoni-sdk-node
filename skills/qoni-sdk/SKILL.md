@@ -153,6 +153,8 @@ await run.cancel(reason?);                 // idempotent — safe on a finished 
 const result = await run.wait({
   timeoutMs: 180_000,                      // throws QoniTimeoutError on elapse; run keeps going server-side
   onEvent: (e) => console.log(e.type),
+  onWireEvent: (e) => appendRawEvidence(e), // every SSE frame before semantic filtering
+  onReconnect: (info) => logReconnect(info.attempt, info.lastEventId),
   onInputRequest: (req) => openForUser(req.liveUrl),
   onScreenshot: (img, i) => saveImage(`step-${i}.jpg`, img.bytes),
 });
@@ -198,6 +200,10 @@ for await (const event of run.events()) {
 - Terminal events of internal sub-runs are demoted to `progress`, so they never end your iterator; only YOUR run's terminal ends it.
 - `capture: { screenshots, videoFrames }` controls media events. Without `capture.screenshots`, screenshot events are neither subscribed nor delivered.
 - The terminal event payload is lean — `wait()` settles from the run-detail envelope, so prefer `result.raw` for `total_cost_usd` / `step_count` / token counts.
+- For a complete Agent/tool audit trail, pass `onWireEvent` to `events()` or
+  `wait()`. It receives every original SSE frame before semantic filtering;
+  `onReconnect` exposes resumable-stream retry telemetry. Never serialize the
+  delegation token alongside that evidence.
 
 ### Wire-level stream (escape hatch)
 

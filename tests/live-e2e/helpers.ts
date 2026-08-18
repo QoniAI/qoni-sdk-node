@@ -10,23 +10,37 @@ import {
 } from "../../src";
 import type { JsonObject, RunEvent } from "../../src";
 import { loadDotEnvLocal, requiredEnv } from "../helpers/env";
+import { loadQueryMatrix } from "../helpers/query-matrix";
+import { evidenceRecorder } from "./evidence";
 
 loadDotEnvLocal();
 
 export const liveE2EEnabled = process.env.QONI_LIVE_E2E === "1";
+export const liveRequireAll = process.env.QONI_LIVE_REQUIRE_ALL === "1";
 export const livePrefix = `sdk-live-${Date.now()}`;
+export const liveRuntime = liveE2EEnabled ? loadQueryMatrix().runtime : undefined;
 
-export function liveClient(): QoniAgentKit {
-  const host = process.env.QONI_HOST?.trim();
-  // Point WebAgent data-plane calls at a different deployment (e.g. a local
-  // backend) while delegation/token-exchange stay on the Qoni gateway.
-  const webAgentBaseUrl = process.env.QONI_WEBAGENT_BASE_URL?.trim();
+export function liveClient(overrides: {
+  host?: string;
+  webAgentBaseUrl?: string;
+  timeoutMs?: number;
+} = {}): QoniAgentKit {
+  if (liveRequireAll) requiredEnv("QONI_USER_ACCESS_TOKEN");
+  const host = overrides.host || liveRuntime?.qoniHost;
+  const webAgentBaseUrl = overrides.webAgentBaseUrl || liveRuntime?.webAgentBaseUrl;
+  // Off unless QONI_LIVE_EVIDENCE_DIR is set: with the variable unset this is
+  // `undefined`, no `fetch` override is passed, and the client is built exactly
+  // as it was before the recorder existed.
+  const recorder = evidenceRecorder();
+  recorder?.registerHost(host, "qoni");
+  recorder?.registerHost(webAgentBaseUrl, "webagent");
   return new QoniAgentKit({
     accessKey: requiredEnv("QONI_ACCESS_KEY"),
     secretKey: requiredEnv("QONI_SECRET_KEY"),
     ...(host ? { host } : {}),
     ...(webAgentBaseUrl ? { webAgentBaseUrl } : {}),
-    timeoutMs: Number(process.env.QONI_TIMEOUT_MS || 120_000),
+    ...(recorder ? { fetch: recorder.wrapFetch(fetch) } : {}),
+    timeoutMs: overrides.timeoutMs ?? liveRuntime?.timeoutMs ?? 120_000,
   });
 }
 
@@ -224,8 +238,10 @@ export async function allowLiveEnvironmentConstraint<T>(
     return await operation;
   } catch (error) {
     if (!isLiveEnvironmentConstraint(error)) throw error;
+    if (process.env.QONI_LIVE_ALLOW_ENV_CONSTRAINTS !== "1") throw error;
     expect(error.message).toBeTruthy();
     expect(error.code).toBeTruthy();
+    console.warn(`live e2e accepted an environment constraint: ${error.message}`);
     return undefined;
   }
 }

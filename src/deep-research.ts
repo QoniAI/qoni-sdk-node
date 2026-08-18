@@ -75,7 +75,12 @@ export function createDeepResearchNamespace(transport: QoniTransport) {
       ),
 
     events: <T = unknown>(
-      input: RuntimeTokenInput & { runId: string; lastEventId?: string; signal?: AbortSignal },
+      input: RuntimeTokenInput & {
+        runId: string;
+        lastEventId?: string;
+        signal?: AbortSignal;
+        onReconnect?: (info: { attempt: number; lastEventId?: string; error: unknown }) => void;
+      },
     ): AsyncIterable<QoniEvent<T>> =>
       transport.webAgentSSE(
         `/deep_research/runs/${encodeURIComponent(input.runId)}/events`,
@@ -84,6 +89,7 @@ export function createDeepResearchNamespace(transport: QoniTransport) {
           lastEventId: input.lastEventId,
           requiredScopes: ["webagent.deep_research:read"],
           signal: input.signal,
+          onReconnect: input.onReconnect,
         },
       ),
 
@@ -155,7 +161,13 @@ export function createDeepResearchNamespace(transport: QoniTransport) {
     return {
       getDetail: async () => asRecord((await api.get<unknown>({ token, runId })).data),
       streamEvents: (opts) =>
-        api.events({ token, runId, lastEventId: opts.lastEventId, signal: opts.signal }),
+        api.events({
+          token,
+          runId,
+          lastEventId: opts.lastEventId,
+          signal: opts.signal,
+          onReconnect: opts.onReconnect,
+        }),
       postAction: async (action, body) => {
         await transport.webAgentJson(
           (action.method || "POST") as QoniHttpMethod,

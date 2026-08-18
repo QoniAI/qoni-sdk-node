@@ -26,6 +26,20 @@ export interface CaptureOptions {
 export interface RunEventsOptions {
   lastEventId?: string;
   signal?: AbortSignal;
+  /**
+   * Receives every original SSE frame before semantic normalization/filtering.
+   * Use this for audit logs and observability evidence that must retain internal
+   * Agent/tool lifecycle payloads. Some frames do not become semantic events.
+   */
+  onWireEvent?: (event: QoniEvent<unknown>) => void | Promise<void>;
+  /** Called whenever the SDK reconnects a dropped SSE stream. */
+  onReconnect?: (info: RunReconnectInfo) => void;
+}
+
+export interface RunReconnectInfo {
+  attempt: number;
+  lastEventId?: string;
+  error: unknown;
 }
 
 /** A refreshed snapshot of a run's state, as returned by `run.status()`. */
@@ -68,6 +82,10 @@ export interface RunWaitOptions {
   timeoutMs?: number;
   signal?: AbortSignal;
   onEvent?: (event: RunEvent) => void | Promise<void>;
+  /** Every original SSE frame, including frames filtered from the semantic stream. */
+  onWireEvent?: (event: QoniEvent<unknown>) => void | Promise<void>;
+  /** Reconnect telemetry for the underlying resumable SSE stream. */
+  onReconnect?: (info: RunReconnectInfo) => void;
   /**
    * Fires on `event.type === "interaction"` (HITL). The handle exposes typed
    * action methods (`interaction.answer(…)` / `confirmSignedIn()` /
@@ -139,6 +157,7 @@ export class RunHandle<E extends RunEvent = RunEvent> {
    */
   async *events(opts: RunEventsOptions = {}): AsyncIterable<E> {
     for await (const wire of this.ops.streamEvents(opts)) {
+      await opts.onWireEvent?.(wire);
       const event = normalizeRunEvent(wire, { topRunId: this.id });
       if (!event) continue;
       if (event.type === "screenshot" && !this.capture.screenshots) continue;
@@ -162,7 +181,12 @@ export class RunHandle<E extends RunEvent = RunEvent> {
 
     try {
       settled: for (;;) {
-        for await (const event of this.events({ signal, lastEventId })) {
+        for await (const event of this.events({
+          signal,
+          lastEventId,
+          onWireEvent: opts.onWireEvent,
+          onReconnect: opts.onReconnect,
+        })) {
           if (event.raw.id) lastEventId = event.raw.id;
           await opts.onEvent?.(event);
           if (event.type === "screenshot") {

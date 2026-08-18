@@ -288,6 +288,48 @@ describe("doAnything.run → RunHandle", () => {
     if (terminal.type === "done") expect(terminal.data.terminalReason).toBe("done");
   });
 
+  it("exposes every wire frame to observability callbacks before semantic filtering", async () => {
+    const { client } = makeClient((call) => {
+      if (call.pathname.endsWith("/events")) {
+        return sseResponse(
+          frame(1, "run.cost_update", { total_cost_usd: "0.10" }) +
+            frame(2, "run.action.started", {
+              action_id: "action_1",
+              kind: "agent_core.bash",
+              params: { command: "browser-harness run browser-tools/task.py" },
+            }) +
+            frame(3, "run.completed", { terminal_reason: "done", output: "ok" }),
+        );
+      }
+      if (call.method === "GET" && call.pathname.endsWith("/runs/run_1")) {
+        return jsonResponse({
+          data: { run_id: "run_1", session_id: "sess_1", status: "succeeded", output: "ok" },
+        });
+      }
+      return jsonResponse({ data: { run_id: "run_1", session_id: "sess_1" } });
+    });
+
+    const run = await client.doAnything.run({ token: TOKEN, prompt: "go" });
+    const wireTypes: string[] = [];
+    const semanticTypes: string[] = [];
+    await run.wait({
+      onWireEvent: (event) => {
+        const envelope = event.data as { type?: string };
+        wireTypes.push(event.event || envelope.type || "");
+      },
+      onEvent: (event) => {
+        semanticTypes.push(event.type);
+      },
+    });
+
+    expect(wireTypes).toEqual([
+      "run.cost_update", // semantically empty but still required in the raw trace
+      "run.action.started",
+      "run.completed",
+    ]);
+    expect(semanticTypes).toEqual(["progress", "done"]);
+  });
+
   it("decodes screenshot data URIs into event.image and filters them without capture", async () => {
     const sse =
       frame(1, "run.screenshot", {
@@ -468,11 +510,15 @@ describe("doAnything.run → RunHandle", () => {
 
     const run = await client.doAnything.run({ token: TOKEN, prompt: "go" });
     const types: string[] = [];
-    for await (const event of run.events()) types.push(event.type);
+    const reconnects: Array<{ attempt: number; lastEventId?: string }> = [];
+    for await (const event of run.events({
+      onReconnect: ({ attempt, lastEventId }) => reconnects.push({ attempt, lastEventId }),
+    })) types.push(event.type);
 
     expect(types).toEqual(["progress", "done"]); // action.started folds to progress
     expect(eventsCall).toBe(2);
     expect(lastEventIds).toEqual([undefined, "1"]); // resumed where we left off
+    expect(reconnects).toEqual([{ attempt: 1, lastEventId: "1" }]);
   });
 
   it("cancel() is idempotent: a 4xx on an already-terminal run returns the terminal state", async () => {

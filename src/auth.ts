@@ -6,6 +6,14 @@ export interface QoniCredentials {
   secretKey: string;
 }
 
+let lastSigningTimestamp = 0;
+
+function nextSigningTimestamp(): number {
+  const now = Date.now();
+  lastSigningTimestamp = Math.max(now, lastSigningTimestamp + 1);
+  return lastSigningTimestamp;
+}
+
 export function buildSignedHeaders(
   credentials: QoniCredentials,
   method: string,
@@ -14,7 +22,10 @@ export function buildSignedHeaders(
 ): Record<string, string> {
   const headers: Record<string, string> = {
     "content-type": "application/json",
-    "x-authing-date": String(Date.now()),
+    // GenAuth rejects an already-consumed signature. A strictly monotonic
+    // timestamp keeps otherwise identical requests unique within a process,
+    // including retries or concurrent calls that start in the same millisecond.
+    "x-authing-date": String(nextSigningTimestamp()),
     "x-authing-signature-method": "HMAC-SHA1",
     "x-authing-signature-version": "1.0",
   };

@@ -40,7 +40,7 @@ import {
 import type { GenAuthAccessTokenInput } from "./genauth";
 import { createWebSearchNamespace } from "./web-search";
 
-const DEFAULT_QONI_HOST = "https://qoni.eazo.ai/dashboard";
+const DEFAULT_QONI_HOST = "https://anima.eazo.ai/dashboard";
 
 export class QoniAgentKit {
   private readonly fetchImpl: typeof fetch;
@@ -170,6 +170,31 @@ export class QoniAgentKit {
   }
 
   unstableRequest<T = unknown>(input: RawRequestInput): Promise<QoniResponse<T>> {
+    if (!input.token) {
+      const pathname = normalizePath(input.path);
+      const signaturePayload =
+        input.method === "GET" ? (input.query || {}) : (input.body || {});
+      const signedHeaders = buildSignedHeaders(
+        {
+          accessKey: this.accessKey,
+          secretKey: this.secretKey,
+        },
+        input.method,
+        pathname,
+        signaturePayload,
+      );
+      return this.baseUrlFor("qoni").then((baseUrl) => this.jsonRequest<T>(baseUrl, pathname, {
+        method: input.method,
+        query: input.query,
+        body: input.body,
+        headers: {
+          ...nonSignatureHeaders(input.headers),
+          ...signedHeaders,
+        },
+        service: "qoni",
+        signed: true,
+      }));
+    }
     return this.baseUrlFor("qoni").then((baseUrl) => this.jsonRequest<T>(baseUrl, input.path, {
       method: input.method,
       token: input.token,
@@ -535,7 +560,10 @@ export class QoniAgentKit {
     const explicit = this.explicitBaseUrlFor(service);
     if (explicit) return explicit;
     const runtime = await this.runtimeConfig();
-    if (service === "qoni") return runtime.qoniBaseUrl ?? this.host;
+    // AK/SK signatures are scoped to the configured control-plane endpoint.
+    // Keep signed Qoni calls on that trusted boundary: following a cross-origin
+    // runtime URL can strip Authorization on redirect or disclose credentials.
+    if (service === "qoni") return this.host;
     const hostOrigin = originBaseUrl(this.host);
     if (service === "genauth") return runtime.genauthBaseUrl ?? hostOrigin;
     if (service === "gumem") return runtime.gumemBaseUrl ?? hostOrigin;
@@ -704,6 +732,22 @@ function requestHeaders(
   return headers;
 }
 
+function nonSignatureHeaders(
+  headers: Record<string, string> | undefined,
+): Record<string, string> {
+  return Object.fromEntries(
+    Object.entries(headers || {}).filter(([key]) => {
+      const normalized = key.toLowerCase();
+      return (
+        normalized !== "authorization" &&
+        normalized !== "content-type" &&
+        normalized !== "date" &&
+        !normalized.startsWith("x-authing-")
+      );
+    }),
+  );
+}
+
 function requestBody(body: RequestPayload["body"]): BodyInit | undefined {
   if (body === undefined) return undefined;
   if (isBodyInit(body)) return body;
@@ -721,6 +765,19 @@ function isBodyInit(value: unknown): value is BodyInit {
 }
 
 async function readJson(response: Response): Promise<unknown> {
+  const contentType = response.headers.get("content-type")?.toLowerCase() || "";
+  if (contentType.includes("ndjson") || contentType.includes("jsonl")) {
+    const body = await response.text();
+    if (!body.trim()) return [];
+    try {
+      return body
+        .split(/\r?\n/)
+        .filter((line) => line.trim().length > 0)
+        .map((line) => JSON.parse(line));
+    } catch {
+      return undefined;
+    }
+  }
   return response.json().catch(() => undefined);
 }
 

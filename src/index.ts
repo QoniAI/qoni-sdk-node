@@ -22,6 +22,7 @@ export type {
   Artifact,
   CaptureOptions,
   RunEventsOptions,
+  RunReconnectInfo,
   RunResult,
   RunStatus,
   RunWaitOptions,

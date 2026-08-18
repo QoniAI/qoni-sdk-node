@@ -501,8 +501,8 @@ import { Qoni, QoniAgentKit } from "@qoniai/qoni";
 run.id
 run.sessionRef                          // 传回 run({ session }) 复用会话
 await run.status()                      // 刷新并返回当前状态
-run.events(opts?)                       // AsyncIterable<RunEvent>，终态自动结束
-await run.wait({ timeoutMs?, onEvent?, onInteraction?, onScreenshot? })
+run.events({ onWireEvent?, onReconnect?, ...opts }) // 语义事件 + 可选原始遥测
+await run.wait({ timeoutMs?, onEvent?, onWireEvent?, onReconnect?, onInteraction?, onScreenshot? })
 run.interactionHandle(interaction)      // 带类型的 HITL 句柄（见下方「交互」）
 await run.cancel(reason?)               // 幂等
 ```
@@ -607,6 +607,8 @@ type QoniResponse<T> = {
 | Track（`MonitorHandle`） | 核心 + `monitorCreated` / `triggered` / `checkCompleted` |
 
 断线会带 `Last-Event-ID` 自动重连续传；迭代器在终态事件后自动结束。
+需要完整审计/可观测性证据时，`onWireEvent` 会在语义归一化和过滤之前收到每一个原始 SSE 帧；
+`onReconnect` 会收到重试次数和最后事件 id。应用逻辑继续使用稳定的 `RunEvent`，原始回调只用于证据与诊断。
 
 Wire 级流式方法（`qoni.<product>.api.events`）返回 `AsyncIterable<QoniEvent<T>>`：
 

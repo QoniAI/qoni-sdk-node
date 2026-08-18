@@ -538,8 +538,8 @@ The three run products share one handle shape:
 run.id
 run.sessionRef                          // pass back to run({ session }) to reuse the session
 await run.status()                      // refresh and return the current state
-run.events(opts?)                       // AsyncIterable<RunEvent>, ends at the terminal event
-await run.wait({ timeoutMs?, onEvent?, onInteraction?, onScreenshot? })
+run.events({ onWireEvent?, onReconnect?, ...opts }) // semantic events + optional raw telemetry
+await run.wait({ timeoutMs?, onEvent?, onWireEvent?, onReconnect?, onInteraction?, onScreenshot? })
 run.interactionHandle(interaction)      // typed HITL handle (see Interactions below)
 await run.cancel(reason?)               // idempotent
 ```
@@ -666,6 +666,10 @@ Each product handle is typed to its own subset:
 | Track (`MonitorHandle`) | core + `monitorCreated` / `triggered` / `checkCompleted` |
 
 Dropped connections reconnect automatically with `Last-Event-ID` catch-up; the iterator ends at the run's terminal (`done`) event.
+For complete audit/observability capture, `onWireEvent` receives every original
+SSE frame before semantic normalization or filtering; `onReconnect` receives
+the retry attempt and last event id. Keep application behavior on the curated
+`RunEvent` stream and use the wire callback only as evidence/diagnostics.
 
 Wire-level streaming methods (`qoni.<product>.api.events`) return `AsyncIterable<QoniEvent<T>>`:
 

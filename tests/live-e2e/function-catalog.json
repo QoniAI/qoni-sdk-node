@@ -1,0 +1,472 @@
+[
+  {
+    "id": "qoni-delegate-token",
+    "name": "qoni.delegateToken",
+    "description": "Create a scoped end-user delegation."
+  },
+  {
+    "id": "qoni-delegate-agent",
+    "name": "qoni.delegateAgent",
+    "description": "Deprecated delegation alias."
+  },
+  {
+    "id": "qoni-complete-delegate-token",
+    "name": "qoni.completeDelegateToken",
+    "description": "Complete an interactive delegation callback."
+  },
+  {
+    "id": "qoni-complete-delegate-agent",
+    "name": "qoni.completeDelegateAgent",
+    "description": "Deprecated interactive completion alias."
+  },
+  {
+    "id": "qoni-current-user",
+    "name": "qoni.currentUser",
+    "description": "Resolve the logged-in GenAuth user."
+  },
+  {
+    "id": "qoni-resolve-any-bound-user",
+    "name": "qoni.resolveAnyBoundUser",
+    "description": "Resolve a bound user for smoke testing."
+  },
+  {
+    "id": "qoni-request",
+    "name": "qoni.request",
+    "description": "Raw Qoni request escape hatch."
+  },
+  {
+    "id": "qoni-unstable-request",
+    "name": "qoni.unstableRequest",
+    "description": "Explicitly unstable raw request escape hatch."
+  },
+  {
+    "id": "qoni-qoni-delegate-token",
+    "name": "qoni.qoni.delegateToken",
+    "description": "Namespaced delegation entry."
+  },
+  {
+    "id": "qoni-qoni-delegate-agent",
+    "name": "qoni.qoni.delegateAgent",
+    "description": "Namespaced deprecated delegation alias."
+  },
+  {
+    "id": "qoni-qoni-complete-delegate-token",
+    "name": "qoni.qoni.completeDelegateToken",
+    "description": "Namespaced callback completion."
+  },
+  {
+    "id": "qoni-qoni-complete-delegate-agent",
+    "name": "qoni.qoni.completeDelegateAgent",
+    "description": "Namespaced deprecated callback alias."
+  },
+  {
+    "id": "qoni-genauth-user-info",
+    "name": "qoni.genauth.userInfo",
+    "description": "Read OIDC user information."
+  },
+  {
+    "id": "qoni-genauth-jwks",
+    "name": "qoni.genauth.jwks",
+    "description": "Read OIDC signing keys."
+  },
+  {
+    "id": "qoni-genauth-discovery",
+    "name": "qoni.genauth.discovery",
+    "description": "Read OIDC discovery metadata."
+  },
+  {
+    "id": "qoni-genauth-introspect-delegation-token",
+    "name": "qoni.genauth.introspectDelegationToken",
+    "description": "Introspect a delegated token."
+  },
+  {
+    "id": "qoni-genauth-users-list",
+    "name": "qoni.genauth.users.list",
+    "description": "List users."
+  },
+  {
+    "id": "qoni-genauth-users-get",
+    "name": "qoni.genauth.users.get",
+    "description": "Get one user."
+  },
+  {
+    "id": "qoni-genauth-users-get-batch",
+    "name": "qoni.genauth.users.getBatch",
+    "description": "Get multiple users."
+  },
+  {
+    "id": "qoni-genauth-users-create",
+    "name": "qoni.genauth.users.create",
+    "description": "Create one user."
+  },
+  {
+    "id": "qoni-genauth-users-create-batch",
+    "name": "qoni.genauth.users.createBatch",
+    "description": "Create multiple users."
+  },
+  {
+    "id": "qoni-genauth-users-update",
+    "name": "qoni.genauth.users.update",
+    "description": "Update a user."
+  },
+  {
+    "id": "qoni-genauth-users-delete-batch",
+    "name": "qoni.genauth.users.deleteBatch",
+    "description": "Delete multiple users."
+  },
+  {
+    "id": "qoni-gumem-create-session",
+    "name": "qoni.gumem.createSession",
+    "description": "Create a memory session."
+  },
+  {
+    "id": "qoni-gumem-add-messages",
+    "name": "qoni.gumem.addMessages",
+    "description": "Persist messages."
+  },
+  {
+    "id": "qoni-gumem-recall",
+    "name": "qoni.gumem.recall",
+    "description": "Recall relevant memory."
+  },
+  {
+    "id": "qoni-gumem-upload-resource",
+    "name": "qoni.gumem.uploadResource",
+    "description": "Upload a memory resource."
+  },
+  {
+    "id": "qoni-gumem-actions-record",
+    "name": "qoni.gumem.actions.record",
+    "description": "Record a user action."
+  },
+  {
+    "id": "qoni-gumem-actions-recall",
+    "name": "qoni.gumem.actions.recall",
+    "description": "Recall user actions."
+  },
+  {
+    "id": "qoni-gumem-actions-stream",
+    "name": "qoni.gumem.actions.stream",
+    "description": "Read the action stream."
+  },
+  {
+    "id": "qoni-do-anything-run",
+    "name": "qoni.doAnything.run",
+    "description": "Start a browser task."
+  },
+  {
+    "id": "qoni-do-anything-attach",
+    "name": "qoni.doAnything.attach",
+    "description": "Reconnect to a browser task."
+  },
+  {
+    "id": "qoni-do-anything-api-create-session",
+    "name": "qoni.doAnything.api.createSession",
+    "description": "Create a wire-level session."
+  },
+  {
+    "id": "qoni-do-anything-api-create-run",
+    "name": "qoni.doAnything.api.createRun",
+    "description": "Create a wire-level run."
+  },
+  {
+    "id": "qoni-do-anything-api-get-run",
+    "name": "qoni.doAnything.api.getRun",
+    "description": "Read a wire-level run."
+  },
+  {
+    "id": "qoni-do-anything-api-events",
+    "name": "qoni.doAnything.api.events",
+    "description": "Stream raw run events."
+  },
+  {
+    "id": "qoni-do-anything-api-intervene",
+    "name": "qoni.doAnything.api.intervene",
+    "description": "Post a wire-level intervention."
+  },
+  {
+    "id": "qoni-do-anything-api-cancel",
+    "name": "qoni.doAnything.api.cancel",
+    "description": "Cancel a wire-level run."
+  },
+  {
+    "id": "qoni-do-anything-api-read-artifacts",
+    "name": "qoni.doAnything.api.readArtifacts",
+    "description": "Read a session artifact."
+  },
+  {
+    "id": "qoni-do-anything-api-read-recording",
+    "name": "qoni.doAnything.api.readRecording",
+    "description": "Read a session recording."
+  },
+  {
+    "id": "qoni-web-search-run",
+    "name": "qoni.webSearch.run",
+    "description": "Start a web search."
+  },
+  {
+    "id": "qoni-web-search-attach",
+    "name": "qoni.webSearch.attach",
+    "description": "Reconnect to a web search."
+  },
+  {
+    "id": "qoni-web-search-api-run",
+    "name": "qoni.webSearch.api.run",
+    "description": "Create a raw search run."
+  },
+  {
+    "id": "qoni-web-search-api-get",
+    "name": "qoni.webSearch.api.get",
+    "description": "Read a raw search run."
+  },
+  {
+    "id": "qoni-web-search-api-events",
+    "name": "qoni.webSearch.api.events",
+    "description": "Stream raw search events."
+  },
+  {
+    "id": "qoni-web-search-api-cancel",
+    "name": "qoni.webSearch.api.cancel",
+    "description": "Cancel a raw search run."
+  },
+  {
+    "id": "qoni-deep-research-run",
+    "name": "qoni.deepResearch.run",
+    "description": "Start a research run."
+  },
+  {
+    "id": "qoni-deep-research-attach",
+    "name": "qoni.deepResearch.attach",
+    "description": "Reconnect to a research run."
+  },
+  {
+    "id": "qoni-deep-research-api-run",
+    "name": "qoni.deepResearch.api.run",
+    "description": "Create a raw research run."
+  },
+  {
+    "id": "qoni-deep-research-api-get",
+    "name": "qoni.deepResearch.api.get",
+    "description": "Read a raw research run."
+  },
+  {
+    "id": "qoni-deep-research-api-events",
+    "name": "qoni.deepResearch.api.events",
+    "description": "Stream raw research events."
+  },
+  {
+    "id": "qoni-deep-research-api-follow-up",
+    "name": "qoni.deepResearch.api.followUp",
+    "description": "Send a research follow-up."
+  },
+  {
+    "id": "qoni-deep-research-api-cancel",
+    "name": "qoni.deepResearch.api.cancel",
+    "description": "Cancel a raw research run."
+  },
+  {
+    "id": "qoni-deep-research-api-feedback",
+    "name": "qoni.deepResearch.api.feedback",
+    "description": "Rate a research report."
+  },
+  {
+    "id": "qoni-deep-research-api-list-artifacts",
+    "name": "qoni.deepResearch.api.listArtifacts",
+    "description": "List research artifacts."
+  },
+  {
+    "id": "qoni-deep-research-api-get-artifact",
+    "name": "qoni.deepResearch.api.getArtifact",
+    "description": "Read a research artifact."
+  },
+  {
+    "id": "qoni-track-create",
+    "name": "qoni.track.create",
+    "description": "Create a monitor."
+  },
+  {
+    "id": "qoni-track-attach",
+    "name": "qoni.track.attach",
+    "description": "Reconnect to a monitor."
+  },
+  {
+    "id": "qoni-track-api-create-monitor",
+    "name": "qoni.track.api.createMonitor",
+    "description": "Create a raw monitor."
+  },
+  {
+    "id": "qoni-track-api-get-monitor",
+    "name": "qoni.track.api.getMonitor",
+    "description": "Read a raw monitor."
+  },
+  {
+    "id": "qoni-track-api-run-now",
+    "name": "qoni.track.api.runNow",
+    "description": "Trigger a monitor tick."
+  },
+  {
+    "id": "qoni-track-api-events",
+    "name": "qoni.track.api.events",
+    "description": "Stream monitor events."
+  },
+  {
+    "id": "qoni-track-api-intervene",
+    "name": "qoni.track.api.intervene",
+    "description": "Post a monitor intervention."
+  },
+  {
+    "id": "qoni-track-api-list-runs",
+    "name": "qoni.track.api.listRuns",
+    "description": "List monitor runs."
+  },
+  {
+    "id": "qoni-track-api-get-run",
+    "name": "qoni.track.api.getRun",
+    "description": "Read a monitor run."
+  },
+  {
+    "id": "qoni-track-api-update-monitor",
+    "name": "qoni.track.api.updateMonitor",
+    "description": "Update a raw monitor."
+  },
+  {
+    "id": "qoni-track-api-delete-monitor",
+    "name": "qoni.track.api.deleteMonitor",
+    "description": "Delete a raw monitor."
+  },
+  {
+    "id": "run-handle-status",
+    "name": "RunHandle.status",
+    "description": "Refresh run state."
+  },
+  {
+    "id": "run-handle-events",
+    "name": "RunHandle.events",
+    "description": "Stream semantic run events."
+  },
+  {
+    "id": "run-handle-wait",
+    "name": "RunHandle.wait",
+    "description": "Wait for terminal output."
+  },
+  {
+    "id": "run-handle-interaction-handle",
+    "name": "RunHandle.interactionHandle",
+    "description": "Bind an interaction to the run."
+  },
+  {
+    "id": "run-handle-cancel",
+    "name": "RunHandle.cancel",
+    "description": "Cancel the run idempotently."
+  },
+  {
+    "id": "monitor-handle-get",
+    "name": "MonitorHandle.get",
+    "description": "Refresh monitor state."
+  },
+  {
+    "id": "monitor-handle-pause",
+    "name": "MonitorHandle.pause",
+    "description": "Pause scheduled ticks."
+  },
+  {
+    "id": "monitor-handle-resume",
+    "name": "MonitorHandle.resume",
+    "description": "Resume scheduled ticks."
+  },
+  {
+    "id": "monitor-handle-refine",
+    "name": "MonitorHandle.refine",
+    "description": "Refine a monitor definition."
+  },
+  {
+    "id": "monitor-handle-run-now",
+    "name": "MonitorHandle.runNow",
+    "description": "Trigger an immediate tick."
+  },
+  {
+    "id": "monitor-handle-events",
+    "name": "MonitorHandle.events",
+    "description": "Stream semantic monitor events."
+  },
+  {
+    "id": "monitor-handle-interaction-handle",
+    "name": "MonitorHandle.interactionHandle",
+    "description": "Bind an interaction to a monitor."
+  },
+  {
+    "id": "monitor-handle-runs",
+    "name": "MonitorHandle.runs",
+    "description": "List tick runs."
+  },
+  {
+    "id": "monitor-handle-run",
+    "name": "MonitorHandle.run",
+    "description": "Read a tick run."
+  },
+  {
+    "id": "monitor-handle-delete",
+    "name": "MonitorHandle.delete",
+    "description": "Delete a monitor."
+  },
+  {
+    "id": "interaction-handle-can",
+    "name": "InteractionHandle.can",
+    "description": "Check whether an action is offered."
+  },
+  {
+    "id": "interaction-handle-answer",
+    "name": "InteractionHandle.answer",
+    "description": "Answer a clarification."
+  },
+  {
+    "id": "interaction-handle-skip",
+    "name": "InteractionHandle.skip",
+    "description": "Skip an interaction."
+  },
+  {
+    "id": "interaction-handle-confirm",
+    "name": "InteractionHandle.confirm",
+    "description": "Confirm a pending operation."
+  },
+  {
+    "id": "interaction-handle-reject",
+    "name": "InteractionHandle.reject",
+    "description": "Reject a pending operation."
+  },
+  {
+    "id": "interaction-handle-open-login",
+    "name": "InteractionHandle.openLogin",
+    "description": "Open a login surface."
+  },
+  {
+    "id": "interaction-handle-confirm-signed-in",
+    "name": "InteractionHandle.confirmSignedIn",
+    "description": "Confirm login completion."
+  },
+  {
+    "id": "interaction-handle-connect-control",
+    "name": "InteractionHandle.connectControl",
+    "description": "Connect to live browser control."
+  },
+  {
+    "id": "interaction-handle-refresh-control",
+    "name": "InteractionHandle.refreshControl",
+    "description": "Refresh live control."
+  },
+  {
+    "id": "interaction-handle-release-control",
+    "name": "InteractionHandle.releaseControl",
+    "description": "Return control to the agent."
+  },
+  {
+    "id": "interaction-handle-retry",
+    "name": "InteractionHandle.retry",
+    "description": "Retry a waiting interaction."
+  },
+  {
+    "id": "interaction-handle-switch-profile",
+    "name": "InteractionHandle.switchProfile",
+    "description": "Switch the bound browser profile."
+  }
+]

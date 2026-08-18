@@ -46,8 +46,12 @@ describe("open-source readiness", () => {
     expect(pkg.publishConfig).toEqual({ access: "public" });
     expect(pkg.scripts).toMatchObject({
       "check:brand": "node scripts/check-brand.mjs",
-      "test:mock": "vitest run --coverage=false tests/qoni.test.ts tests/semantic-surface.test.ts tests/open-source-readiness.test.ts tests/complete-coverage.test.ts tests/event-catalog.test.ts tests/interactions.test.ts tests/contract-surface.test.ts tests/sse-abort.test.ts",
+      "test:mock": "vitest run --coverage=false tests/qoni.test.ts tests/semantic-surface.test.ts tests/open-source-readiness.test.ts tests/complete-coverage.test.ts tests/event-catalog.test.ts tests/interactions.test.ts tests/contract-surface.test.ts tests/sse-abort.test.ts tests/do-anything-evidence.test.ts tests/query-matrix.test.ts tests/live-evidence.test.ts",
       "test:e2e": "QONI_LIVE_E2E=1 vitest run --coverage=false --fileParallelism=false --maxWorkers=1 --testTimeout=120000 tests/live-e2e/*.test.ts",
+      "test:e2e:do-anything": "QONI_LIVE_E2E=1 vitest run --coverage=false --fileParallelism=false --maxWorkers=1 --testTimeout=120000 tests/live-e2e/do-anything.test.ts",
+      "test:e2e:do-anything:release": "QONI_LIVE_E2E=1 QONI_LIVE_ALLOW_ENV_CONSTRAINTS=0 vitest run --coverage=false --fileParallelism=false --maxWorkers=1 --testTimeout=120000 tests/live-e2e/do-anything.test.ts",
+      "test:e2e:matrix": "QONI_LIVE_E2E=1 QONI_QUERY_MATRIX=1 QONI_LIVE_ALLOW_ENV_CONSTRAINTS=0 vitest run --coverage=false --fileParallelism=false --maxWorkers=1 tests/live-e2e/query-matrix.test.ts",
+      "test:e2e:release": "QONI_LIVE_E2E=1 QONI_LIVE_REQUIRE_ALL=1 QONI_LIVE_ALLOW_ENV_CONSTRAINTS=0 vitest run --coverage=false --fileParallelism=false --maxWorkers=1 --testTimeout=120000 tests/live-e2e/*.test.ts",
       "test:package": "vitest run --coverage=false tests/package-surface.test.ts",
       "test:ci": "pnpm test:mock && pnpm test:package",
       "pack:dry-run": "pnpm build && pnpm pack --dry-run",

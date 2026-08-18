@@ -68,7 +68,7 @@ function createHarness() {
       });
     }
 
-    if (url.pathname === "/api/v3/qoni/token-exchange") {
+    if (url.pathname.endsWith("/api/v3/qoni/token-exchange")) {
       const body = call.body as { resource?: string; scopes?: string[] };
       return jsonResponse({
         data: {
@@ -87,10 +87,17 @@ function createHarness() {
       });
     }
 
-    if (url.pathname === "/api/v3/qoni/genauth/admin-token") {
+    if (url.pathname.endsWith("/api/v3/qoni/genauth/admin-token")) {
       return jsonResponse({
         data: { accessToken: "genauth-admin-token", userPoolId: "pool_matrix", expiresIn: 3600 },
       });
+    }
+
+    if (url.pathname.endsWith("/api/user/actions/stream")) {
+      return new Response(
+        '{"content":"first action"}\n{"content":"second action"}\n',
+        { status: 200, headers: { "content-type": "application/x-ndjson" } },
+      );
     }
 
     if (url.pathname === "/oidc/me") {
@@ -122,7 +129,7 @@ function createHarness() {
       });
     }
 
-    if (url.pathname === "/api/v3/qoni/delegations" && call.method === "POST") {
+    if (url.pathname.endsWith("/api/v3/qoni/delegations") && call.method === "POST") {
       const body = call.body as { mode?: string; scopes?: string[] };
       if (body.mode === "interactive") {
         return jsonResponse({
@@ -152,7 +159,7 @@ function createHarness() {
       });
     }
 
-    if (url.pathname === "/api/v3/qoni/delegations/complete") {
+    if (url.pathname.endsWith("/api/v3/qoni/delegations/complete")) {
       return jsonResponse({
         data: {
           mode: "interactive",
@@ -179,7 +186,8 @@ function createHarness() {
   return {
     client,
     calls,
-    byPath: (path: string) => calls.filter((call) => call.pathname === path),
+    byPath: (path: string) =>
+      calls.filter((call) => call.pathname === path || call.pathname.endsWith(path)),
     last: () => calls.at(-1),
   };
 }
@@ -296,7 +304,7 @@ describe("complete public method coverage matrix", () => {
         });
 
         expect(h.last()).toMatchObject({
-          pathname: "/api/custom/resource",
+          pathname: "/dashboard/api/custom/resource",
           method: "PATCH",
           query: { page: "1", enabled: "true" },
           headers: { authorization: "Bearer custom-token", "x-custom": "yes" },
@@ -455,7 +463,15 @@ describe("complete public method coverage matrix", () => {
         });
         await h.client.gumem.actions.record({ token, user_id: "user_matrix", event_type: "view" });
         await h.client.gumem.actions.recall({ token, user_id: "user_matrix", query: "view" });
-        await h.client.gumem.actions.stream({ token, user_id: "user_matrix", limit: 3 });
+        const streamed = await h.client.gumem.actions.stream<{ content: string }[]>({
+          token,
+          user_id: "user_matrix",
+          limit: 3,
+        });
+        expect(streamed.data).toEqual([
+          { content: "first action" },
+          { content: "second action" },
+        ]);
 
         const gumemCalls = h.calls.filter((call) => call.url.startsWith("https://gumem.example.com"));
         expect(gumemCalls).toMatchObject([

@@ -8,6 +8,16 @@ compatible fixes.
 
 ## Unreleased
 
+### Added
+
+- `RunHandle.events()` and `wait()` accept `onWireEvent` and `onReconnect`
+  observability callbacks. The former receives every original SSE frame before
+  semantic filtering; the latter exposes resumable-stream retry details.
+- The focused Do Anything live E2E gate records the complete Agent/tool trace,
+  Browser Harness script source and execution, screenshots, recording, final
+  result, reconnects, and report-ready latency/token/cost metrics under the
+  ignored local evidence directory.
+
 ## 0.4.0 - 2026-08-18
 
 ### Breaking
