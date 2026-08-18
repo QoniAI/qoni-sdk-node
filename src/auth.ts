@@ -1,13 +1,13 @@
 import { buildAuthorization, buildStringToSign } from "./signature";
 import type { JsonObject } from "./types";
 
-export interface EAKCredentials {
+export interface QoniCredentials {
   accessKey: string;
   secretKey: string;
 }
 
 export function buildSignedHeaders(
-  credentials: EAKCredentials,
+  credentials: QoniCredentials,
   method: string,
   pathname: string,
   payload: JsonObject,

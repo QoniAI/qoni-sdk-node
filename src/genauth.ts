@@ -1,4 +1,4 @@
-import type { EAKResponse, EAKTransport, JsonObject } from "./types";
+import type { QoniResponse, QoniTransport, JsonObject } from "./types";
 
 export interface GenAuthAccessTokenInput {
   accessToken: string;
@@ -39,28 +39,28 @@ export type GenAuthUserUpdateInput = GenAuthAdminTokenOverrideInput & { userId: 
 export type GenAuthUserDeleteBatchInput = GenAuthAdminTokenOverrideInput & { userIds: string[] };
 
 export function createGenAuthNamespace(
-  transport: EAKTransport,
+  transport: QoniTransport,
   options: { adminTokenFor?: GenAuthAdminTokenProvider } = {},
 ) {
   return {
-    userInfo: <T = unknown>(input: GenAuthAccessTokenInput): Promise<EAKResponse<T>> =>
+    userInfo: <T = unknown>(input: GenAuthAccessTokenInput): Promise<QoniResponse<T>> =>
       transport.genauthJson("GET", "/oidc/me", input.accessToken),
 
-    jwks: <T = unknown>(): Promise<EAKResponse<T>> =>
+    jwks: <T = unknown>(): Promise<QoniResponse<T>> =>
       transport.genauthJson("GET", "/oidc/.well-known/jwks.json"),
 
-    discovery: <T = unknown>(): Promise<EAKResponse<T>> =>
+    discovery: <T = unknown>(): Promise<QoniResponse<T>> =>
       transport.genauthJson("GET", "/oidc/.well-known/openid-configuration"),
 
     introspectDelegationToken: <T = unknown>(
       input: GenAuthDelegationIntrospectionInput,
-    ): Promise<EAKResponse<T>> =>
-      transport.genauthJson("POST", "/api/v3/eak/delegations/introspect", undefined, {
+    ): Promise<QoniResponse<T>> =>
+      transport.genauthJson("POST", "/api/v3/qoni/delegations/introspect", undefined, {
         body: { token: requiredDelegationToken(input) },
       }),
 
     users: {
-      list: async <T = unknown>(input: GenAuthUserListInput = {}): Promise<EAKResponse<T>> => {
+      list: async <T = unknown>(input: GenAuthUserListInput = {}): Promise<QoniResponse<T>> => {
         const auth = await adminAuthFor(options.adminTokenFor, input);
         return transport.genauthJson("POST", "/api/v3/list-users", auth.accessToken, {
           body: listUsersBody(input),
@@ -68,7 +68,7 @@ export function createGenAuthNamespace(
         });
       },
 
-      get: async <T = unknown>(input: GenAuthUserGetInput): Promise<EAKResponse<T>> => {
+      get: async <T = unknown>(input: GenAuthUserGetInput): Promise<QoniResponse<T>> => {
         const auth = await adminAuthFor(options.adminTokenFor, input);
         return transport.genauthJson("GET", "/api/v3/get-user", auth.accessToken, {
           query: omit(input, "adminToken", "userPoolId"),
@@ -78,7 +78,7 @@ export function createGenAuthNamespace(
 
       getBatch: async <T = unknown>(
         input: GenAuthUserGetBatchInput,
-      ): Promise<EAKResponse<T>> => {
+      ): Promise<QoniResponse<T>> => {
         const auth = await adminAuthFor(options.adminTokenFor, input);
         return transport.genauthJson("GET", "/api/v3/get-user-batch", auth.accessToken, {
           query: omit(input, "adminToken", "userPoolId"),
@@ -86,7 +86,7 @@ export function createGenAuthNamespace(
         });
       },
 
-      create: async <T = unknown>(input: GenAuthUserCreateInput): Promise<EAKResponse<T>> => {
+      create: async <T = unknown>(input: GenAuthUserCreateInput): Promise<QoniResponse<T>> => {
         const auth = await adminAuthFor(options.adminTokenFor, input);
         return transport.genauthJson("POST", "/api/v3/create-user", auth.accessToken, {
           body: omit(input, "adminToken", "userPoolId"),
@@ -96,7 +96,7 @@ export function createGenAuthNamespace(
 
       createBatch: async <T = unknown>(
         input: GenAuthUserCreateBatchInput,
-      ): Promise<EAKResponse<T>> => {
+      ): Promise<QoniResponse<T>> => {
         const auth = await adminAuthFor(options.adminTokenFor, input);
         return transport.genauthJson("POST", "/api/v3/create-users-batch", auth.accessToken, {
           body: createUsersBatchBody(input),
@@ -104,7 +104,7 @@ export function createGenAuthNamespace(
         });
       },
 
-      update: async <T = unknown>(input: GenAuthUserUpdateInput): Promise<EAKResponse<T>> => {
+      update: async <T = unknown>(input: GenAuthUserUpdateInput): Promise<QoniResponse<T>> => {
         const auth = await adminAuthFor(options.adminTokenFor, input);
         return transport.genauthJson("POST", "/api/v3/update-user", auth.accessToken, {
           body: omit(input, "adminToken", "userPoolId"),
@@ -114,7 +114,7 @@ export function createGenAuthNamespace(
 
       deleteBatch: async <T = unknown>(
         input: GenAuthUserDeleteBatchInput,
-      ): Promise<EAKResponse<T>> => {
+      ): Promise<QoniResponse<T>> => {
         const auth = await adminAuthFor(options.adminTokenFor, input);
         return transport.genauthJson("POST", "/api/v3/delete-users-batch", auth.accessToken, {
           body: omit(input, "adminToken", "userPoolId"),
@@ -141,7 +141,7 @@ async function adminAuthFor(
     }
     return { accessToken: input.adminToken, userPoolId: input.userPoolId };
   }
-  if (!provider) throw new Error("GenAuth user management requires EAK AK/SK admin token exchange");
+  if (!provider) throw new Error("GenAuth user management requires Qoni AK/SK admin token exchange");
   return provider();
 }
 

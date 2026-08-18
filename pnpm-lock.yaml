@@ -7,10 +7,6 @@ settings:
 importers:
 
   .:
-    dependencies:
-      '@eazo/eak':
-        specifier: ^0.2.1
-        version: 0.2.1
     devDependencies:
       '@types/node':
         specifier: ^20.17.10
@@ -26,10 +22,6 @@ importers:
         version: 2.1.9(@types/node@20.19.41)
 
 packages:
-
-  '@eazo/eak@0.2.1':
-    resolution: {integrity: sha512-hweQa1ijqkv4uZAHnTe4cE3dVnuW9jeded2g9tvmhZJtAJ9BovHAOFnIvNhbaPKmvaRfgkS5/42webYG3D3aLg==}
-    engines: {node: '>=18'}
 
   '@esbuild/aix-ppc64@0.21.5':
     resolution: {integrity: sha512-1SDgH6ZSPTlggy1yI6+Dbkiz8xzpHJEVAlF/AM1tHPLsf5STom9rwtjE4hKAF20FfXXNTFqEYXyJNWh1GiZedQ==}
@@ -862,8 +854,6 @@ packages:
     hasBin: true
 
 snapshots:
-
-  '@eazo/eak@0.2.1': {}
 
   '@esbuild/aix-ppc64@0.21.5':
     optional: true

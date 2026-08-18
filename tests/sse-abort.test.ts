@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { EAKTimeoutError, EazoAgentKit } from "../src";
+import { QoniTimeoutError, QoniAgentKit } from "../src";
 
 // Regression: aborting the caller-supplied AbortSignal must terminate an SSE
 // iteration even AFTER the connection is established. The transport used to
@@ -35,12 +35,12 @@ function makeStreamingClient(opts?: { jsonDetail?: unknown }) {
   // when (and only when) the REQUEST's own signal aborts. If the SDK severs
   // the user signal → request signal chain after connect, a user abort never
   // reaches this stream.
-  const client = new EazoAgentKit({
+  const client = new QoniAgentKit({
     accessKey: "ak_test",
     secretKey: "sk_test",
-    host: "https://eak.example.com",
-    genauthBaseUrl: "https://eak.example.com",
-    webAgentBaseUrl: "https://eak.example.com",
+    host: "https://qoni.example.com",
+    genauthBaseUrl: "https://qoni.example.com",
+    webAgentBaseUrl: "https://qoni.example.com",
     fetch: (async (_url: URL | RequestInfo, init?: RequestInit) => {
       const wantsStream = new Headers(init?.headers).get("accept") === "text/event-stream";
       if (!wantsStream) {
@@ -107,14 +107,14 @@ describe("SSE abort propagation", () => {
     expect(outcome).toBe("aborted");
   });
 
-  it("wait({ timeoutMs }) on a never-terminating stream rejects with EAKTimeoutError", async () => {
+  it("wait({ timeoutMs }) on a never-terminating stream rejects with QoniTimeoutError", async () => {
     const client = makeStreamingClient();
     const run = await client.webSearch.attach("run_1", { token: TOKEN });
 
     const outcome = await Promise.race([
       run.wait({ timeoutMs: 120 }).then(
         () => "settled",
-        (error: unknown) => (error instanceof EAKTimeoutError ? "timeout-error" : `threw: ${String(error)}`),
+        (error: unknown) => (error instanceof QoniTimeoutError ? "timeout-error" : `threw: ${String(error)}`),
       ),
       new Promise<string>((resolve) => setTimeout(() => resolve("hung"), 1_000)),
     ]);

@@ -6,5 +6,5 @@ coverage/
 .playwright-cli
 examples/
 .secrets/
-tests/eak-smoke*
+tests/qoni-smoke*
 .DS_Store

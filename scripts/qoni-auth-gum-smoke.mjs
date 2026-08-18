@@ -1,19 +1,19 @@
 #!/usr/bin/env node
 import { once } from "node:events";
 import http from "node:http";
-import { EAKScopes, EazoAgentKit } from "@eazo/eak";
+import { QoniScopes, QoniAgentKit } from "@qoniai/qoni";
 
-const mode = process.argv.includes("--live") || process.env.EAK_SMOKE_MODE === "live"
+const mode = process.argv.includes("--live") || process.env.QONI_SMOKE_MODE === "live"
   ? "live"
   : "mock";
 
 const GUM_SCOPES = [
-  EAKScopes.GUMEM_MEMORY_READ,
-  EAKScopes.GUMEM_MEMORY_WRITE,
-  EAKScopes.GUMEM_MESSAGE_WRITE,
-  EAKScopes.GUMEM_ACTION_READ,
-  EAKScopes.GUMEM_ACTION_WRITE,
-  EAKScopes.GUMEM_RESOURCE_WRITE,
+  QoniScopes.GUMEM_MEMORY_READ,
+  QoniScopes.GUMEM_MEMORY_WRITE,
+  QoniScopes.GUMEM_MESSAGE_WRITE,
+  QoniScopes.GUMEM_ACTION_READ,
+  QoniScopes.GUMEM_ACTION_WRITE,
+  QoniScopes.GUMEM_RESOURCE_WRITE,
 ];
 
 main().catch((error) => {
@@ -36,24 +36,24 @@ async function runMockSmoke() {
     tokenExchanges: [],
     sessions: new Map(),
   };
-  const server = createMockEakServer(state);
+  const server = createMockQoniServer(state);
   server.listen(0, "127.0.0.1");
   await once(server, "listening");
   const address = server.address();
   const host = `http://127.0.0.1:${address.port}`;
 
   try {
-    const eak = new EazoAgentKit({
+    const qoni = new QoniAgentKit({
       accessKey: "ak_smoke",
       secretKey: "sk_smoke",
       host,
       timeoutMs: 10_000,
     });
 
-    const currentUser = await eak.currentUser({ accessToken: "genauth-access-token" });
+    const currentUser = await qoni.currentUser({ accessToken: "genauth-access-token" });
     assertEqual(currentUser.data.id, "user_smoke", "currentUser resolves GenAuth user");
 
-    const silentDelegation = await eak.delegateToken({
+    const silentDelegation = await qoni.delegateToken({
       mode: "silent",
       user: { id: "user_smoke", subject: "sub_smoke", name: "Smoke User" },
       agent: "memory-agent",
@@ -64,15 +64,15 @@ async function runMockSmoke() {
     assert(silentDelegation.data.token, "silent auth includes token");
 
     const token = silentDelegation.data.token;
-    const sessionId = `sdk-auth-gum-${Date.now()}`;
-    await eak.gumem.createSession({
+    const sessionId = `qoni-auth-gum-${Date.now()}`;
+    await qoni.gumem.createSession({
       token,
       userId: "user_smoke",
       sessionId,
       title: "SDK auth and GUM smoke",
-      metadata: { source: "sdk-auth-gum-smoke", mode: "mock" },
+      metadata: { source: "qoni-auth-gum-smoke", mode: "mock" },
     });
-    await eak.gumem.addMessages({
+    await qoni.gumem.addMessages({
       token,
       sessionId,
       userId: "user_smoke",
@@ -82,17 +82,17 @@ async function runMockSmoke() {
         { role: "assistant", content: "acknowledged" },
       ],
     });
-    const recall = await eak.gumem.recall({
+    const recall = await qoni.gumem.recall({
       token,
       sessionId,
       query: "What does this smoke cover?",
       details: true,
       recallConfig: { topK: 3 },
-      metadataFilters: { source: "sdk-auth-gum-smoke" },
+      metadataFilters: { source: "qoni-auth-gum-smoke" },
     });
     assertEqual(recall.data.session_id, sessionId, "GUM recall uses the created session");
 
-    const upload = await eak.gumem.uploadResource({
+    const upload = await qoni.gumem.uploadResource({
       token,
       userId: "user_smoke",
       sessionId,
@@ -102,35 +102,35 @@ async function runMockSmoke() {
     });
     assertEqual(upload.data.status, "uploaded", "GUM uploadResource returns uploaded status");
 
-    await eak.gumem.actions.record({
+    await qoni.gumem.actions.record({
       token,
       user_id: "user_smoke",
       session_id: sessionId,
       timestamp: new Date().toISOString(),
       content: "User viewed the SDK auth and GUM smoke result.",
       event_type: "viewed",
-      app: "@eazo/eak",
+      app: "@qoniai/qoni",
       platform: "node",
-      page: "sdk-auth-gum-smoke",
-      metadata: { target: "sdk-auth-gum-smoke" },
+      page: "qoni-auth-gum-smoke",
+      metadata: { target: "qoni-auth-gum-smoke" },
     });
-    await eak.gumem.actions.recall({
+    await qoni.gumem.actions.recall({
       token,
       user_id: "user_smoke",
       query: "recent SDK smoke actions",
     });
-    await eak.gumem.actions.stream({
+    await qoni.gumem.actions.stream({
       token,
       user_id: "user_smoke",
       limit: 5,
     });
 
-    const interactive = await eak.delegateToken({
+    const interactive = await qoni.delegateToken({
       mode: "interactive",
-      redirectUri: "https://app.example.com/eak/callback",
+      redirectUri: "https://app.example.com/qoni/callback",
       state: "business_state_smoke",
       agent: "memory-agent",
-      scopes: [EAKScopes.GUMEM_MEMORY_READ, EAKScopes.GUMEM_MEMORY_WRITE],
+      scopes: [QoniScopes.GUMEM_MEMORY_READ, QoniScopes.GUMEM_MEMORY_WRITE],
     });
     assertMatch(
       interactive.data.authorizationUrl,
@@ -143,19 +143,19 @@ async function runMockSmoke() {
       "interactive auth normalizes grantState",
     );
 
-    const completed = await eak.completeDelegateToken({
+    const completed = await qoni.completeDelegateToken({
       grantId: interactive.data.grantId,
       code: "code_from_visible_callback",
       state: interactive.data.grantState,
     });
     assert(completed.data.token, "completeDelegateToken returns runtime token");
-    await eak.gumem.recall({
+    await qoni.gumem.recall({
       token: completed.data.token,
       sessionId,
       query: "Can completed visible auth read memory?",
     });
 
-    const introspection = await eak.genauth.introspectDelegationToken({ token });
+    const introspection = await qoni.genauth.introspectDelegationToken({ token });
     assertEqual(introspection.data.active, true, "delegation introspection is active");
 
     assertCallsCoverMockFlow(state);
@@ -188,95 +188,95 @@ async function runMockSmoke() {
 }
 
 async function runLiveSmoke() {
-  const accessKey = requiredEnv("EAK_ACCESS_KEY");
-  const secretKey = requiredEnv("EAK_SECRET_KEY");
-  const userId = requiredEnv("EAK_USER_ID");
-  const host = process.env.EAK_HOST;
-  const agent = process.env.EAK_AGENT_ID || "memory-agent";
-  const sessionId = process.env.EAK_GUM_SESSION_ID || `sdk-auth-gum-${Date.now()}`;
+  const accessKey = requiredEnv("QONI_ACCESS_KEY");
+  const secretKey = requiredEnv("QONI_SECRET_KEY");
+  const userId = requiredEnv("QONI_USER_ID");
+  const host = process.env.QONI_HOST;
+  const agent = process.env.QONI_AGENT_ID || "memory-agent";
+  const sessionId = process.env.QONI_GUM_SESSION_ID || `qoni-auth-gum-${Date.now()}`;
 
-  const eak = new EazoAgentKit({
+  const qoni = new QoniAgentKit({
     accessKey,
     secretKey,
     host,
-    timeoutMs: Number(process.env.EAK_TIMEOUT_MS || 60_000),
+    timeoutMs: Number(process.env.QONI_TIMEOUT_MS || 60_000),
   });
 
-  if (process.env.EAK_USER_ACCESS_TOKEN) {
-    const user = await eak.currentUser({ accessToken: process.env.EAK_USER_ACCESS_TOKEN });
+  if (process.env.QONI_USER_ACCESS_TOKEN) {
+    const user = await qoni.currentUser({ accessToken: process.env.QONI_USER_ACCESS_TOKEN });
     console.log("[smoke] currentUser ok", safeJson(user.data));
   }
 
-  const silentDelegation = await eak.delegateToken({
+  const silentDelegation = await qoni.delegateToken({
     mode: "silent",
     user: { id: userId },
     agent,
     scopes: GUM_SCOPES,
-    expiresIn: Number(process.env.EAK_DELEGATION_EXPIRES_IN || 3600),
+    expiresIn: Number(process.env.QONI_DELEGATION_EXPIRES_IN || 3600),
   });
   if ("authorizationUrl" in silentDelegation.data) {
     throw new Error("live silent delegation unexpectedly returned authorizationUrl");
   }
 
   const token = silentDelegation.data.token;
-  await eak.gumem.createSession({
+  await qoni.gumem.createSession({
     token,
     userId,
     sessionId,
     title: "SDK auth and GUM live smoke",
-    metadata: { source: "sdk-auth-gum-smoke", mode: "live" },
+    metadata: { source: "qoni-auth-gum-smoke", mode: "live" },
   });
-  await eak.gumem.addMessages({
+  await qoni.gumem.addMessages({
     token,
     sessionId,
     userId,
     sync: true,
     messages: [
-      { role: "user", content: "live smoke message from @eazo/eak" },
+      { role: "user", content: "live smoke message from @qoniai/qoni" },
       { role: "assistant", content: "live smoke acknowledged" },
     ],
   });
-  const recall = await eak.gumem.recall({
+  const recall = await qoni.gumem.recall({
     token,
     sessionId,
-    query: process.env.EAK_GUM_QUERY || "What has the live SDK smoke written?",
+    query: process.env.QONI_GUM_QUERY || "What has the live SDK smoke written?",
     details: true,
   });
-  await eak.gumem.actions.record({
+  await qoni.gumem.actions.record({
     token,
     user_id: userId,
     session_id: sessionId,
     timestamp: new Date().toISOString(),
     content: "Live SDK smoke wrote a user action through GUMem.",
     event_type: "sdk_live_smoke",
-    app: "@eazo/eak",
+    app: "@qoniai/qoni",
     platform: "node",
-    page: "sdk-auth-gum-smoke",
+    page: "qoni-auth-gum-smoke",
     metadata: { target: sessionId },
   });
-  await eak.gumem.actions.recall({
+  await qoni.gumem.actions.recall({
     token,
     user_id: userId,
     query: "sdk live smoke",
   });
 
-  if (process.env.EAK_REDIRECT_URI) {
-    const interactive = await eak.delegateToken({
+  if (process.env.QONI_REDIRECT_URI) {
+    const interactive = await qoni.delegateToken({
       mode: "interactive",
-      redirectUri: process.env.EAK_REDIRECT_URI,
-      state: process.env.EAK_AUTH_STATE || `sdk-smoke-${Date.now()}`,
+      redirectUri: process.env.QONI_REDIRECT_URI,
+      state: process.env.QONI_AUTH_STATE || `sdk-smoke-${Date.now()}`,
       agent,
-      scopes: [EAKScopes.GUMEM_MEMORY_READ, EAKScopes.GUMEM_MEMORY_WRITE],
+      scopes: [QoniScopes.GUMEM_MEMORY_READ, QoniScopes.GUMEM_MEMORY_WRITE],
     });
     console.log("[smoke] interactive authorizationUrl", interactive.data.authorizationUrl);
 
-    if (process.env.EAK_AUTH_CODE && process.env.EAK_AUTH_GRANT_ID && process.env.EAK_AUTH_GRANT_STATE) {
-      const completed = await eak.completeDelegateToken({
-        grantId: process.env.EAK_AUTH_GRANT_ID,
-        code: process.env.EAK_AUTH_CODE,
-        state: process.env.EAK_AUTH_GRANT_STATE,
+    if (process.env.QONI_AUTH_CODE && process.env.QONI_AUTH_GRANT_ID && process.env.QONI_AUTH_GRANT_STATE) {
+      const completed = await qoni.completeDelegateToken({
+        grantId: process.env.QONI_AUTH_GRANT_ID,
+        code: process.env.QONI_AUTH_CODE,
+        state: process.env.QONI_AUTH_GRANT_STATE,
       });
-      await eak.gumem.recall({
+      await qoni.gumem.recall({
         token: completed.data.token,
         sessionId,
         query: "Can completed visible auth read live memory?",
@@ -296,7 +296,7 @@ async function runLiveSmoke() {
   }, null, 2));
 }
 
-function createMockEakServer(state) {
+function createMockQoniServer(state) {
   return http.createServer(async (request, response) => {
     const url = new URL(request.url || "/", "http://127.0.0.1");
     const body = await readBody(request);
@@ -311,10 +311,10 @@ function createMockEakServer(state) {
     });
 
     const baseUrl = `http://${request.headers.host}`;
-    if (request.method === "GET" && url.pathname === "/api/v3/eak/runtime-config") {
+    if (request.method === "GET" && url.pathname === "/api/v3/qoni/runtime-config") {
       json(response, {
         data: {
-          eakBaseUrl: baseUrl,
+          qoniBaseUrl: baseUrl,
           genauthBaseUrl: baseUrl,
           gumemBaseUrl: `${baseUrl}/gumem`,
           webAgentBaseUrl: `${baseUrl}/webagent`,
@@ -334,7 +334,7 @@ function createMockEakServer(state) {
       return;
     }
 
-    if (request.method === "POST" && url.pathname === "/api/v3/eak/delegations") {
+    if (request.method === "POST" && url.pathname === "/api/v3/qoni/delegations") {
       if (parsedBody.mode === "interactive") {
         json(response, {
           data: {
@@ -353,10 +353,10 @@ function createMockEakServer(state) {
           mode: "silent",
           tokenType: "Bearer",
           token: jwt({
-            token_type: "eak_delegation_token",
+            token_type: "qoni_delegation_token",
             aud: "genauth:token-exchange",
             sub: parsedBody.userId,
-            eak_tenant_id: "eak_tnt_smoke",
+            qoni_tenant_id: "qoni_tnt_smoke",
           }),
           expiresIn: 3600,
           grantId: "grant_silent_smoke",
@@ -368,27 +368,27 @@ function createMockEakServer(state) {
       return;
     }
 
-    if (request.method === "POST" && url.pathname === "/api/v3/eak/delegations/complete") {
+    if (request.method === "POST" && url.pathname === "/api/v3/qoni/delegations/complete") {
       json(response, {
         data: {
           mode: "interactive",
           tokenType: "Bearer",
           delegateAgentToken: jwt({
-            token_type: "eak_delegation_token",
+            token_type: "qoni_delegation_token",
             aud: "genauth:token-exchange",
             sub: "visible_user_smoke",
-            eak_tenant_id: "eak_tnt_smoke",
+            qoni_tenant_id: "qoni_tnt_smoke",
           }),
           expiresIn: 3600,
           grantId: parsedBody.grantId,
           auditId: "audit_complete_smoke",
-          grantedScopes: [EAKScopes.GUMEM_MEMORY_READ, EAKScopes.GUMEM_MEMORY_WRITE],
+          grantedScopes: [QoniScopes.GUMEM_MEMORY_READ, QoniScopes.GUMEM_MEMORY_WRITE],
         },
       });
       return;
     }
 
-    if (request.method === "POST" && url.pathname === "/api/v3/eak/delegations/introspect") {
+    if (request.method === "POST" && url.pathname === "/api/v3/qoni/delegations/introspect") {
       json(response, {
         data: {
           active: true,
@@ -399,7 +399,7 @@ function createMockEakServer(state) {
       return;
     }
 
-    if (request.method === "POST" && url.pathname === "/api/v3/eak/token-exchange") {
+    if (request.method === "POST" && url.pathname === "/api/v3/qoni/token-exchange") {
       state.tokenExchanges.push(parsedBody);
       const scopeKey = Array.isArray(parsedBody.scopes) ? parsedBody.scopes.join("_") : "none";
       json(response, {
@@ -482,7 +482,7 @@ function createMockEakServer(state) {
     if (url.pathname === "/gumem/api/user/actions/query" && request.method === "GET") {
       json(response, {
         data: {
-          results: [{ action: "viewed", target: "sdk-auth-gum-smoke" }],
+          results: [{ action: "viewed", target: "qoni-auth-gum-smoke" }],
           query: url.searchParams.get("query"),
         },
       });
@@ -492,7 +492,7 @@ function createMockEakServer(state) {
     if (url.pathname === "/gumem/api/user/actions/stream" && request.method === "GET") {
       json(response, {
         data: {
-          events: [{ action: "viewed", target: "sdk-auth-gum-smoke" }],
+          events: [{ action: "viewed", target: "qoni-auth-gum-smoke" }],
           limit: Number(url.searchParams.get("limit") || 0),
         },
       });
@@ -506,12 +506,12 @@ function createMockEakServer(state) {
 function assertCallsCoverMockFlow(state) {
   const paths = state.calls.map((call) => `${call.method} ${call.path}`);
   for (const expected of [
-    "GET /api/v3/eak/runtime-config",
+    "GET /api/v3/qoni/runtime-config",
     "GET /oidc/me",
-    "POST /api/v3/eak/delegations",
-    "POST /api/v3/eak/delegations/complete",
-    "POST /api/v3/eak/delegations/introspect",
-    "POST /api/v3/eak/token-exchange",
+    "POST /api/v3/qoni/delegations",
+    "POST /api/v3/qoni/delegations/complete",
+    "POST /api/v3/qoni/delegations/introspect",
+    "POST /api/v3/qoni/token-exchange",
     "POST /gumem/api/sessions",
     "POST /gumem/api/resources",
     "POST /gumem/api/user/actions",
@@ -531,10 +531,10 @@ function assertCallsCoverMockFlow(state) {
   );
 
   const writeExchange = state.tokenExchanges.find((exchange) =>
-    Array.isArray(exchange.scopes) && exchange.scopes.includes(EAKScopes.GUMEM_MEMORY_WRITE)
+    Array.isArray(exchange.scopes) && exchange.scopes.includes(QoniScopes.GUMEM_MEMORY_WRITE)
   );
   const readExchange = state.tokenExchanges.find((exchange) =>
-    Array.isArray(exchange.scopes) && exchange.scopes.includes(EAKScopes.GUMEM_MEMORY_READ)
+    Array.isArray(exchange.scopes) && exchange.scopes.includes(QoniScopes.GUMEM_MEMORY_READ)
   );
   assert(writeExchange, "covered write-scope product token exchange");
   assert(readExchange, "covered read-scope product token exchange");

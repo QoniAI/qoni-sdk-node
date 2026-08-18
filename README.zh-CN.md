@@ -1,21 +1,21 @@
-# @eazo/eak
+# @qoniai/qoni
 
 [English](./README.md) | 中文
 
-`@eazo/eak` 是面向 Node.js 服务端的统一 EAK SDK，用一条清晰的调用链串起 Agent 委托授权、GenAuth 用户管理、GUMem 长期记忆、WebAgent 网页行动、Do Anything、Web Search 和 Track 监控能力。
+`@qoniai/qoni` 是面向 Node.js 服务端的统一 Qoni SDK，用一条清晰的调用链串起 Agent 委托授权、GenAuth 用户管理、GUMem 长期记忆、WebAgent 网页行动、Do Anything、Web Search 和 Track 监控能力。
 
 当一个 Agent 真正开始帮用户做事时，它不能只拿一把后台密钥到处调用接口。它需要知道用户是谁、用户允许它做什么、这次授权什么时候过期、页面里发生了什么、最后每一步能不能被追溯。
 
-`@eazo/eak` 解决的是两类服务端调用：运行时产品调用时，应用服务端先确认 GenAuth 用户，再通过 `delegateToken` 申请短期委托 token，之后每次 GUMem/WebAgent/Do Anything/Web Search/Track 调用都把这个 token 传入 `token` 字段；GenAuth 用户管理调用时，SDK 会用 EAK AK/SK 换取标准 GenAuth management token，再调用 GenAuth v3 users API。
+`@qoniai/qoni` 解决的是两类服务端调用：运行时产品调用时，应用服务端先确认 GenAuth 用户，再通过 `delegateToken` 申请短期委托 token，之后每次 GUMem/WebAgent/Do Anything/Web Search/Track 调用都把这个 token 传入 `token` 字段；GenAuth 用户管理调用时，SDK 会用 Qoni AK/SK 换取标准 GenAuth management token，再调用 GenAuth v3 users API。
 
 AK/SK 必须只保存在可信服务端，不能下发到浏览器、移动端、公开 CLI 配置或其他不可信运行环境。
 
-## 为什么使用 EAK
+## 为什么使用 Qoni
 
-EAK 把 Agent 授权模型收敛成几个稳定边界：
+Qoni 把 Agent 授权模型收敛成几个稳定边界：
 
-- 一个 SDK 入口：`new EazoAgentKit({ accessKey, secretKey })`。
-- 一条发现路径：`host` 可在私有化或本地部署中覆盖 EAK Console/SDK 网关，SDK 通过 `/api/v3/eak/runtime-config` 获取 GenAuth、GUMem、WebAgent 等运行时地址。
+- 一个 SDK 入口：`new QoniAgentKit({ accessKey, secretKey })`。
+- 一条发现路径：`host` 可在私有化或本地部署中覆盖 Qoni Console/SDK 网关，SDK 通过 `/api/v3/qoni/runtime-config` 获取 GenAuth、GUMem、WebAgent 等运行时地址。
 - 一个授权入口：调用 `delegateToken`；silent 模式直接返回 `data.token`，interactive 模式返回授权 URL，之后由业务服务端完成兑换。
 - 一条管理面路径：调用 `genauth.users.*`，SDK 会先用 AK/SK 换取 GenAuth management token，再调用 GenAuth v3 users API。
 - 一组能力命名空间：`genauth`、`gumem`、`webSearch`、`doAnything`、`track`。
@@ -25,45 +25,45 @@ EAK 把 Agent 授权模型收敛成几个稳定边界：
 ## 安装
 
 ```bash
-npm install @eazo/eak
+npm install @qoniai/qoni
 # 或
-pnpm add @eazo/eak
+pnpm add @qoniai/qoni
 # 或
-yarn add @eazo/eak
+yarn add @qoniai/qoni
 ```
 
 运行要求：
 
 - Node.js 18 或更高版本。
 - 服务端运行环境提供 `fetch`。
-- 在 EAK Console 创建的 `accessKey` 与 `secretKey`。
-- silent 运行时产品调用需要一个来自该 EAK credential 绑定 GenAuth userpool 的真实用户 ID。Smoke 测试可以通过 `EAK_USER_ID` 传入，或调用 `eak.resolveAnyBoundUser()` 取绑定 userpool 里的第一个用户；业务代码中应通过 `currentUser` 或服务端已有登录态解析。interactive 委托创建时可以不传 `user` 或 `userId`，因为 EAK Console/BFF 会在授权过程中处理 GenAuth 登录。
-- `genauth.users.*` 管理面调用不需要 `EAK_USER_ID`。SDK 会用 AK/SK 向 EAK 换取 GenAuth management token。
-- 可选的 `host`，用于私有化或本地部署；托管版 EAK 通常保持未传。
+- 在 Qoni Console 创建的 `accessKey` 与 `secretKey`。
+- silent 运行时产品调用需要一个来自该 Qoni credential 绑定 GenAuth userpool 的真实用户 ID。Smoke 测试可以通过 `QONI_USER_ID` 传入，或调用 `qoni.resolveAnyBoundUser()` 取绑定 userpool 里的第一个用户；业务代码中应通过 `currentUser` 或服务端已有登录态解析。interactive 委托创建时可以不传 `user` 或 `userId`，因为 Qoni Console/BFF 会在授权过程中处理 GenAuth 登录。
+- `genauth.users.*` 管理面调用不需要 `QONI_USER_ID`。SDK 会用 AK/SK 向 Qoni 换取 GenAuth management token。
+- 可选的 `host`，用于私有化或本地部署；托管版 Qoni 通常保持未传。
 
-正常初始化 SDK 时不需要传 `tenantId`。EAK AK/SK 已经在服务端绑定了租户和应用边界。
+正常初始化 SDK 时不需要传 `tenantId`。Qoni AK/SK 已经在服务端绑定了租户和应用边界。
 
 包同时发布 ESM 和 CommonJS 两套构建（都带 TypeScript 类型），两种引入方式都可用：
 
 ```ts
-import { EazoAgentKit } from "@eazo/eak";        // ESM / TypeScript
-const { EazoAgentKit } = require("@eazo/eak");    // CommonJS
+import { QoniAgentKit } from "@qoniai/qoni";        // ESM / TypeScript
+const { QoniAgentKit } = require("@qoniai/qoni");    // CommonJS
 ```
 
 ## AI Skill
 
-`@eazo/eak` 不应该只给人读文档，也应该让 AI 工具能直接理解 SDK 的能力边界。可以通过 Skill 让 Codex、Claude Code 或内部 Agent 按同一套授权模型调用 EAK。
+`@qoniai/qoni` 不应该只给人读文档，也应该让 AI 工具能直接理解 SDK 的能力边界。可以通过 Skill 让 Codex、Claude Code 或内部 Agent 按同一套授权模型调用 Qoni。
 
-安装 EAK Skill：
+安装 Qoni Skill：
 
 ```bash
-npx skills add https://github.com/EazoAI/eak-sdk-node --skill eak-sdk
+npx skills add https://github.com/QONIAI/qoni-sdk-node --skill qoni-sdk
 ```
 
 如果只想安装到 Claude Code，可以指定 Agent：
 
 ```bash
-npx skills add https://github.com/EazoAI/eak-sdk-node --agent claude-code --skill eak-sdk
+npx skills add https://github.com/QONIAI/qoni-sdk-node --agent claude-code --skill qoni-sdk
 ```
 
 npm 包中包含 `skills/` 目录，但推荐仍使用上面的 GitHub 仓库安装命令，这样 AI 工具可以读取仓库内的 Skill 元数据。
@@ -74,63 +74,63 @@ npm 包中包含 `skills/` 目录，但推荐仍使用上面的 GitHub 仓库安
 
 ```ts
 import fs from "node:fs";
-import { EazoAgentKit } from "@eazo/eak";
+import { QoniAgentKit } from "@qoniai/qoni";
 
-const eak = new EazoAgentKit({
-  accessKey: process.env.EAK_ACCESS_KEY!,
-  secretKey: process.env.EAK_SECRET_KEY!,
+const qoni = new QoniAgentKit({
+  accessKey: process.env.QONI_ACCESS_KEY!,
+  secretKey: process.env.QONI_SECRET_KEY!,
 });
 ```
 
 ### GenAuth 用户管理
 
-`genauth.users.*` 属于管理面能力，不需要 `EAK_USER_ID` 或 `delegateToken`。SDK 会在内部签名请求 `POST /api/v3/eak/genauth/admin-token`，请求体是 `{}`，拿到 GenAuth management token 和 `userPoolId` 后再调用 GenAuth v3 users API。
+`genauth.users.*` 属于管理面能力，不需要 `QONI_USER_ID` 或 `delegateToken`。SDK 会在内部签名请求 `POST /api/v3/qoni/genauth/admin-token`，请求体是 `{}`，拿到 GenAuth management token 和 `userPoolId` 后再调用 GenAuth v3 users API。
 
 ```ts
-const users = await eak.genauth.users.list({
+const users = await qoni.genauth.users.list({
   page: 1,
   limit: 20,
 });
 
 console.log("GenAuth users:", users.data);
 
-const created = await eak.genauth.users.create<{ userId: string }>({
+const created = await qoni.genauth.users.create<{ userId: string }>({
   username: `sdk-demo-${Date.now()}`,
   password: process.env.GENAUTH_DEMO_USER_PASSWORD!,
 });
 
-const profile = await eak.genauth.users.get<{ userId: string }>({
+const profile = await qoni.genauth.users.get<{ userId: string }>({
   userId: created.data.userId,
 });
 
-await eak.genauth.users.update({
+await qoni.genauth.users.update({
   userId: profile.data.userId,
   nickname: "SDK demo user",
 });
 
 // Smoke 测试结束后可以清理测试用户：
-// await eak.genauth.users.deleteBatch({ userIds: [profile.data.userId] });
+// await qoni.genauth.users.deleteBatch({ userIds: [profile.data.userId] });
 ```
 
 ### 运行时产品委托
 
-GUMem、WebAgent、Do Anything、Web Search、Track 是代表终端用户执行的运行时产品能力。silent 委托需要一个来自 EAK credential 绑定 userpool 的真实 GenAuth 用户 ID，再使用 `delegateToken` 返回的 token。
+GUMem、WebAgent、Do Anything、Web Search、Track 是代表终端用户执行的运行时产品能力。silent 委托需要一个来自 Qoni credential 绑定 userpool 的真实 GenAuth 用户 ID，再使用 `delegateToken` 返回的 token。
 
 ```ts
-const userId = process.env.EAK_USER_ID!;
+const userId = process.env.QONI_USER_ID!;
 if (!userId) {
-  throw new Error("EAK_USER_ID 必须是 credential 绑定 userpool 下的真实 GenAuth 用户 ID");
+  throw new Error("QONI_USER_ID 必须是 credential 绑定 userpool 下的真实 GenAuth 用户 ID");
 }
 
 // `products` 是按产品授权的糖；`agent` 可以不传，默认 "sdk"。
 const { token } = (
-  await eak.delegateToken({
+  await qoni.delegateToken({
     user: { id: userId },
     products: ["doAnything"],
   })
 ).data;
 
-const run = await eak.doAnything.run({
+const run = await qoni.doAnything.run({
   token, // 入口传一次，句柄随后持有——句柄方法不再传 token
   prompt: "打开 https://en.wikipedia.org/wiki/Singapore ，总结新加坡的关键信息（首都、人口、货币）。",
   capture: { screenshots: true },
@@ -148,39 +148,39 @@ console.log(result.output);
 
 `run()` 返回一个 `RunHandle`。核心事件（状态、动作、交互、完成）始终默认推送；`capture: { screenshots: true }` 开启逐步截图，并且 SDK 已经把图片解码成字节。`wait()` 把任务跑到终态，并从权威 run envelope 结算结果（成本、步数、token 用量都在 `result.raw` 上）。
 
-需要逐步控制时，直接消费事件流，`switch (event.type)` 用 `EAKEventTypes` 常量匹配。每个产品的 handle 按产品分型（`eak.deepResearch.run()` 出来是 `RunHandle<DeepResearchEvent>`），TS 里写错产品的事件会编译报错、补全只列本产品的。内部细节（supervisor 编排、子 agent 点击/输入、telemetry）统一折叠成 `EAKEventTypes.Progress`；匹配到 `case` 后 `event.data` 就是该类型的固定形状。原始 wire 类型不导出。
+需要逐步控制时，直接消费事件流，`switch (event.type)` 用 `QoniEventTypes` 常量匹配。每个产品的 handle 按产品分型（`qoni.deepResearch.run()` 出来是 `RunHandle<DeepResearchEvent>`），TS 里写错产品的事件会编译报错、补全只列本产品的。内部细节（supervisor 编排、子 agent 点击/输入、telemetry）统一折叠成 `QoniEventTypes.Progress`；匹配到 `case` 后 `event.data` 就是该类型的固定形状。原始 wire 类型不导出。
 
 ```ts
-import { EAKEventTypes } from "@eazo/eak";
+import { QoniEventTypes } from "@qoniai/qoni";
 
-const run = await eak.deepResearch.run({ token, prompt: "欧盟电池回收行业 2026 年现状" }); // RunHandle<DeepResearchEvent>
+const run = await qoni.deepResearch.run({ token, prompt: "欧盟电池回收行业 2026 年现状" }); // RunHandle<DeepResearchEvent>
 
 for await (const event of run.events()) {
   switch (event.type) {
-    case EAKEventTypes.Progress:      console.log(event.data); break; // data 直接就是那句话(string)
-    case EAKEventTypes.Phase:         console.log(event.data); break; // data 直接就是阶段名(string)
-    case EAKEventTypes.SectionReady:  console.log(event.data); break; // data 直接就是章节标题(string)
-    case EAKEventTypes.Message:       console.log(event.data.text); break; // 丰富 → { text, role }
-    case EAKEventTypes.Interaction: {                                      // 丰富 → 带类型的 Interaction 对象
+    case QoniEventTypes.Progress:      console.log(event.data); break; // data 直接就是那句话(string)
+    case QoniEventTypes.Phase:         console.log(event.data); break; // data 直接就是阶段名(string)
+    case QoniEventTypes.SectionReady:  console.log(event.data); break; // data 直接就是章节标题(string)
+    case QoniEventTypes.Message:       console.log(event.data.text); break; // 丰富 → { text, role }
+    case QoniEventTypes.Interaction: {                                      // 丰富 → 带类型的 Interaction 对象
       const i = run.interactionHandle(event.data);                         // 例如大纲审批的 confirmation
       if (i.can("confirm")) await i.confirm();
       break;
     }
-    case EAKEventTypes.Done:          console.log(event.data.output); break; // 丰富 → 终态
-    // case EAKEventTypes.ResultsReady —— Web Search 才有，写这里 TS 编译报错
+    case QoniEventTypes.Done:          console.log(event.data.output); break; // 丰富 → 终态
+    // case QoniEventTypes.ResultsReady —— Web Search 才有，写这里 TS 编译报错
   }
   // event.runId / event.at / event.isTerminal / event.raw（逃生舱）
 }
-// 迭代器在终态（EAKEventTypes.Done）事件后自动结束。
+// 迭代器在终态（QoniEventTypes.Done）事件后自动结束。
 // 注:分型的编译期拦截是 TS 的能力;纯 JS 没类型检查,写错产品事件不报错、只是不触发。
 
 await run.cancel("用户停止任务"); // 幂等——对已结束的 run 调用也不会抛错
-const followUp = await eak.doAnything.run({
+const followUp = await qoni.doAnything.run({
   token,
   prompt: "再打开马来西亚的维基百科页面，把它的人口和新加坡做个对比。",
   session: run.sessionRef, // 复用同一个浏览器会话
 });
-const reattached = await eak.doAnything.attach(run.id, { token }); // 仅凭 run id 重连
+const reattached = await qoni.doAnything.attach(run.id, { token }); // 仅凭 run id 重连
 ```
 
 这里的关键点不是方法有多少，而是每一步都有边界：Agent 只能做 token 里 scope 允许的事情，授权过期后不能继续执行，后端可以通过 `auditId` 追溯这次行为。
@@ -189,19 +189,19 @@ const reattached = await eak.doAnything.attach(run.id, { token }); // 仅凭 run
 
 ### Runtime Discovery
 
-`host` 指向 EAK Console/SDK 网关，不直接指向 GenAuth、GUMem 或 WebAgent。托管版集成通常不传 `host`；私有化和本地部署可以传入自己的网关地址。
+`host` 指向 Qoni Console/SDK 网关，不直接指向 GenAuth、GUMem 或 WebAgent。托管版集成通常不传 `host`；私有化和本地部署可以传入自己的网关地址。
 
 SDK 会签名请求：
 
 ```text
-GET /api/v3/eak/runtime-config
+GET /api/v3/qoni/runtime-config
 ```
 
-返回值提供 EAK runtime、GenAuth、GUMem、WebAgent 等服务地址。普通业务代码不需要分别配置这些产品 URL。
+返回值提供 Qoni runtime、GenAuth、GUMem、WebAgent 等服务地址。普通业务代码不需要分别配置这些产品 URL。
 
 ### 服务端 AK/SK
 
-`accessKey` 和 `secretKey` 表示 EAK Console 中已经配置好的租户和应用边界。SDK 只在可信服务端用它们签名 EAK 请求，包括委托授权和产品 token exchange。
+`accessKey` 和 `secretKey` 表示 Qoni Console 中已经配置好的租户和应用边界。SDK 只在可信服务端用它们签名 Qoni 请求，包括委托授权和产品 token exchange。
 
 ### delegateToken
 
@@ -212,24 +212,24 @@ silent 模式下，`delegateToken` 绑定四件事：
 - 本次请求的 scopes。
 - token 过期时间与审计上下文。
 
-silent 产品能力方法传入 `token: delegation.data.token`。如果这个 token 是 EAK delegation token，SDK 会在内部换成 GUMem 或 WebAgent 所需的产品 access token，再调用下游服务。
+silent 产品能力方法传入 `token: delegation.data.token`。如果这个 token 是 Qoni delegation token，SDK 会在内部换成 GUMem 或 WebAgent 所需的产品 access token，再调用下游服务。
 
 **入参形态。** `delegateToken` 用 `mode` 判别：
 
-- **Silent**（`mode: "silent"`，默认）——代表某个终端用户,所以 user **必填**：传 `user: { id: <genauthUserId> }`（推荐）或已废弃的顶层 `userId`。不传会在请求发出前本地抛 `EAKValidationError`。授权用 `products` 语法糖和/或显式 `scopes`。
-- **Interactive**（`mode: "interactive"`）——传 `redirectUri`、`state`、`agent`、`scopes`，**不传** user（EAK Console 在授权时解析登录）。返回 `data.authorizationUrl` 而非 token；在服务端用 `completeDelegateToken({ grantId, code, state })` 完成。
+- **Silent**（`mode: "silent"`，默认）——代表某个终端用户,所以 user **必填**：传 `user: { id: <genauthUserId> }`（推荐）或已废弃的顶层 `userId`。不传会在请求发出前本地抛 `QoniValidationError`。授权用 `products` 语法糖和/或显式 `scopes`。
+- **Interactive**（`mode: "interactive"`）——传 `redirectUri`、`state`、`agent`、`scopes`，**不传** user（Qoni Console 在授权时解析登录）。返回 `data.authorizationUrl` 而非 token；在服务端用 `completeDelegateToken({ grantId, code, state })` 完成。
 
 `agent` 可选，默认 `"sdk"`。
 
 ```ts
-const delegation = await eak.delegateToken({
+const delegation = await qoni.delegateToken({
   userId,
   agent: "research-assistant",
   scopes: ["gumem.memory:read"],
   mode: "silent",
 });
 
-await eak.gumem.recall({
+await qoni.gumem.recall({
   token: delegation.data.token,
   query: "研究偏好",
 });
@@ -238,9 +238,9 @@ await eak.gumem.recall({
 interactive 模式下，业务服务端仍然先调用 `delegateToken`，但这一步不会拿到 token：
 
 ```ts
-const grant = await eak.delegateToken({
+const grant = await qoni.delegateToken({
   mode: "interactive",
-  redirectUri: "https://app.example.com/eak/callback",
+  redirectUri: "https://app.example.com/qoni/callback",
   state: "business-csrf-state",
   agent: "research-assistant",
   scopes: ["gumem.memory:read", "webagent.do_anything:manage"],
@@ -249,18 +249,18 @@ const grant = await eak.delegateToken({
 redirectUserTo(grant.data.authorizationUrl);
 ```
 
-用户访问 `authorizationUrl` 进入 EAK Console/BFF。若用户未登录，Console/BFF 会先走 GenAuth 登录；授权确认后由 Console/BFF 统一 complete，再回跳业务 `redirectUri`，只带一次性 `code`、业务 `state`、`grant_state`/`grantId`。浏览器不会拿到 delegation token。
+用户访问 `authorizationUrl` 进入 Qoni Console/BFF。若用户未登录，Console/BFF 会先走 GenAuth 登录；授权确认后由 Console/BFF 统一 complete，再回跳业务 `redirectUri`，只带一次性 `code`、业务 `state`、`grant_state`/`grantId`。浏览器不会拿到 delegation token。
 
 业务 callback handler 在服务端用 AK/SK 兑换最终 token：
 
 ```ts
-const completed = await eak.completeDelegateToken({
+const completed = await qoni.completeDelegateToken({
   grantId: String(req.query.grantId ?? req.query.grant_id),
   code: String(req.query.code),
   state: String(req.query.state),
 });
 
-await eak.gumem.recall({
+await qoni.gumem.recall({
   token: completed.data.token,
   query: "研究偏好",
 });
@@ -273,14 +273,14 @@ await eak.gumem.recall({
 每个 WebAgent 产品只有两个 scope：`read`（只读观察——状态、事件、产物）与 `manage`（一切改变执行状态的操作——发起、取消、应答、消息、监控的增删改）。全集共 8 个：`webagent.{do_anything, web_search, deep_research, track}:{read, manage}`。最简单的授权方式是 `products` 糖——每个产品名展开为该产品的 `read` + `manage` 一对：
 
 ```ts
-await eak.delegateToken({
+await qoni.delegateToken({
   user: { id: userId },
   products: ["doAnything", "webSearch", "deepResearch", "track"],
   scopes: ["gumem.memory:read"], // 可以和细粒度 scope 并用
 });
 ```
 
-scope 字符串在发请求前就会本地预检：漏掉服务前缀（比如写成 `do_anything:manage` 而不是 `webagent.do_anything:manage`）会立即抛出 `EAKValidationError`，错误消息里带正确写法。
+scope 字符串在发请求前就会本地预检：漏掉服务前缀（比如写成 `do_anything:manage` 而不是 `webagent.do_anything:manage`）会立即抛出 `QoniValidationError`，错误消息里带正确写法。
 
 需要让授权边界直接出现在业务代码里时，使用显式 scope 字符串。
 
@@ -300,7 +300,7 @@ scope 字符串在发请求前就会本地预检：漏掉服务前缀（比如�
 SDK 也导出了常见 GUMem 会话、写入、召回场景的 scope bundle：
 
 ```ts
-EAKScopeBundles.GUMEM_SESSION_RECALL
+QoniScopeBundles.GUMEM_SESSION_RECALL
 ```
 
 ## 能力示例
@@ -308,7 +308,7 @@ EAKScopeBundles.GUMEM_SESSION_RECALL
 ### GUMem
 
 ```ts
-await eak.gumem.createSession({
+await qoni.gumem.createSession({
   token,
   userId,
   sessionId: "daily-assistant",
@@ -319,7 +319,7 @@ await eak.gumem.createSession({
 const confirmedPreference =
   "请保持每日计划建议简洁，只给出下一步行动。";
 
-await eak.gumem.addMessages({
+await qoni.gumem.addMessages({
   token,
   sessionId: "daily-assistant",
   messages: [
@@ -334,7 +334,7 @@ await eak.gumem.addMessages({
   ],
 });
 
-const context = await eak.gumem.recall({
+const context = await qoni.gumem.recall({
   token,
   sessionId: "daily-assistant",
   query: "这个用户下一个任务需要考虑哪些已经确认的偏好？",
@@ -348,7 +348,7 @@ const context = await eak.gumem.recall({
 ### Do Anything
 
 ```ts
-const run = await eak.doAnything.run({
+const run = await qoni.doAnything.run({
   token,
   prompt: "打开 https://en.wikipedia.org/wiki/Solid-state_battery ，总结它相对锂离子电池的主要优势。",
 });
@@ -360,7 +360,7 @@ await run.cancel("用户停止任务"); // 幂等
 ### Web Search
 
 ```ts
-const search = await eak.webSearch.run({
+const search = await qoni.webSearch.run({
   token,
   prompt: "欧盟电池回收法规 2026",
   maxResultsPerQuery: 5,
@@ -373,7 +373,7 @@ console.log(result.output); // 搜索结果
 ### Deep Research
 
 ```ts
-const research = await eak.deepResearch.run({
+const research = await qoni.deepResearch.run({
   token,
   prompt: "欧盟电池回收行业 2026 年现状",
   depth: "standard", // light | standard | deep —— 调研深度，主要的旋钮
@@ -386,7 +386,7 @@ for (const artifact of report.artifacts) {
 }
 
 // 追问：起一个继承前序上下文的新 run。
-const followUp = await eak.deepResearch.run({
+const followUp = await qoni.deepResearch.run({
   token,
   prompt: "再对比一下 2025 年的数据。",
   session: research.sessionRef,
@@ -396,7 +396,7 @@ const followUp = await eak.deepResearch.run({
 ### Track
 
 ```ts
-const monitor = await eak.track.create({
+const monitor = await qoni.track.create({
   token,
   prompt: "每分钟监控一次比特币价格。",
 });
@@ -427,15 +427,15 @@ await monitor.resume();
 await monitor.delete();
 
 // 之后可以用存下来的 id 重连：
-const sameMonitor = await eak.track.attach(monitor.id, { token });
+const sameMonitor = await qoni.track.attach(monitor.id, { token });
 ```
 
 ### GenAuth 用户上下文与用户管理
 
 ```ts
-const client = new EazoAgentKit({
-  accessKey: process.env.EAK_ACCESS_KEY!,
-  secretKey: process.env.EAK_SECRET_KEY!,
+const client = new QoniAgentKit({
+  accessKey: process.env.QONI_ACCESS_KEY!,
+  secretKey: process.env.QONI_SECRET_KEY!,
 });
 
 const profile = await client.genauth.userInfo({
@@ -453,25 +453,25 @@ const created = await client.genauth.users.create({
 });
 ```
 
-`currentUser`、`genauth.userInfo` 使用 GenAuth access token 读取已登录用户身份。`genauth.users.*` 也属于管理面能力，但业务代码仍然用 EAK AK/SK 初始化 SDK：SDK 会签名请求 `POST /api/v3/eak/genauth/admin-token`，请求体是空 JSON `{}`，拿到标准 GenAuth management token 和 `userPoolId`，再携带 `Authorization: Bearer ...` 与 `x-authing-userpool-id` 调用 GenAuth v3 用户管理 API。这里不传 `resource`、`actions`、`expiresIn` 或 `EAK_USER_ID`。GUMem/WebAgent/Track 等运行时能力才使用 `delegateToken` 返回的 token。
+`currentUser`、`genauth.userInfo` 使用 GenAuth access token 读取已登录用户身份。`genauth.users.*` 也属于管理面能力，但业务代码仍然用 Qoni AK/SK 初始化 SDK：SDK 会签名请求 `POST /api/v3/qoni/genauth/admin-token`，请求体是空 JSON `{}`，拿到标准 GenAuth management token 和 `userPoolId`，再携带 `Authorization: Bearer ...` 与 `x-authing-userpool-id` 调用 GenAuth v3 用户管理 API。这里不传 `resource`、`actions`、`expiresIn` 或 `QONI_USER_ID`。GUMem/WebAgent/Track 等运行时能力才使用 `delegateToken` 返回的 token。
 
 ## API 概览
 
 ### Client
 
 ```ts
-const eak = new EazoAgentKit({
-  accessKey: process.env.EAK_ACCESS_KEY!,
-  secretKey: process.env.EAK_SECRET_KEY!,
+const qoni = new QoniAgentKit({
+  accessKey: process.env.QONI_ACCESS_KEY!,
+  secretKey: process.env.QONI_SECRET_KEY!,
   timeoutMs: 30_000,
 });
 ```
 
 | 参数 | 类型 | 必填 | 说明 |
 | --- | --- | --- | --- |
-| `accessKey` | `string` | 是 | EAK Console 创建的 access key。 |
-| `secretKey` | `string` | 是 | EAK Console 创建的 secret key。 |
-| `host` | `string` | 否 | 私有化或本地部署时可选的 EAK Console/SDK 网关覆盖地址。 |
+| `accessKey` | `string` | 是 | Qoni Console 创建的 access key。 |
+| `secretKey` | `string` | 是 | Qoni Console 创建的 secret key。 |
+| `host` | `string` | 否 | 私有化或本地部署时可选的 Qoni Console/SDK 网关覆盖地址。 |
 | `fetch` | `typeof fetch` | 否 | 自定义传输实现。 |
 | `timeoutMs` | `number` | 否 | 单次请求超时（连接 + 响应头），默认 `30000`。 |
 
@@ -480,7 +480,7 @@ const eak = new EazoAgentKit({
 兼容导出：
 
 ```ts
-import { EAK, EazoAgentKit } from "@eazo/eak";
+import { Qoni, QoniAgentKit } from "@qoniai/qoni";
 ```
 
 ### 命名空间
@@ -521,7 +521,7 @@ interface RunResult {
 }
 ```
 
-每个 `Artifact` 暴露 `id`、`name?`、`mime?`、`sizeBytes?`、`createdAt?` 和 `content(): Promise<Uint8Array>`（懒加载字节）。其余方法都返回下文的 `EAKResponse<T>` 信封,`T` 是该调用的具体载荷类型（例如 `genauth.users.list` → `.data` 上的分页用户列表）。`T` 的精确形状见随包的 `.d.ts`，与后端契约一致。
+每个 `Artifact` 暴露 `id`、`name?`、`mime?`、`sizeBytes?`、`createdAt?` 和 `content(): Promise<Uint8Array>`（懒加载字节）。其余方法都返回下文的 `QoniResponse<T>` 信封,`T` 是该调用的具体载荷类型（例如 `genauth.users.list` → `.data` 上的分页用户列表）。`T` 的精确形状见随包的 `.d.ts`，与后端契约一致。
 
 `MonitorHandle`（Track）提供 `id`、`get()`、`pause()`、`resume()`、`refine(patch)`、`runNow()`、`events()`、`interactionHandle()`、`runs()`、`run(runId)`、`delete()`。`runNow()` 和 `refine()` 要求 monitor 处于 `active`——新建的 monitor 会先短暂处于 `pending_clarification`（见上方 Track 示例）。
 
@@ -543,10 +543,10 @@ for await (const event of run.events()) {
 
 方法：`answer(text)`、`skip()`、`confirm()`、`reject()`、`openLogin()`、`confirmSignedIn()`、`connectControl()`、`refreshControl()`、`releaseControl()`、`retry()`、`switchProfile()`。`i.can(kind)` 判断该交互当前是否提供这个动作；调用后端没声明的方法会抛错（所以「恢复」按钮只有在真能用时才出现）。
 
-上面用到的判别字符串也都导出成了常量，避免裸写字面量：`InteractionTypes`（`site_login` / `clarification` / `confirmation` / `take_control` / `wait`）、`InteractionStatuses`、`ActionKinds`（`i.can(...)` 的动作名）。授权 scope 同样有：`EAKScopes`（每个单独 scope）、`EAKProductScopes`（`products` 语法糖展开成的 per-product `read`+`manage` 对）、`EAKScopeBundles`（精选 bundle）。用它们代替手写字符串：
+上面用到的判别字符串也都导出成了常量，避免裸写字面量：`InteractionTypes`（`site_login` / `clarification` / `confirmation` / `take_control` / `wait`）、`InteractionStatuses`、`ActionKinds`（`i.can(...)` 的动作名）。授权 scope 同样有：`QoniScopes`（每个单独 scope）、`QoniProductScopes`（`products` 语法糖展开成的 per-product `read`+`manage` 对）、`QoniScopeBundles`（精选 bundle）。用它们代替手写字符串：
 
 ```ts
-import { InteractionTypes, ActionKinds, EAKScopes } from "@eazo/eak";
+import { InteractionTypes, ActionKinds, QoniScopes } from "@qoniai/qoni";
 
 if (i.type === InteractionTypes.Clarification && i.can(ActionKinds.answer)) {
   await i.answer("蓝色那个按钮");
@@ -555,7 +555,7 @@ if (i.type === InteractionTypes.Clarification && i.can(ActionKinds.answer)) {
 
 ### Wire 级逃生舱
 
-与后端 HTTP 契约一一对应的低层方法保留在 `eak.<product>.api.*` 下（如 `eak.doAnything.api.createSession`、`eak.deepResearch.api.followUp`、`eak.track.api.createMonitor`）。这些方法直接镜像 wire 形状——snake_case 字段、双层 envelope 事件、run 操作统一走 `/{product}/runs/{run_id}` 单 ID 寻址——形状会随 API 演进变化，不在冻结的公开契约范围内。
+与后端 HTTP 契约一一对应的低层方法保留在 `qoni.<product>.api.*` 下（如 `qoni.doAnything.api.createSession`、`qoni.deepResearch.api.followUp`、`qoni.track.api.createMonitor`）。这些方法直接镜像 wire 形状——snake_case 字段、双层 envelope 事件、run 操作统一走 `/{product}/runs/{run_id}` 单 ID 寻址——形状会随 API 演进变化，不在冻结的公开契约范围内。
 
 原始 wire 事件类型（`run.action.started` 这种内部传输名，命名是历史遗留、也不一致）**不作为公开导出**——开发者按上面那套精选 `event.type` 匹配即可；极少数要精确 wire 的场景，`event.raw.event` 是个原始字符串，直接比对。
 
@@ -566,13 +566,13 @@ Browser Use、Site Login 的 scope 已预留，但产品运行时 SDK 方法导�
 大部分 SDK 方法返回：
 
 ```ts
-type EAKResponse<T> = {
+type QoniResponse<T> = {
   data: T;
   meta: {
     requestId?: string;
     traceId?: string;
     auditId?: string;
-    service?: "eak" | "genauth" | "gumem" | "webagent";
+    service?: "qoni" | "genauth" | "gumem" | "webagent";
   };
 };
 ```
@@ -608,10 +608,10 @@ type EAKResponse<T> = {
 
 断线会带 `Last-Event-ID` 自动重连续传；迭代器在终态事件后自动结束。
 
-Wire 级流式方法（`eak.<product>.api.events`）返回 `AsyncIterable<EAKEvent<T>>`：
+Wire 级流式方法（`qoni.<product>.api.events`）返回 `AsyncIterable<QoniEvent<T>>`：
 
 ```ts
-type EAKEvent<T = unknown> = {
+type QoniEvent<T = unknown> = {
   id?: string;
   event?: string;
   data: T;
@@ -620,49 +620,49 @@ type EAKEvent<T = unknown> = {
 
 ## 错误处理
 
-所有 SDK 错误都继承自 `EAKError`，并尽量暴露 `code`、`status`、`requestId`、`traceId`、`auditId`、`retryable` 和原始响应 `body`。`code` 的类型是 `EAKErrorCode`（已知 SDK / 后端 code 加 `(string & {})`），既有字面量自动补全、可对已知集做 `switch (err.code)` 穷尽处理，又兼容后端新增的 code。
+所有 SDK 错误都继承自 `QoniError`，并尽量暴露 `code`、`status`、`requestId`、`traceId`、`auditId`、`retryable` 和原始响应 `body`。`code` 的类型是 `QoniErrorCode`（已知 SDK / 后端 code 加 `(string & {})`），既有字面量自动补全、可对已知集做 `switch (err.code)` 穷尽处理，又兼容后端新增的 code。
 
 所有错误类都已导出，可用 `instanceof` 匹配：
 
 | 类 | 触发时机 | 典型处理 |
 | --- | --- | --- |
-| `EAKValidationError` | 请求发出前的本地校验失败（scope 字符串格式错、silent 委托缺 user）。 | 按消息修正调用——消息里给出正确写法。 |
-| `EAKAuthError` | AK/SK 签名被 EAK 拒绝（凭据错误/已轮换）。 | 检查 `accessKey` / `secretKey`。 |
-| `EAKPermissionDeniedError` | delegation token 缺所需 scope（403）。 | 带上缺失 scope 重新 `delegateToken`。 |
-| `EAKTokenExpiredError` | delegation / 产品 token 过期。 | 重新 mint token 再试。 |
-| `EAKDelegationRequiredError` | 产品调用没带 `token`，或带的是网关不接受的裸 token。 | 把 `delegation.data.token` 传给产品调用。 |
-| `EAKRateLimitError` | 被限流（429）。 | 退避后重试（`retryable === true`）。 |
-| `EAKTimeoutError` | 请求（或 `wait({ timeoutMs })`）超时。 | 重试；run 仍在服务端执行，可 `attach()` 回去。 |
-| `EAKUpstreamError` | 下游服务失败（5xx / 上游换 token 失败）。 | `retryable` 时退避后重试。 |
-| `EAKError` | 基类 / 其它 code。 | 看 `err.code`。 |
+| `QoniValidationError` | 请求发出前的本地校验失败（scope 字符串格式错、silent 委托缺 user）。 | 按消息修正调用——消息里给出正确写法。 |
+| `QoniAuthError` | AK/SK 签名被 Qoni 拒绝（凭据错误/已轮换）。 | 检查 `accessKey` / `secretKey`。 |
+| `QoniPermissionDeniedError` | delegation token 缺所需 scope（403）。 | 带上缺失 scope 重新 `delegateToken`。 |
+| `QoniTokenExpiredError` | delegation / 产品 token 过期。 | 重新 mint token 再试。 |
+| `QoniDelegationRequiredError` | 产品调用没带 `token`，或带的是网关不接受的裸 token。 | 把 `delegation.data.token` 传给产品调用。 |
+| `QoniRateLimitError` | 被限流（429）。 | 退避后重试（`retryable === true`）。 |
+| `QoniTimeoutError` | 请求（或 `wait({ timeoutMs })`）超时。 | 重试；run 仍在服务端执行，可 `attach()` 回去。 |
+| `QoniUpstreamError` | 下游服务失败（5xx / 上游换 token 失败）。 | `retryable` 时退避后重试。 |
+| `QoniError` | 基类 / 其它 code。 | 看 `err.code`。 |
 
 SDK **不会自动重试**。`err.retryable` 告诉你重试是否可能成功，退避由你自己实现。
 
 ```ts
 import {
-  EAKDelegationRequiredError,
-  EAKPermissionDeniedError,
-  EAKRateLimitError,
-  EAKTimeoutError,
-  EAKTokenExpiredError,
-  EAKUpstreamError,
-} from "@eazo/eak";
+  QoniDelegationRequiredError,
+  QoniPermissionDeniedError,
+  QoniRateLimitError,
+  QoniTimeoutError,
+  QoniTokenExpiredError,
+  QoniUpstreamError,
+} from "@qoniai/qoni";
 
 try {
-  await eak.webSearch.run({ token, prompt: "EAK SDK" });
+  await qoni.webSearch.run({ token, prompt: "Qoni SDK" });
 } catch (error) {
   if (
-    error instanceof EAKPermissionDeniedError ||
-    error instanceof EAKTokenExpiredError ||
-    error instanceof EAKDelegationRequiredError
+    error instanceof QoniPermissionDeniedError ||
+    error instanceof QoniTokenExpiredError ||
+    error instanceof QoniDelegationRequiredError
   ) {
     // 重新 mint delegation token（补上缺失 scope / 刷新过期）后重试。
   }
 
   if (
-    error instanceof EAKRateLimitError ||
-    error instanceof EAKTimeoutError ||
-    error instanceof EAKUpstreamError
+    error instanceof QoniRateLimitError ||
+    error instanceof QoniTimeoutError ||
+    error instanceof QoniUpstreamError
   ) {
     // 瞬时错误——`error.retryable` 为 true 时退避重试。
   }
@@ -676,12 +676,12 @@ try {
 | 错误 | 含义 | 下一步 |
 | --- | --- | --- |
 | `agent must be a string` | 当前线上 delegation API 期望 `agent` 是字符串 ID。 | 使用 `agent: "memory-agent"`，不要传对象。 |
-| `eak.delegation.user_not_bound` | `userId` 不属于该 EAK credential 绑定的 GenAuth userpool。 | 使用 `currentUser` 返回的真实用户 ID，或确认用户来自同一个绑定 userpool。 |
-| `eak.genauth.userpool_binding_missing` | AK/SK 没有绑定 GenAuth userpool，`genauth.users.*` 无法换取 management token。 | 先把 EAK credential 绑定到目标 GenAuth userpool。 |
-| `eak.genauth.userpool_owner_missing` | 绑定的 GenAuth userpool 找不到可用于签发 management token 的 owner 用户。 | 修复 GenAuth userpool owner 数据或绑定。 |
-| `eak.token_exchange.upstream_failed` 且包含 `unauthorized_client` 或 `grant_type is not enabled` | Delegation 已成功，但 managed delegation app 缺少 token-exchange grant，或租户绑定发生漂移。 | 先修复 managed delegation app 绑定，再调用 GUMem 或 WebAgent 产品能力。 |
+| `qoni.delegation.user_not_bound` | `userId` 不属于该 Qoni credential 绑定的 GenAuth userpool。 | 使用 `currentUser` 返回的真实用户 ID，或确认用户来自同一个绑定 userpool。 |
+| `qoni.genauth.userpool_binding_missing` | AK/SK 没有绑定 GenAuth userpool，`genauth.users.*` 无法换取 management token。 | 先把 Qoni credential 绑定到目标 GenAuth userpool。 |
+| `qoni.genauth.userpool_owner_missing` | 绑定的 GenAuth userpool 找不到可用于签发 management token 的 owner 用户。 | 修复 GenAuth userpool owner 数据或绑定。 |
+| `qoni.token_exchange.upstream_failed` 且包含 `unauthorized_client` 或 `grant_type is not enabled` | Delegation 已成功，但 managed delegation app 缺少 token-exchange grant，或租户绑定发生漂移。 | 先修复 managed delegation app 绑定，再调用 GUMem 或 WebAgent 产品能力。 |
 | `delegation.required` | GUMem/WebAgent 调用没有传 `token`。 | 把 `delegation.data.token` 传给产品能力方法。 |
-| `direct delegation token deprecated` | 应用直接把 EAK delegation token 打到了产品服务。 | 通过 SDK 调产品能力，让 SDK 在内部完成 token exchange。 |
+| `direct delegation token deprecated` | 应用直接把 Qoni delegation token 打到了产品服务。 | 通过 SDK 调产品能力，让 SDK 在内部完成 token exchange。 |
 
 ## 安全建议
 
@@ -690,7 +690,7 @@ try {
 - 每次 Agent 行动只申请必要 scope。
 - 浏览器接管、站点登录、长期监控、敏感产物访问优先使用 `interactive`。
 - 在业务日志中记录 `auditId`、`requestId`、`traceId`，方便后续审计。
-- 如果怀疑 AK/SK 泄露，应在 EAK Console 中轮换密钥。
+- 如果怀疑 AK/SK 泄露，应在 Qoni Console 中轮换密钥。
 
 ## License
 

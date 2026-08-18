@@ -4,15 +4,15 @@ import {
   it,
 } from "vitest";
 import {
-  EAKAuthError,
-  EAKDelegationRequiredError,
-  EAKPermissionDeniedError,
-  EAKRateLimitError,
-  EAKScopes,
-  EAKTimeoutError,
-  EAKTokenExpiredError,
-  EAKUpstreamError,
-  EazoAgentKit,
+  QoniAuthError,
+  QoniDelegationRequiredError,
+  QoniPermissionDeniedError,
+  QoniRateLimitError,
+  QoniScopes,
+  QoniTimeoutError,
+  QoniTokenExpiredError,
+  QoniUpstreamError,
+  QoniAgentKit,
 } from "../src";
 
 type CapturedCall = {
@@ -57,10 +57,10 @@ function createHarness() {
     };
     calls.push(call);
 
-    if (url.pathname.endsWith("/api/v3/eak/runtime-config")) {
+    if (url.pathname.endsWith("/api/v3/qoni/runtime-config")) {
       return jsonResponse({
         data: {
-          eakBaseUrl: "https://eak.example.com",
+          qoniBaseUrl: "https://qoni.example.com",
           genauthBaseUrl: "https://genauth.example.com",
           gumemBaseUrl: "https://gumem.example.com",
           webAgentBaseUrl: "https://webagent.example.com",
@@ -68,7 +68,7 @@ function createHarness() {
       });
     }
 
-    if (url.pathname === "/api/v3/eak/token-exchange") {
+    if (url.pathname === "/api/v3/qoni/token-exchange") {
       const body = call.body as { resource?: string; scopes?: string[] };
       return jsonResponse({
         data: {
@@ -87,7 +87,7 @@ function createHarness() {
       });
     }
 
-    if (url.pathname === "/api/v3/eak/genauth/admin-token") {
+    if (url.pathname === "/api/v3/qoni/genauth/admin-token") {
       return jsonResponse({
         data: { accessToken: "genauth-admin-token", userPoolId: "pool_matrix", expiresIn: 3600 },
       });
@@ -122,13 +122,13 @@ function createHarness() {
       });
     }
 
-    if (url.pathname === "/api/v3/eak/delegations" && call.method === "POST") {
+    if (url.pathname === "/api/v3/qoni/delegations" && call.method === "POST") {
       const body = call.body as { mode?: string; scopes?: string[] };
       if (body.mode === "interactive") {
         return jsonResponse({
           data: {
             mode: "interactive",
-            authorizationUrl: "https://eak.example.com/authorize?grant_id=grant_matrix",
+            authorizationUrl: "https://qoni.example.com/authorize?grant_id=grant_matrix",
             grantId: "grant_matrix",
             grantState: "state_matrix",
             requestedScopes: body.scopes,
@@ -140,7 +140,7 @@ function createHarness() {
           mode: "silent",
           tokenType: "Bearer",
           token: jwt({
-            token_type: "eak_delegation_token",
+            token_type: "qoni_delegation_token",
             sub: "user_matrix",
             webagent_tenant_id: "tenant_matrix",
           }),
@@ -152,12 +152,12 @@ function createHarness() {
       });
     }
 
-    if (url.pathname === "/api/v3/eak/delegations/complete") {
+    if (url.pathname === "/api/v3/qoni/delegations/complete") {
       return jsonResponse({
         data: {
           mode: "interactive",
           tokenType: "Bearer",
-          token: jwt({ token_type: "eak_delegation_token", webagent_tenant_id: "tenant_matrix" }),
+          token: jwt({ token_type: "qoni_delegation_token", webagent_tenant_id: "tenant_matrix" }),
           expiresIn: 3600,
           grantId: "grant_matrix",
           auditId: "audit_matrix",
@@ -168,10 +168,10 @@ function createHarness() {
     return jsonResponse({ data: { ok: true, id: "id_matrix", path: url.pathname } });
   }) as typeof fetch;
 
-  const client = new EazoAgentKit({
+  const client = new QoniAgentKit({
     accessKey: "ak_matrix",
     secretKey: "sk_matrix",
-    host: "https://eak.example.com/dashboard",
+    host: "https://qoni.example.com/dashboard",
     timeoutMs: 500,
     fetch: fetchImpl,
   });
@@ -211,7 +211,7 @@ function normalizeHeaders(headers: HeadersInit | undefined): Record<string, stri
 
 function delegationToken(): string {
   return jwt({
-    token_type: "eak_delegation_token",
+    token_type: "qoni_delegation_token",
     sub: "user_matrix",
     webagent_tenant_id: "tenant_matrix",
   });
@@ -219,14 +219,14 @@ function delegationToken(): string {
 
 describe("complete public method coverage matrix", () => {
   describe("constructor/auth/runtime-config/delegation/currentUser/raw request", () => {
-    describe("eak namespace", () => {
-      it("only exposes delegation helpers and does not expose EAK management-plane helpers", () => {
+    describe("qoni namespace", () => {
+      it("only exposes delegation helpers and does not expose Qoni management-plane helpers", () => {
         const h = createHarness();
 
-        expect(h.client.eak).toHaveProperty("delegateToken");
-        expect(h.client.eak).toHaveProperty("completeDelegateToken");
-        expect(h.client.eak).not.toHaveProperty("workspaces");
-        expect(h.client.eak).not.toHaveProperty("credentials");
+        expect(h.client.qoni).toHaveProperty("delegateToken");
+        expect(h.client.qoni).toHaveProperty("completeDelegateToken");
+        expect(h.client.qoni).not.toHaveProperty("workspaces");
+        expect(h.client.qoni).not.toHaveProperty("credentials");
       });
     });
 
@@ -239,14 +239,14 @@ describe("complete public method coverage matrix", () => {
           user: { id: "user_matrix", email: "user@example.com" },
           userId: "legacy_user_matrix",
           agent: "agent_matrix",
-          scopes: [EAKScopes.GUMEM_MEMORY_READ],
+          scopes: [QoniScopes.GUMEM_MEMORY_READ],
           expiresIn: "3600",
           idempotencyKey: "idem_matrix",
           redirectUri: "https://app.example.com/callback",
           state: "business_state",
         });
 
-        const call = h.byPath("/api/v3/eak/delegations")[0];
+        const call = h.byPath("/api/v3/qoni/delegations")[0];
         expect(call.method).toBe("POST");
         expect(call.headers.authorization).toMatch(/^authing ak_matrix:/);
         expect(call.body).toMatchObject({
@@ -254,7 +254,7 @@ describe("complete public method coverage matrix", () => {
           user: { id: "user_matrix", email: "user@example.com" },
           userId: "legacy_user_matrix",
           agent: "agent_matrix",
-          scopes: [EAKScopes.GUMEM_MEMORY_READ],
+          scopes: [QoniScopes.GUMEM_MEMORY_READ],
           expiresIn: "3600",
           idempotencyKey: "idem_matrix",
           redirectUri: "https://app.example.com/callback",
@@ -274,7 +274,7 @@ describe("complete public method coverage matrix", () => {
           state: "state_matrix",
         });
 
-        expect(h.byPath("/api/v3/eak/delegations/complete")[0].body).toEqual({
+        expect(h.byPath("/api/v3/qoni/delegations/complete")[0].body).toEqual({
           grantId: "grant_matrix",
           code: "code_matrix",
           state: "state_matrix",
@@ -283,7 +283,7 @@ describe("complete public method coverage matrix", () => {
     });
 
     describe("request", () => {
-      it("passes method, path, query, body, headers, and bearer token through the EAK host", async () => {
+      it("passes method, path, query, body, headers, and bearer token through the Qoni host", async () => {
         const h = createHarness();
 
         await h.client.request({
@@ -320,7 +320,7 @@ describe("complete public method coverage matrix", () => {
           { pathname: "/oidc/.well-known/jwks.json", method: "GET" },
           { pathname: "/oidc/.well-known/openid-configuration", method: "GET" },
           {
-            pathname: "/api/v3/eak/delegations/introspect",
+            pathname: "/api/v3/qoni/delegations/introspect",
             method: "POST",
             body: { token: "legacy-token" },
           },
@@ -367,7 +367,7 @@ describe("complete public method coverage matrix", () => {
           userIds: ["user_matrix"],
         });
 
-        expect(h.byPath("/api/v3/eak/genauth/admin-token")).toHaveLength(1);
+        expect(h.byPath("/api/v3/qoni/genauth/admin-token")).toHaveLength(1);
         expect(h.calls.slice(-7)).toMatchObject([
           {
             pathname: "/api/v3/list-users",
@@ -525,7 +525,7 @@ describe("complete public method coverage matrix", () => {
 
         await h.client.webSearch.api.run({
           token,
-          queries: ["eak sdk"],
+          queries: ["qoni sdk"],
           maxResultsPerQuery: 5,
           siteWhitelist: ["eazo.ai"],
           siteBlacklist: ["example.net"],
@@ -542,7 +542,7 @@ describe("complete public method coverage matrix", () => {
             pathname: "/api/v1/projects/tenant_matrix/web_search/runs",
             method: "POST",
             body: {
-              queries: ["eak sdk"],
+              queries: ["qoni sdk"],
               max_results_per_query: 5,
               site_whitelist: ["eazo.ai"],
               site_blacklist: ["example.net"],
@@ -762,19 +762,19 @@ describe("complete public method coverage matrix", () => {
   describe("stable error behavior", () => {
     it("maps HTTP and envelope errors to typed SDK errors", async () => {
       const cases = [
-        { status: 401, code: "eak.auth.invalid", klass: EAKAuthError },
-        { status: 403, code: "delegation.required", klass: EAKDelegationRequiredError },
-        { status: 403, code: "scope is not allowed", klass: EAKPermissionDeniedError },
-        { status: 401, code: "token expired", klass: EAKTokenExpiredError },
-        { status: 429, code: "rate_limit", klass: EAKRateLimitError },
-        { status: 502, code: "upstream unavailable", klass: EAKUpstreamError },
+        { status: 401, code: "qoni.auth.invalid", klass: QoniAuthError },
+        { status: 403, code: "delegation.required", klass: QoniDelegationRequiredError },
+        { status: 403, code: "scope is not allowed", klass: QoniPermissionDeniedError },
+        { status: 401, code: "token expired", klass: QoniTokenExpiredError },
+        { status: 429, code: "rate_limit", klass: QoniRateLimitError },
+        { status: 502, code: "upstream unavailable", klass: QoniUpstreamError },
       ] as const;
 
       for (const item of cases) {
-        const client = new EazoAgentKit({
+        const client = new QoniAgentKit({
           accessKey: "ak_matrix",
           secretKey: "sk_matrix",
-          host: "https://eak.example.com",
+          host: "https://qoni.example.com",
           fetch: (async () =>
             jsonResponse({ statusCode: item.status, message: item.code, apiCode: item.code })) as typeof fetch,
         });
@@ -789,11 +789,11 @@ describe("complete public method coverage matrix", () => {
       }
     });
 
-    it("wraps request timeouts in EAKTimeoutError", async () => {
-      const client = new EazoAgentKit({
+    it("wraps request timeouts in QoniTimeoutError", async () => {
+      const client = new QoniAgentKit({
         accessKey: "ak_matrix",
         secretKey: "sk_matrix",
-        host: "https://eak.example.com",
+        host: "https://qoni.example.com",
         timeoutMs: 1,
         fetch: ((_url: URL | RequestInfo, init?: RequestInit) =>
           new Promise((_resolve, reject) => {
@@ -811,19 +811,19 @@ describe("complete public method coverage matrix", () => {
           agent: "agent_matrix",
           scopes: ["gumem.memory:read"],
         }),
-      ).rejects.toBeInstanceOf(EAKTimeoutError);
+      ).rejects.toBeInstanceOf(QoniTimeoutError);
     });
 
-    it("wraps fetch connect timeouts in EAKTimeoutError", async () => {
+    it("wraps fetch connect timeouts in QoniTimeoutError", async () => {
       const fetchError = new TypeError("fetch failed");
       (fetchError as Error & { cause?: unknown }).cause = {
         name: "ConnectTimeoutError",
         code: "UND_ERR_CONNECT_TIMEOUT",
       };
-      const client = new EazoAgentKit({
+      const client = new QoniAgentKit({
         accessKey: "ak_matrix",
         secretKey: "sk_matrix",
-        host: "https://eak.example.com",
+        host: "https://qoni.example.com",
         fetch: (async () => {
           throw fetchError;
         }) as typeof fetch,
@@ -835,14 +835,14 @@ describe("complete public method coverage matrix", () => {
           agent: "agent_matrix",
           scopes: ["gumem.memory:read"],
         }),
-      ).rejects.toBeInstanceOf(EAKTimeoutError);
+      ).rejects.toBeInstanceOf(QoniTimeoutError);
     });
 
-    it("wraps fetch network failures in retryable EAKUpstreamError", async () => {
-      const client = new EazoAgentKit({
+    it("wraps fetch network failures in retryable QoniUpstreamError", async () => {
+      const client = new QoniAgentKit({
         accessKey: "ak_matrix",
         secretKey: "sk_matrix",
-        host: "https://eak.example.com",
+        host: "https://qoni.example.com",
         fetch: (async () => {
           throw new TypeError("fetch failed");
         }) as typeof fetch,
@@ -855,7 +855,7 @@ describe("complete public method coverage matrix", () => {
           scopes: ["gumem.memory:read"],
         }),
       ).rejects.toMatchObject({
-        name: "EAKUpstreamError",
+        name: "QoniUpstreamError",
         code: "upstream.failed",
         retryable: true,
       });

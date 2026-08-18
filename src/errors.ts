@@ -2,14 +2,14 @@ import { KNOWN_SCOPES } from "./scopes";
 import { isJsonObject, type JsonObject } from "./types";
 
 /**
- * Known `EAKError.code` values. The SDK assigns the `*.*` codes; the `eak.*`
+ * Known `QoniError.code` values. The SDK assigns the `*.*` codes; the `qoni.*`
  * codes are backend apiCodes surfaced verbatim. The trailing `(string & {})`
  * keeps `code` assignable from any string (the backend may add new codes)
  * while still giving literal autocomplete and letting you write an exhaustive
  * `switch (err.code)` over the known set.
  */
-export type EAKErrorCode =
-  | "eak_error"
+export type QoniErrorCode =
+  | "qoni_error"
   | "auth.failed"
   | "delegation.required"
   | "permission_denied"
@@ -20,16 +20,16 @@ export type EAKErrorCode =
   | "timeout"
   | "not_found"
   | "conflict"
-  | "eak.delegation.user_not_bound"
-  | "eak.genauth.userpool_binding_missing"
-  | "eak.genauth.userpool_owner_missing"
-  | "eak.genauth.no_bound_users"
-  | "eak.token_exchange.upstream_failed"
+  | "qoni.delegation.user_not_bound"
+  | "qoni.genauth.userpool_binding_missing"
+  | "qoni.genauth.userpool_owner_missing"
+  | "qoni.genauth.no_bound_users"
+  | "qoni.token_exchange.upstream_failed"
   // eslint-disable-next-line @typescript-eslint/ban-types
   | (string & {});
 
-export interface EAKErrorOptions {
-  code?: EAKErrorCode;
+export interface QoniErrorOptions {
+  code?: QoniErrorCode;
   status?: number;
   requestId?: string;
   traceId?: string;
@@ -39,8 +39,8 @@ export interface EAKErrorOptions {
   cause?: unknown;
 }
 
-export class EAKError extends Error {
-  readonly code: EAKErrorCode;
+export class QoniError extends Error {
+  readonly code: QoniErrorCode;
   readonly status?: number;
   readonly requestId?: string;
   readonly traceId?: string;
@@ -48,10 +48,10 @@ export class EAKError extends Error {
   readonly retryable: boolean;
   readonly body?: unknown;
 
-  constructor(message: string, options: EAKErrorOptions = {}) {
+  constructor(message: string, options: QoniErrorOptions = {}) {
     super(message);
-    this.name = "EAKError";
-    this.code = options.code || "eak_error";
+    this.name = "QoniError";
+    this.code = options.code || "qoni_error";
     this.status = options.status;
     this.requestId = options.requestId;
     this.traceId = options.traceId;
@@ -64,59 +64,59 @@ export class EAKError extends Error {
   }
 }
 
-export class EAKAuthError extends EAKError {
-  constructor(message: string, options: EAKErrorOptions = {}) {
+export class QoniAuthError extends QoniError {
+  constructor(message: string, options: QoniErrorOptions = {}) {
     super(message, { code: "auth.failed", ...options });
-    this.name = "EAKAuthError";
+    this.name = "QoniAuthError";
   }
 }
 
-export class EAKDelegationRequiredError extends EAKError {
-  constructor(message: string, options: EAKErrorOptions = {}) {
+export class QoniDelegationRequiredError extends QoniError {
+  constructor(message: string, options: QoniErrorOptions = {}) {
     super(message, { code: "delegation.required", ...options });
-    this.name = "EAKDelegationRequiredError";
+    this.name = "QoniDelegationRequiredError";
   }
 }
 
-export class EAKPermissionDeniedError extends EAKError {
-  constructor(message: string, options: EAKErrorOptions = {}) {
+export class QoniPermissionDeniedError extends QoniError {
+  constructor(message: string, options: QoniErrorOptions = {}) {
     super(message, { code: "permission_denied", ...options });
-    this.name = "EAKPermissionDeniedError";
+    this.name = "QoniPermissionDeniedError";
   }
 }
 
-export class EAKTokenExpiredError extends EAKError {
-  constructor(message: string, options: EAKErrorOptions = {}) {
+export class QoniTokenExpiredError extends QoniError {
+  constructor(message: string, options: QoniErrorOptions = {}) {
     super(message, { code: "token.expired", ...options });
-    this.name = "EAKTokenExpiredError";
+    this.name = "QoniTokenExpiredError";
   }
 }
 
-export class EAKValidationError extends EAKError {
-  constructor(message: string, options: EAKErrorOptions = {}) {
+export class QoniValidationError extends QoniError {
+  constructor(message: string, options: QoniErrorOptions = {}) {
     super(message, { code: "validation.failed", ...options });
-    this.name = "EAKValidationError";
+    this.name = "QoniValidationError";
   }
 }
 
-export class EAKRateLimitError extends EAKError {
-  constructor(message: string, options: EAKErrorOptions = {}) {
+export class QoniRateLimitError extends QoniError {
+  constructor(message: string, options: QoniErrorOptions = {}) {
     super(message, { code: "rate_limit.exceeded", retryable: true, ...options });
-    this.name = "EAKRateLimitError";
+    this.name = "QoniRateLimitError";
   }
 }
 
-export class EAKUpstreamError extends EAKError {
-  constructor(message: string, options: EAKErrorOptions = {}) {
+export class QoniUpstreamError extends QoniError {
+  constructor(message: string, options: QoniErrorOptions = {}) {
     super(message, { code: "upstream.failed", retryable: true, ...options });
-    this.name = "EAKUpstreamError";
+    this.name = "QoniUpstreamError";
   }
 }
 
-export class EAKTimeoutError extends EAKError {
-  constructor(message: string, options: EAKErrorOptions = {}) {
+export class QoniTimeoutError extends QoniError {
+  constructor(message: string, options: QoniErrorOptions = {}) {
     super(message, { code: "timeout", retryable: true, ...options });
-    this.name = "EAKTimeoutError";
+    this.name = "QoniTimeoutError";
   }
 }
 
@@ -124,7 +124,7 @@ export function errorFromPayload(
   status: number,
   payload: unknown,
   fallbackMessage: string,
-): EAKError {
+): QoniError {
   const detail = isJsonObject(payload) ? payload.detail : undefined;
   const detailObject = isJsonObject(detail) ? detail : undefined;
   const source = detailObject || (isJsonObject(payload) ? payload : {});
@@ -140,7 +140,7 @@ export function errorFromPayload(
     appendDeniedScopes(appendUpstreamDescription(rawMessage, source), source),
     code,
   );
-  const options: EAKErrorOptions = {
+  const options: QoniErrorOptions = {
     code,
     status,
     requestId: stringField(payload, "requestId") || stringField(source, "requestId"),
@@ -150,27 +150,27 @@ export function errorFromPayload(
     body: payload,
   };
 
-  if (isTokenExpired(code, message)) return new EAKTokenExpiredError(message, options);
-  if (isDelegationRequired(code)) return new EAKDelegationRequiredError(message, options);
-  if (status === 401) return new EAKAuthError(message, options);
+  if (isTokenExpired(code, message)) return new QoniTokenExpiredError(message, options);
+  if (isDelegationRequired(code)) return new QoniDelegationRequiredError(message, options);
+  if (status === 401) return new QoniAuthError(message, options);
   if (status === 403 || isPermissionDenied(code)) {
     // Server permission errors pass through with the known scope set appended
     // so callers can see what a valid grant looks like without leaving the
     // stack trace.
-    return new EAKPermissionDeniedError(appendKnownScopes(message), options);
+    return new QoniPermissionDeniedError(appendKnownScopes(message), options);
   }
-  if (status === 400 || status === 422) return new EAKValidationError(message, options);
-  if (status === 429) return new EAKRateLimitError(message, options);
-  if (status >= 500) return new EAKUpstreamError(message, options);
-  return new EAKError(message, options);
+  if (status === 400 || status === 422) return new QoniValidationError(message, options);
+  if (status === 429) return new QoniRateLimitError(message, options);
+  if (status >= 500) return new QoniUpstreamError(message, options);
+  return new QoniError(message, options);
 }
 
-export function timeoutError(cause: unknown): EAKTimeoutError {
-  return new EAKTimeoutError("EAK request timed out", { cause });
+export function timeoutError(cause: unknown): QoniTimeoutError {
+  return new QoniTimeoutError("Qoni request timed out", { cause });
 }
 
-export function networkError(cause: unknown): EAKUpstreamError {
-  return new EAKUpstreamError("EAK network request failed", { cause });
+export function networkError(cause: unknown): QoniUpstreamError {
+  return new QoniUpstreamError("Qoni network request failed", { cause });
 }
 
 function stringField(value: unknown, key: string): string | undefined {
@@ -207,11 +207,11 @@ function appendUpstreamDescription(message: string, source: unknown): string {
 // Common first-run pitfalls get an actionable, one-line hint appended to the
 // error message so integrators aren't left guessing where to look.
 const ONBOARDING_HINTS: Record<string, string> = {
-  "eak.delegation.user_not_bound":
+  "qoni.delegation.user_not_bound":
     "Hint: the userId is not in the GenAuth userpool bound to this credential. " +
-    "Resolve a real user with eak.resolveAnyBoundUser() (demo/smoke) or eak.currentUser({ accessToken }).",
-  "eak.genauth.userpool_binding_missing":
-    "Hint: bind the EAK credential to a GenAuth userpool before calling genauth.users.*.",
+    "Resolve a real user with qoni.resolveAnyBoundUser() (demo/smoke) or qoni.currentUser({ accessToken }).",
+  "qoni.genauth.userpool_binding_missing":
+    "Hint: bind the Qoni credential to a GenAuth userpool before calling genauth.users.*.",
 };
 
 function appendOnboardingHint(message: string, code: string): string {
@@ -233,7 +233,7 @@ function statusCodeToCode(status: number): string {
   if (status === 422) return "validation.failed";
   if (status === 429) return "rate_limit.exceeded";
   if (status >= 500) return "upstream.failed";
-  return "eak_error";
+  return "qoni_error";
 }
 
 function isPermissionDenied(code: string): boolean {

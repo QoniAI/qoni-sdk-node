@@ -1,26 +1,26 @@
-# @eazo/eak
+# @qoniai/qoni
 
 [![Node.js](https://img.shields.io/badge/node-%3E%3D18-339933)](https://nodejs.org/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-ready-3178c6)](https://www.typescriptlang.org/)
 [![Package manager](https://img.shields.io/badge/package%20manager-pnpm-f69220)](https://pnpm.io/)
 [![License](https://img.shields.io/badge/license-MIT-blue)](./LICENSE)
 
-Unified Node.js SDK for EAK Agent delegation, GenAuth user management, GUMem memory, WebAgent automation, web search, and monitoring.
+Unified Node.js SDK for Qoni Agent delegation, GenAuth user management, GUMem memory, WebAgent automation, web search, and monitoring.
 
-`@eazo/eak` gives a trusted server one compact way to use EAK AK/SK. For runtime product calls, your service verifies the GenAuth user, requests short-lived delegation with `delegateToken`, and then uses the returned token in GUMem, WebAgent, Do Anything, Web Search, and Track calls. For GenAuth user management, the SDK exchanges AK/SK for a standard GenAuth management token internally and calls GenAuth v3 users APIs with that token.
+`@qoniai/qoni` gives a trusted server one compact way to use Qoni AK/SK. For runtime product calls, your service verifies the GenAuth user, requests short-lived delegation with `delegateToken`, and then uses the returned token in GUMem, WebAgent, Do Anything, Web Search, and Track calls. For GenAuth user management, the SDK exchanges AK/SK for a standard GenAuth management token internally and calls GenAuth v3 users APIs with that token.
 
 AK/SK credentials must stay on a trusted server. Do not ship them to browsers, mobile apps, public CLI config, or untrusted Agent runtimes.
 
 English | [中文](./README.zh-CN.md)
 
-## Why EAK
+## Why Qoni
 
 Agents that perform real work need more than a backend API key. They need a user boundary, explicit scopes, expiry, observable execution, and audit metadata that explains what happened later.
 
-EAK keeps that model small:
+Qoni keeps that model small:
 
-- One SDK entry: `new EazoAgentKit({ accessKey, secretKey })`.
-- One discovery path: `host` can override the EAK Console/SDK gateway for private or local deployments, and the SDK reads downstream runtime URLs from `/api/v3/eak/runtime-config`.
+- One SDK entry: `new QoniAgentKit({ accessKey, secretKey })`.
+- One discovery path: `host` can override the Qoni Console/SDK gateway for private or local deployments, and the SDK reads downstream runtime URLs from `/api/v3/qoni/runtime-config`.
 - One delegation entry: call `delegateToken`; silent mode returns `data.token`, while interactive mode returns an authorization URL and later completes on your server.
 - One management path: call `genauth.users.*`, and the SDK exchanges AK/SK for a GenAuth management token before calling GenAuth v3 users APIs.
 - Capability-first namespaces: `genauth`, `gumem`, `webSearch`, `doAnything`, and `track`.
@@ -30,46 +30,46 @@ EAK keeps that model small:
 ## Installation
 
 ```bash
-npm install @eazo/eak
+npm install @qoniai/qoni
 # or
-pnpm add @eazo/eak
+pnpm add @qoniai/qoni
 # or
-yarn add @eazo/eak
+yarn add @qoniai/qoni
 ```
 
 Requirements:
 
 - Node.js 18 or later.
 - A server-side runtime with `fetch`.
-- EAK `accessKey` and `secretKey` created in EAK Console.
-- For silent runtime product calls, a real GenAuth user id from the userpool bound to the EAK credential. For smoke tests, pass it as `EAK_USER_ID` or call `eak.resolveAnyBoundUser()` to grab the first bound user; in application code, resolve it with `currentUser` or your existing server-side user session. Interactive delegation can start without `user` or `userId` because the EAK Console/BFF resolves the GenAuth login during authorization.
-- For `genauth.users.*` management calls, `EAK_USER_ID` is not required. The SDK uses AK/SK to request a GenAuth management token from EAK.
-- Optional `host` for private or local EAK deployments. Leave it unset for hosted EAK.
+- Qoni `accessKey` and `secretKey` created in Qoni Console.
+- For silent runtime product calls, a real GenAuth user id from the userpool bound to the Qoni credential. For smoke tests, pass it as `QONI_USER_ID` or call `qoni.resolveAnyBoundUser()` to grab the first bound user; in application code, resolve it with `currentUser` or your existing server-side user session. Interactive delegation can start without `user` or `userId` because the Qoni Console/BFF resolves the GenAuth login during authorization.
+- For `genauth.users.*` management calls, `QONI_USER_ID` is not required. The SDK uses AK/SK to request a GenAuth management token from Qoni.
+- Optional `host` for private or local Qoni deployments. Leave it unset for hosted Qoni.
 
-You do not pass `tenantId` during normal SDK initialization. The AK/SK is already bound to the tenant and application boundary in EAK.
+You do not pass `tenantId` during normal SDK initialization. The AK/SK is already bound to the tenant and application boundary in Qoni.
 
 The package ships both ESM and CommonJS builds with TypeScript types, so either
 import style works:
 
 ```ts
-import { EazoAgentKit } from "@eazo/eak";        // ESM / TypeScript
-const { EazoAgentKit } = require("@eazo/eak");    // CommonJS
+import { QoniAgentKit } from "@qoniai/qoni";        // ESM / TypeScript
+const { QoniAgentKit } = require("@qoniai/qoni");    // CommonJS
 ```
 
 ## AI Skill
 
-EAK can also be exposed to AI coding tools through a Skill package, so Codex, Claude Code, or internal Agents can follow the same authorization model.
+Qoni can also be exposed to AI coding tools through a Skill package, so Codex, Claude Code, or internal Agents can follow the same authorization model.
 
-Install the EAK Skill:
+Install the Qoni Skill:
 
 ```bash
-npx skills add https://github.com/EazoAI/eak-sdk-node --skill eak-sdk
+npx skills add https://github.com/QONIAI/qoni-sdk-node --skill qoni-sdk
 ```
 
 If you only want to install it for Claude Code, specify the Agent:
 
 ```bash
-npx skills add https://github.com/EazoAI/eak-sdk-node --agent claude-code --skill eak-sdk
+npx skills add https://github.com/QONIAI/qoni-sdk-node --agent claude-code --skill qoni-sdk
 ```
 
 The npm package includes the `skills/` directory, but the recommended Skill install path is still the GitHub repository command above so agents receive the repository-local skill metadata.
@@ -80,63 +80,63 @@ Start with a server-side SDK instance. AK/SK stays on your trusted server for bo
 
 ```ts
 import fs from "node:fs";
-import { EazoAgentKit } from "@eazo/eak";
+import { QoniAgentKit } from "@qoniai/qoni";
 
-const eak = new EazoAgentKit({
-  accessKey: process.env.EAK_ACCESS_KEY!,
-  secretKey: process.env.EAK_SECRET_KEY!,
+const qoni = new QoniAgentKit({
+  accessKey: process.env.QONI_ACCESS_KEY!,
+  secretKey: process.env.QONI_SECRET_KEY!,
 });
 ```
 
 ### GenAuth User Management
 
-`genauth.users.*` is a management-plane capability. It does not need `EAK_USER_ID` or `delegateToken`; the SDK signs `POST /api/v3/eak/genauth/admin-token` with `{}` internally, receives a GenAuth management token plus `userPoolId`, and then calls GenAuth v3 users APIs.
+`genauth.users.*` is a management-plane capability. It does not need `QONI_USER_ID` or `delegateToken`; the SDK signs `POST /api/v3/qoni/genauth/admin-token` with `{}` internally, receives a GenAuth management token plus `userPoolId`, and then calls GenAuth v3 users APIs.
 
 ```ts
-const users = await eak.genauth.users.list({
+const users = await qoni.genauth.users.list({
   page: 1,
   limit: 20,
 });
 
 console.log("GenAuth users:", users.data);
 
-const created = await eak.genauth.users.create<{ userId: string }>({
+const created = await qoni.genauth.users.create<{ userId: string }>({
   username: `sdk-demo-${Date.now()}`,
   password: process.env.GENAUTH_DEMO_USER_PASSWORD!,
 });
 
-const profile = await eak.genauth.users.get<{ userId: string }>({
+const profile = await qoni.genauth.users.get<{ userId: string }>({
   userId: created.data.userId,
 });
 
-await eak.genauth.users.update({
+await qoni.genauth.users.update({
   userId: profile.data.userId,
   nickname: "SDK demo user",
 });
 
 // Optional smoke-test cleanup:
-// await eak.genauth.users.deleteBatch({ userIds: [profile.data.userId] });
+// await qoni.genauth.users.deleteBatch({ userIds: [profile.data.userId] });
 ```
 
 ### Runtime Product Delegation
 
-GUMem, WebAgent, Do Anything, Web Search, and Track act for an end user. Silent delegation calls need a real GenAuth user id from the userpool bound to the EAK credential, then a `delegateToken` result.
+GUMem, WebAgent, Do Anything, Web Search, and Track act for an end user. Silent delegation calls need a real GenAuth user id from the userpool bound to the Qoni credential, then a `delegateToken` result.
 
 ```ts
-const userId = process.env.EAK_USER_ID!;
+const userId = process.env.QONI_USER_ID!;
 if (!userId) {
-  throw new Error("EAK_USER_ID must be a real GenAuth user id from the credential-bound userpool");
+  throw new Error("QONI_USER_ID must be a real GenAuth user id from the credential-bound userpool");
 }
 
 // `products` is per-product authorization sugar; `agent` defaults to "sdk".
 const { token } = (
-  await eak.delegateToken({
+  await qoni.delegateToken({
     user: { id: userId },
     products: ["doAnything"],
   })
 ).data;
 
-const run = await eak.doAnything.run({
+const run = await qoni.doAnything.run({
   token, // passed once — the handle holds it; handle methods never take a token
   prompt: "Open https://en.wikipedia.org/wiki/Singapore and summarize the country's key facts.",
   capture: { screenshots: true },
@@ -152,40 +152,40 @@ const result = await run.wait({
 console.log(result.output);
 ```
 
-`run()` returns a `RunHandle` typed to the product: `eak.deepResearch.run()` is a `RunHandle<DeepResearchEvent>`, so its events are narrowed to what Deep Research actually emits. `capture: { screenshots: true }` opts into per-step screenshots, decoded to bytes for you. `wait()` drives the run to its terminal state and settles the result (`result.raw` carries cost, step counts, token usage).
+`run()` returns a `RunHandle` typed to the product: `qoni.deepResearch.run()` is a `RunHandle<DeepResearchEvent>`, so its events are narrowed to what Deep Research actually emits. `capture: { screenshots: true }` opts into per-step screenshots, decoded to bytes for you. `wait()` drives the run to its terminal state and settles the result (`result.raw` carries cost, step counts, token usage).
 
-> **Best practice — match `event.type` against the `EAKEventTypes` constants.**
+> **Best practice — match `event.type` against the `QoniEventTypes` constants.**
 > Each product handle is typed to its own event set, so in TypeScript a case
 > for another product's event is a compile error and autocomplete shows only
 > the right ones. All the internal churn (supervisor planning, individual
-> clicks/keystrokes, telemetry) folds into `EAKEventTypes.Progress`; once you
+> clicks/keystrokes, telemetry) folds into `QoniEventTypes.Progress`; once you
 > match a `case`, `event.data` has a fixed shape — a bare value for simple
 > events (`progress` → a string line, `resultsReady` → a number) and a small
 > object for rich ones (`done` → `{ output, succeeded, terminalReason }`). The
 > raw wire types are not exported.
 
 ```ts
-import { EAKEventTypes } from "@eazo/eak";
+import { QoniEventTypes } from "@qoniai/qoni";
 
-const run = await eak.deepResearch.run({ token, prompt: "State of EU battery recycling, 2026 update" }); // RunHandle<DeepResearchEvent>
+const run = await qoni.deepResearch.run({ token, prompt: "State of EU battery recycling, 2026 update" }); // RunHandle<DeepResearchEvent>
 
 for await (const event of run.events()) {
   switch (event.type) {
-    case EAKEventTypes.Progress:      console.log(event.data); break; // data IS the line (string)
-    case EAKEventTypes.Phase:         console.log(event.data); break; // data IS the phase name (string)
-    case EAKEventTypes.SectionReady:  console.log(event.data); break; // data IS the section title (string)
-    case EAKEventTypes.Message:       console.log(event.data.text); break; // rich → { text, role }
-    case EAKEventTypes.Interaction: {                                      // rich → the typed Interaction object
+    case QoniEventTypes.Progress:      console.log(event.data); break; // data IS the line (string)
+    case QoniEventTypes.Phase:         console.log(event.data); break; // data IS the phase name (string)
+    case QoniEventTypes.SectionReady:  console.log(event.data); break; // data IS the section title (string)
+    case QoniEventTypes.Message:       console.log(event.data.text); break; // rich → { text, role }
+    case QoniEventTypes.Interaction: {                                      // rich → the typed Interaction object
       const i = run.interactionHandle(event.data);                         // e.g. an outline-approval confirmation
       if (i.can("confirm")) await i.confirm();
       break;
     }
-    case EAKEventTypes.Done:          console.log(event.data.output); break;  // rich → terminal
-    // case EAKEventTypes.ResultsReady — Web Search only → compile error here
+    case QoniEventTypes.Done:          console.log(event.data.output); break;  // rich → terminal
+    // case QoniEventTypes.ResultsReady — Web Search only → compile error here
   }
   // event.runId / event.at / event.isTerminal / event.raw (escape hatch)
 }
-// The iterator ends automatically at the terminal (EAKEventTypes.Done) event.
+// The iterator ends automatically at the terminal (QoniEventTypes.Done) event.
 ```
 
 > **JS note:** the per-product compile-time narrowing is a TypeScript feature.
@@ -198,31 +198,31 @@ action apart inside `progress`. That's the escape hatch, not the everyday API.
 
 ```ts
 await run.cancel("user stopped the task"); // idempotent — safe on a finished run
-const followUp = await eak.doAnything.run({
+const followUp = await qoni.doAnything.run({
   token,
   prompt: "Now open the Wikipedia page for Malaysia and compare its population with Singapore's.",
   session: run.sessionRef, // reuse the same browser session
 });
-const reattached = await eak.doAnything.attach(run.id, { token }); // re-attach by run id alone
+const reattached = await qoni.doAnything.attach(run.id, { token }); // re-attach by run id alone
 ```
 
 ## Authorization Model
 
 ### Runtime Discovery
 
-`host` points to the EAK Console/SDK gateway, not directly to GenAuth, GUMem, or WebAgent. Hosted integrations normally leave `host` unset; private and local deployments can pass their own gateway.
+`host` points to the Qoni Console/SDK gateway, not directly to GenAuth, GUMem, or WebAgent. Hosted integrations normally leave `host` unset; private and local deployments can pass their own gateway.
 
 The SDK signs a request to:
 
 ```text
-GET /api/v3/eak/runtime-config
+GET /api/v3/qoni/runtime-config
 ```
 
-The response provides runtime base URLs for EAK, GenAuth, GUMem, and WebAgent. Application code should not configure those product URLs separately for normal usage.
+The response provides runtime base URLs for Qoni, GenAuth, GUMem, and WebAgent. Application code should not configure those product URLs separately for normal usage.
 
 ### Server-Side AK/SK
 
-`accessKey` and `secretKey` identify the tenant and application boundary configured in EAK Console. The SDK uses them to sign trusted server-side EAK requests, including delegation and product-token exchange.
+`accessKey` and `secretKey` identify the tenant and application boundary configured in Qoni Console. The SDK uses them to sign trusted server-side Qoni requests, including delegation and product-token exchange.
 
 ### Delegation Token
 
@@ -233,31 +233,31 @@ In silent mode, `delegateToken` binds four things:
 - the requested scopes
 - the token expiry and audit context
 
-Silent product calls receive `token: delegation.data.token`. If that token is an EAK delegation token, the SDK exchanges it internally for the correct GUMem or WebAgent product access token before calling the downstream service.
+Silent product calls receive `token: delegation.data.token`. If that token is an Qoni delegation token, the SDK exchanges it internally for the correct GUMem or WebAgent product access token before calling the downstream service.
 
 **Input shape.** `delegateToken` is discriminated by `mode`:
 
 - **Silent** (`mode: "silent"`, the default) — acts for one end user, so a user
   is **required**: pass `user: { id: <genauthUserId> }` (preferred) or the
-  deprecated top-level `userId`. Omitting it throws `EAKValidationError`
+  deprecated top-level `userId`. Omitting it throws `QoniValidationError`
   locally before any request. Authorize with the `products` sugar and/or
   explicit `scopes`.
 - **Interactive** (`mode: "interactive"`) — pass `redirectUri`, `state`,
-  `agent`, `scopes` and **no** user (EAK Console resolves the login during
+  `agent`, `scopes` and **no** user (Qoni Console resolves the login during
   authorization). Returns `data.authorizationUrl`, not a token; complete it
   server-side with `completeDelegateToken({ grantId, code, state })`.
 
 `agent` is optional and defaults to `"sdk"`.
 
 ```ts
-const delegation = await eak.delegateToken({
+const delegation = await qoni.delegateToken({
   userId,
   agent: "research-assistant",
   scopes: ["gumem.memory:read"],
   mode: "silent",
 });
 
-await eak.gumem.recall({
+await qoni.gumem.recall({
   token: delegation.data.token,
   query: "research preferences",
 });
@@ -266,9 +266,9 @@ await eak.gumem.recall({
 In interactive mode, your server still starts with `delegateToken`, but it does not receive a token:
 
 ```ts
-const grant = await eak.delegateToken({
+const grant = await qoni.delegateToken({
   mode: "interactive",
-  redirectUri: "https://app.example.com/eak/callback",
+  redirectUri: "https://app.example.com/qoni/callback",
   state: "business-csrf-state",
   agent: "research-assistant",
   scopes: ["gumem.memory:read", "webagent.do_anything:manage"],
@@ -277,18 +277,18 @@ const grant = await eak.delegateToken({
 redirectUserTo(grant.data.authorizationUrl);
 ```
 
-The user visits `authorizationUrl` in EAK Console/BFF. If they are not logged in, Console/BFF sends them through GenAuth login, confirms authorization, completes the grant internally, then redirects back to your `redirectUri` with a one-time `code`, your `state`, and `grant_state`/`grantId`. The browser never receives a delegation token.
+The user visits `authorizationUrl` in Qoni Console/BFF. If they are not logged in, Console/BFF sends them through GenAuth login, confirms authorization, completes the grant internally, then redirects back to your `redirectUri` with a one-time `code`, your `state`, and `grant_state`/`grantId`. The browser never receives a delegation token.
 
 Your callback handler runs on the server and exchanges the callback fields with AK/SK:
 
 ```ts
-const completed = await eak.completeDelegateToken({
+const completed = await qoni.completeDelegateToken({
   grantId: String(req.query.grantId ?? req.query.grant_id),
   code: String(req.query.code),
   state: String(req.query.state),
 });
 
-await eak.gumem.recall({
+await qoni.gumem.recall({
   token: completed.data.token,
   query: "research preferences",
 });
@@ -301,14 +301,14 @@ await eak.gumem.recall({
 Each WebAgent product exposes exactly two scopes: `read` (observe — status, events, artifacts) and `manage` (anything that changes execution state — run, cancel, respond, messages, monitor CRUD). The full set is the 8 scopes `webagent.{do_anything, web_search, deep_research, track}:{read, manage}`. The simplest authorization is the `products` sugar — each product name expands to its `read` + `manage` pair:
 
 ```ts
-await eak.delegateToken({
+await qoni.delegateToken({
   user: { id: userId },
   products: ["doAnything", "webSearch", "deepResearch", "track"],
   scopes: ["gumem.memory:read"], // fine-grained scopes can be mixed in
 });
 ```
 
-Scope strings are validated locally before any request: a scope missing its service prefix (e.g. `do_anything:manage` instead of `webagent.do_anything:manage`) throws `EAKValidationError` immediately with the correct form in the message.
+Scope strings are validated locally before any request: a scope missing its service prefix (e.g. `do_anything:manage` instead of `webagent.do_anything:manage`) throws `QoniValidationError` immediately with the correct form in the message.
 
 Use explicit scope strings when the requested permission boundary should be visible in code.
 
@@ -328,7 +328,7 @@ Interactive mode is recommended for higher-risk actions such as browser takeover
 The SDK also exports a GUMem-oriented bundle for the common session/write/recall path:
 
 ```ts
-EAKScopeBundles.GUMEM_SESSION_RECALL
+QoniScopeBundles.GUMEM_SESSION_RECALL
 ```
 
 ## Capability Examples
@@ -336,7 +336,7 @@ EAKScopeBundles.GUMEM_SESSION_RECALL
 ### GUMem
 
 ```ts
-await eak.gumem.createSession({
+await qoni.gumem.createSession({
   token,
   userId,
   sessionId: "daily-assistant",
@@ -347,7 +347,7 @@ await eak.gumem.createSession({
 const confirmedPreference =
   "Please keep daily planning suggestions concise and include only the next action.";
 
-await eak.gumem.addMessages({
+await qoni.gumem.addMessages({
   token,
   sessionId: "daily-assistant",
   messages: [
@@ -362,7 +362,7 @@ await eak.gumem.addMessages({
   ],
 });
 
-const context = await eak.gumem.recall({
+const context = await qoni.gumem.recall({
   token,
   sessionId: "daily-assistant",
   query: "What confirmed preferences should I consider for this user's next task?",
@@ -376,7 +376,7 @@ const context = await eak.gumem.recall({
 ### Do Anything
 
 ```ts
-const run = await eak.doAnything.run({
+const run = await qoni.doAnything.run({
   token,
   prompt: "Open https://en.wikipedia.org/wiki/Solid-state_battery and summarize its key advantages over lithium-ion.",
 });
@@ -388,7 +388,7 @@ await run.cancel("User stopped the task"); // idempotent
 ### Web Search
 
 ```ts
-const search = await eak.webSearch.run({
+const search = await qoni.webSearch.run({
   token,
   prompt: "EU battery recycling regulations 2026",
   maxResultsPerQuery: 5,
@@ -401,7 +401,7 @@ console.log(result.output); // search results
 ### Deep Research
 
 ```ts
-const research = await eak.deepResearch.run({
+const research = await qoni.deepResearch.run({
   token,
   prompt: "State of EU battery recycling, 2026 update",
   depth: "standard", // light | standard | deep — the main research knob
@@ -414,7 +414,7 @@ for (const artifact of report.artifacts) {
 }
 
 // Follow-up research that inherits the prior run's context:
-const followUp = await eak.deepResearch.run({
+const followUp = await qoni.deepResearch.run({
   token,
   prompt: "Now compare against the 2025 numbers.",
   session: research.sessionRef,
@@ -424,7 +424,7 @@ const followUp = await eak.deepResearch.run({
 ### Track
 
 ```ts
-const monitor = await eak.track.create({
+const monitor = await qoni.track.create({
   token,
   prompt: "Monitor the price of Bitcoin every minute.",
 });
@@ -456,15 +456,15 @@ await monitor.resume();
 await monitor.delete();
 
 // Reconnect later from a stored id:
-const sameMonitor = await eak.track.attach(monitor.id, { token });
+const sameMonitor = await qoni.track.attach(monitor.id, { token });
 ```
 
 ### GenAuth User Context and Management
 
 ```ts
-const client = new EazoAgentKit({
-  accessKey: process.env.EAK_ACCESS_KEY!,
-  secretKey: process.env.EAK_SECRET_KEY!,
+const client = new QoniAgentKit({
+  accessKey: process.env.QONI_ACCESS_KEY!,
+  secretKey: process.env.QONI_SECRET_KEY!,
 });
 
 const profile = await client.genauth.userInfo({
@@ -482,25 +482,25 @@ const created = await client.genauth.users.create({
 });
 ```
 
-`currentUser` and `genauth.userInfo` use a GenAuth access token because they read the logged-in user's identity. `genauth.users.*` is a management-plane capability, but application code still authenticates the SDK with EAK AK/SK: the SDK signs `POST /api/v3/eak/genauth/admin-token` with an empty JSON body `{}`, receives a standard GenAuth management token plus `userPoolId`, then calls GenAuth v3 user management APIs with `Authorization: Bearer ...` and `x-authing-userpool-id`. It does not send `resource`, `actions`, `expiresIn`, or `EAK_USER_ID`. Runtime capability calls such as GUMem/WebAgent use `delegateToken` output instead.
+`currentUser` and `genauth.userInfo` use a GenAuth access token because they read the logged-in user's identity. `genauth.users.*` is a management-plane capability, but application code still authenticates the SDK with Qoni AK/SK: the SDK signs `POST /api/v3/qoni/genauth/admin-token` with an empty JSON body `{}`, receives a standard GenAuth management token plus `userPoolId`, then calls GenAuth v3 user management APIs with `Authorization: Bearer ...` and `x-authing-userpool-id`. It does not send `resource`, `actions`, `expiresIn`, or `QONI_USER_ID`. Runtime capability calls such as GUMem/WebAgent use `delegateToken` output instead.
 
 ## API Surface
 
 ### Client
 
 ```ts
-const eak = new EazoAgentKit({
-  accessKey: process.env.EAK_ACCESS_KEY!,
-  secretKey: process.env.EAK_SECRET_KEY!,
+const qoni = new QoniAgentKit({
+  accessKey: process.env.QONI_ACCESS_KEY!,
+  secretKey: process.env.QONI_SECRET_KEY!,
   timeoutMs: 30_000,
 });
 ```
 
 | Option | Type | Required | Description |
 | --- | --- | --- | --- |
-| `accessKey` | `string` | Yes | EAK access key from EAK Console. |
-| `secretKey` | `string` | Yes | EAK secret key from EAK Console. |
-| `host` | `string` | No | Optional EAK Console/SDK gateway override for private or local deployments. |
+| `accessKey` | `string` | Yes | Qoni access key from Qoni Console. |
+| `secretKey` | `string` | Yes | Qoni secret key from Qoni Console. |
+| `host` | `string` | No | Optional Qoni Console/SDK gateway override for private or local deployments. |
 | `fetch` | `typeof fetch` | No | Custom transport implementation. |
 | `timeoutMs` | `number` | No | Per-request timeout (connect + response headers). Defaults to `30000`. |
 
@@ -514,10 +514,10 @@ const eak = new EazoAgentKit({
 > `wait()` timeout does not stop the run; it keeps executing server-side and
 > you can `attach()` to it again.
 
-`EAK` is also exported as a short alias:
+`Qoni` is also exported as a short alias:
 
 ```ts
-import { EAK, EazoAgentKit } from "@eazo/eak";
+import { Qoni, QoniAgentKit } from "@qoniai/qoni";
 ```
 
 ### Namespaces
@@ -559,7 +559,7 @@ interface RunResult {
 ```
 
 Each `Artifact` exposes `id`, `name?`, `mime?`, `sizeBytes?`, `createdAt?`, and
-`content(): Promise<Uint8Array>` (lazy byte download). Every other method returns the `EAKResponse<T>` envelope below; `T`
+`content(): Promise<Uint8Array>` (lazy byte download). Every other method returns the `QoniResponse<T>` envelope below; `T`
 is the typed payload for that call (e.g. `genauth.users.list` → a paged user
 list on `.data`). The exact `T` shapes live in the bundled `.d.ts` and follow
 the backend contract.
@@ -597,12 +597,12 @@ The discriminant strings used above are also exported as constants so you can
 avoid bare literals: `InteractionTypes` (`site_login` / `clarification` /
 `confirmation` / `take_control` / `wait`), `InteractionStatuses`, and
 `ActionKinds` (the `i.can(...)` action names). Authorization scope strings have
-the same treatment — `EAKScopes` (every individual scope), `EAKProductScopes`
+the same treatment — `QoniScopes` (every individual scope), `QoniProductScopes`
 (the per-product `read`+`manage` pairs the `products` sugar expands to), and
-`EAKScopeBundles` (curated bundles). Use them in place of hand-typed strings:
+`QoniScopeBundles` (curated bundles). Use them in place of hand-typed strings:
 
 ```ts
-import { InteractionTypes, ActionKinds, EAKScopes } from "@eazo/eak";
+import { InteractionTypes, ActionKinds, QoniScopes } from "@qoniai/qoni";
 
 if (i.type === InteractionTypes.Clarification && i.can(ActionKinds.answer)) {
   await i.answer("the blue button");
@@ -611,7 +611,7 @@ if (i.type === InteractionTypes.Clarification && i.can(ActionKinds.answer)) {
 
 ### Wire-Level Escape Hatch
 
-The 1:1 low-level methods live under `eak.<product>.api.*` (e.g. `eak.doAnything.api.createSession`, `eak.deepResearch.api.followUp`, `eak.track.api.createMonitor`). These mirror the backend HTTP contract directly — snake_case fields, double-envelope events, single-ID `/{product}/runs/{run_id}` addressing for run operations — and their shapes may evolve with the API. They are not part of the frozen public contract.
+The 1:1 low-level methods live under `qoni.<product>.api.*` (e.g. `qoni.doAnything.api.createSession`, `qoni.deepResearch.api.followUp`, `qoni.track.api.createMonitor`). These mirror the backend HTTP contract directly — snake_case fields, double-envelope events, single-ID `/{product}/runs/{run_id}` addressing for run operations — and their shapes may evolve with the API. They are not part of the frozen public contract.
 
 `event.raw.event` is the **raw wire event type** — an internal transport name (`run.action.started`, `run.section_completed`, …) whose naming is historical and inconsistent, exposed as a plain string. This is an implementation detail, not the product API: developers match on the curated `event.type` above. The full wire-type catalog is intentionally NOT exported — reach for `event.raw.event` (a string) only when you need an exact wire match the curated layer folds into `progress` (e.g. telling a specific browser action apart).
 
@@ -622,13 +622,13 @@ Browser Use and Site Login scopes are reserved until their product runtime SDK m
 Most SDK methods return:
 
 ```ts
-type EAKResponse<T> = {
+type QoniResponse<T> = {
   data: T;
   meta: {
     requestId?: string;
     traceId?: string;
     auditId?: string;
-    service?: "eak" | "genauth" | "gumem" | "webagent";
+    service?: "qoni" | "genauth" | "gumem" | "webagent";
   };
 };
 ```
@@ -667,10 +667,10 @@ Each product handle is typed to its own subset:
 
 Dropped connections reconnect automatically with `Last-Event-ID` catch-up; the iterator ends at the run's terminal (`done`) event.
 
-Wire-level streaming methods (`eak.<product>.api.events`) return `AsyncIterable<EAKEvent<T>>`:
+Wire-level streaming methods (`qoni.<product>.api.events`) return `AsyncIterable<QoniEvent<T>>`:
 
 ```ts
-type EAKEvent<T = unknown> = {
+type QoniEvent<T = unknown> = {
   id?: string;
   event?: string;
   data: T;
@@ -679,50 +679,50 @@ type EAKEvent<T = unknown> = {
 
 ## Error Handling
 
-All SDK errors inherit from `EAKError` and expose `code`, `status`, `requestId`, `traceId`, `auditId`, `retryable`, and the original response `body` when available. `code` is typed as `EAKErrorCode` (the known SDK / backend codes plus `(string & {})`), so you get literal autocomplete and can `switch (err.code)` over the known set while still tolerating new backend codes.
+All SDK errors inherit from `QoniError` and expose `code`, `status`, `requestId`, `traceId`, `auditId`, `retryable`, and the original response `body` when available. `code` is typed as `QoniErrorCode` (the known SDK / backend codes plus `(string & {})`), so you get literal autocomplete and can `switch (err.code)` over the known set while still tolerating new backend codes.
 
 All error classes are exported and can be matched with `instanceof`:
 
 | Class | Fires when | Typical recovery |
 | --- | --- | --- |
-| `EAKValidationError` | Local input check failed before any request (bad scope string, silent delegation missing a user). | Fix the call — the message states the correct form. |
-| `EAKAuthError` | AK/SK signing rejected by EAK (bad/rotated credentials). | Check `accessKey` / `secretKey`. |
-| `EAKPermissionDeniedError` | The delegation token lacks a required scope (403). | Re-`delegateToken` with the missing scope. |
-| `EAKTokenExpiredError` | The delegation / product token expired. | Mint a fresh token and retry. |
-| `EAKDelegationRequiredError` | A product call was made without `token`, or with a raw token the gateway won't accept directly. | Pass `delegation.data.token` to the product call. |
-| `EAKRateLimitError` | Rate limited (429). | Back off and retry (`retryable === true`). |
-| `EAKTimeoutError` | A request (or `wait({ timeoutMs })`) timed out. | Retry; the run keeps executing server-side — `attach()` to it. |
-| `EAKUpstreamError` | A downstream service failed (5xx / upstream exchange failure). | Back off and retry when `retryable`. |
-| `EAKError` | Base class / any other code. | Inspect `err.code`. |
+| `QoniValidationError` | Local input check failed before any request (bad scope string, silent delegation missing a user). | Fix the call — the message states the correct form. |
+| `QoniAuthError` | AK/SK signing rejected by Qoni (bad/rotated credentials). | Check `accessKey` / `secretKey`. |
+| `QoniPermissionDeniedError` | The delegation token lacks a required scope (403). | Re-`delegateToken` with the missing scope. |
+| `QoniTokenExpiredError` | The delegation / product token expired. | Mint a fresh token and retry. |
+| `QoniDelegationRequiredError` | A product call was made without `token`, or with a raw token the gateway won't accept directly. | Pass `delegation.data.token` to the product call. |
+| `QoniRateLimitError` | Rate limited (429). | Back off and retry (`retryable === true`). |
+| `QoniTimeoutError` | A request (or `wait({ timeoutMs })`) timed out. | Retry; the run keeps executing server-side — `attach()` to it. |
+| `QoniUpstreamError` | A downstream service failed (5xx / upstream exchange failure). | Back off and retry when `retryable`. |
+| `QoniError` | Base class / any other code. | Inspect `err.code`. |
 
 The SDK does **not** auto-retry. `err.retryable` tells you whether a retry could
 succeed; you own the backoff.
 
 ```ts
 import {
-  EAKDelegationRequiredError,
-  EAKPermissionDeniedError,
-  EAKRateLimitError,
-  EAKTimeoutError,
-  EAKTokenExpiredError,
-  EAKUpstreamError,
-} from "@eazo/eak";
+  QoniDelegationRequiredError,
+  QoniPermissionDeniedError,
+  QoniRateLimitError,
+  QoniTimeoutError,
+  QoniTokenExpiredError,
+  QoniUpstreamError,
+} from "@qoniai/qoni";
 
 try {
-  await eak.webSearch.run({ token, prompt: "EAK SDK" });
+  await qoni.webSearch.run({ token, prompt: "Qoni SDK" });
 } catch (error) {
   if (
-    error instanceof EAKPermissionDeniedError ||
-    error instanceof EAKTokenExpiredError ||
-    error instanceof EAKDelegationRequiredError
+    error instanceof QoniPermissionDeniedError ||
+    error instanceof QoniTokenExpiredError ||
+    error instanceof QoniDelegationRequiredError
   ) {
     // Re-mint a delegation token (add the missing scope / refresh expiry) and retry.
   }
 
   if (
-    error instanceof EAKRateLimitError ||
-    error instanceof EAKTimeoutError ||
-    error instanceof EAKUpstreamError
+    error instanceof QoniRateLimitError ||
+    error instanceof QoniTimeoutError ||
+    error instanceof QoniUpstreamError
   ) {
     // Transient — back off and retry when `error.retryable` is true.
   }
@@ -736,21 +736,21 @@ Common first-run errors:
 | Error | Meaning | Next step |
 | --- | --- | --- |
 | `agent must be a string` | The online delegation API currently expects `agent` to be a string id. | Pass `agent: "memory-agent"` rather than an object. |
-| `eak.delegation.user_not_bound` | The `userId` is not in the GenAuth userpool bound to this EAK credential. | Use a real user id from `currentUser` or from the same bound userpool. |
-| `eak.genauth.userpool_binding_missing` | The AK/SK is not bound to a GenAuth userpool, so `genauth.users.*` cannot obtain a management token. | Bind the EAK credential to the target GenAuth userpool before calling user management APIs. |
-| `eak.genauth.userpool_owner_missing` | The bound GenAuth userpool has no resolvable owner user for management-token signing. | Fix the GenAuth userpool owner data or binding. |
-| `eak.token_exchange.upstream_failed` with `unauthorized_client` or `grant_type is not enabled` | Delegation succeeded, but the managed delegation app is missing token-exchange grant support or has drifted from the tenant binding. | Repair the managed delegation app binding before calling GUMem or WebAgent product capabilities. |
+| `qoni.delegation.user_not_bound` | The `userId` is not in the GenAuth userpool bound to this Qoni credential. | Use a real user id from `currentUser` or from the same bound userpool. |
+| `qoni.genauth.userpool_binding_missing` | The AK/SK is not bound to a GenAuth userpool, so `genauth.users.*` cannot obtain a management token. | Bind the Qoni credential to the target GenAuth userpool before calling user management APIs. |
+| `qoni.genauth.userpool_owner_missing` | The bound GenAuth userpool has no resolvable owner user for management-token signing. | Fix the GenAuth userpool owner data or binding. |
+| `qoni.token_exchange.upstream_failed` with `unauthorized_client` or `grant_type is not enabled` | Delegation succeeded, but the managed delegation app is missing token-exchange grant support or has drifted from the tenant binding. | Repair the managed delegation app binding before calling GUMem or WebAgent product capabilities. |
 | `delegation.required` | A GUMem/WebAgent call was made without `token`. | Pass `delegation.data.token` to the product namespace call. |
-| `direct delegation token deprecated` | Application code is calling a product service directly with an EAK delegation token. | Call the product through the SDK so token exchange is handled internally. |
+| `direct delegation token deprecated` | Application code is calling a product service directly with an Qoni delegation token. | Call the product through the SDK so token exchange is handled internally. |
 
 ## Security Notes
 
-- Keep EAK AK/SK on trusted servers only.
+- Keep Qoni AK/SK on trusted servers only.
 - Do not expose delegation tokens to untrusted clients.
 - Request the smallest useful scope set for each Agent action.
 - Prefer `interactive` mode for browser control, site login, long-running monitors, and sensitive artifacts.
 - Store `auditId`, `requestId`, and `traceId` with product logs when later investigation matters.
-- Rotate AK/SK through EAK Console if a credential might have been exposed.
+- Rotate AK/SK through Qoni Console if a credential might have been exposed.
 
 ## License
 

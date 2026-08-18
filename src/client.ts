@@ -1,16 +1,16 @@
 import { buildSignedHeaders } from "./auth";
 import { createDeepResearchNamespace } from "./deep-research";
 import { createDoAnythingNamespace } from "./do-anything";
-import { createEakNamespace } from "./eak";
+import { createQoniNamespace } from "./qoni";
 import {
-  EAKError,
-  EAKDelegationRequiredError,
-  EAKValidationError,
+  QoniError,
+  QoniDelegationRequiredError,
+  QoniValidationError,
   errorFromPayload,
   networkError,
   timeoutError,
 } from "./errors";
-import { EAKProductScopes, KNOWN_SCOPES, type EAKProduct } from "./scopes";
+import { QoniProductScopes, KNOWN_SCOPES, type QoniProduct } from "./scopes";
 import { createGenAuthNamespace } from "./genauth";
 import { createGumemNamespace } from "./gumem";
 import { createTrackNamespace } from "./track";
@@ -22,13 +22,13 @@ import {
   type DelegateAgentResponse,
   type DelegateTokenInteractiveInput,
   type DelegateTokenInput,
-  type EAKEvent,
-  type EAKHttpMethod,
-  type EAKOptions,
-  type EAKResponse,
-  type EAKRuntimeConfig,
-  type EAKService,
-  type EAKTransport,
+  type QoniEvent,
+  type QoniHttpMethod,
+  type QoniOptions,
+  type QoniResponse,
+  type QoniRuntimeConfig,
+  type QoniService,
+  type QoniTransport,
   type DelegateTokenResponse,
   type DelegateTokenSilentResponse,
   type DelegateTokenSilentInput,
@@ -40,9 +40,9 @@ import {
 import type { GenAuthAccessTokenInput } from "./genauth";
 import { createWebSearchNamespace } from "./web-search";
 
-const DEFAULT_EAK_HOST = "https://eak.eazo.ai/dashboard";
+const DEFAULT_QONI_HOST = "https://qoni.eazo.ai/dashboard";
 
-export class EazoAgentKit {
+export class QoniAgentKit {
   private readonly fetchImpl: typeof fetch;
   private readonly timeoutMs: number;
   private readonly sseMaxRetries: number;
@@ -55,18 +55,18 @@ export class EazoAgentKit {
 
   readonly gumem: ReturnType<typeof createGumemNamespace>;
   readonly genauth: ReturnType<typeof createGenAuthNamespace>;
-  readonly eak: ReturnType<typeof createEakNamespace>;
+  readonly qoni: ReturnType<typeof createQoniNamespace>;
   readonly webSearch: ReturnType<typeof createWebSearchNamespace>;
   readonly doAnything: ReturnType<typeof createDoAnythingNamespace>;
   readonly track: ReturnType<typeof createTrackNamespace>;
   readonly deepResearch: ReturnType<typeof createDeepResearchNamespace>;
 
-  constructor(private readonly options: EAKOptions) {
+  constructor(private readonly options: QoniOptions) {
     const accessKey = options.accessKey ?? options.accessKeyId;
     const secretKey = options.secretKey ?? options.accessKeySecret;
-    const host = options.host ?? options.eakBaseUrl ?? options.genauthBaseUrl ?? DEFAULT_EAK_HOST;
+    const host = options.host ?? options.qoniBaseUrl ?? options.genauthBaseUrl ?? DEFAULT_QONI_HOST;
     if (!accessKey || !secretKey) {
-      throw new Error("EAK requires accessKey and secretKey");
+      throw new Error("Qoni requires accessKey and secretKey");
     }
     this.accessKey = accessKey ?? "";
     this.secretKey = secretKey ?? "";
@@ -74,8 +74,8 @@ export class EazoAgentKit {
     this.fetchImpl = options.fetch ?? fetch;
     this.timeoutMs = options.timeoutMs ?? 30_000;
     this.sseMaxRetries = options.sseMaxRetries ?? 5;
-    const transport: EAKTransport = {
-      eakJson: (...args) => this.eakJson(...args),
+    const transport: QoniTransport = {
+      qoniJson: (...args) => this.qoniJson(...args),
       genauthJson: (...args) => this.genauthJson(...args),
       gumemJson: (...args) => this.gumemJson(...args),
       gumemSSE: (...args) => this.gumemSSE(...args),
@@ -86,7 +86,7 @@ export class EazoAgentKit {
     this.genauth = createGenAuthNamespace(transport, {
       adminTokenFor: () => this.genauthAdminTokenFor(),
     });
-    this.eak = createEakNamespace(
+    this.qoni = createQoniNamespace(
       transport,
       this.delegateToken.bind(this),
       (input) => this.completeDelegateToken(input),
@@ -100,10 +100,10 @@ export class EazoAgentKit {
 
   delegateToken(
     input: DelegateTokenInteractiveInput,
-  ): Promise<EAKResponse<InteractiveDelegationResponse>>;
-  delegateToken(input: DelegateTokenSilentInput): Promise<EAKResponse<DelegateTokenSilentResponse>>;
-  delegateToken(input: DelegateTokenInput): Promise<EAKResponse<DelegateAgentResponse>>;
-  delegateToken(input: DelegateTokenInput): Promise<EAKResponse<DelegateAgentResponse>> {
+  ): Promise<QoniResponse<InteractiveDelegationResponse>>;
+  delegateToken(input: DelegateTokenSilentInput): Promise<QoniResponse<DelegateTokenSilentResponse>>;
+  delegateToken(input: DelegateTokenInput): Promise<QoniResponse<DelegateAgentResponse>>;
+  delegateToken(input: DelegateTokenInput): Promise<QoniResponse<DelegateAgentResponse>> {
     // Scope pre-validation + products expansion happen BEFORE any request, so
     // format mistakes fail locally with the correct form in the message.
     let body: JsonObject;
@@ -113,21 +113,21 @@ export class EazoAgentKit {
       return Promise.reject(err);
     }
     return this.signedPost<DelegateAgentResponse>(
-      "/api/v3/eak/delegations",
+      "/api/v3/qoni/delegations",
       body,
     ).then(normalizeDelegateAgentTokenResponse);
   }
 
   /** @deprecated Use delegateToken. */
-  delegateAgent(input: DelegateAgentInput): Promise<EAKResponse<DelegateAgentResponse>> {
+  delegateAgent(input: DelegateAgentInput): Promise<QoniResponse<DelegateAgentResponse>> {
     return this.delegateToken(input);
   }
 
   completeDelegateToken(
     input: CompleteDelegateTokenInput,
-  ): Promise<EAKResponse<DelegateTokenResponse>> {
+  ): Promise<QoniResponse<DelegateTokenResponse>> {
     return this.signedPost<DelegateTokenResponse>(
-      "/api/v3/eak/delegations/complete",
+      "/api/v3/qoni/delegations/complete",
       input,
     ).then(
       normalizeDelegateAgentTokenResponse,
@@ -137,11 +137,11 @@ export class EazoAgentKit {
   /** @deprecated Use completeDelegateToken. */
   completeDelegateAgent(
     input: CompleteDelegateAgentInput,
-  ): Promise<EAKResponse<DelegateTokenResponse>> {
+  ): Promise<QoniResponse<DelegateTokenResponse>> {
     return this.completeDelegateToken(input);
   }
 
-  currentUser<T = unknown>(input: GenAuthAccessTokenInput): Promise<EAKResponse<T>> {
+  currentUser<T = unknown>(input: GenAuthAccessTokenInput): Promise<QoniResponse<T>> {
     return this.genauth.userInfo<T>(input);
   }
 
@@ -156,50 +156,50 @@ export class EazoAgentKit {
     const res = await this.genauth.users.list<unknown>({ page: 1, limit: 1 });
     const userId = firstBoundUserId(res.data);
     if (!userId) {
-      throw new EAKError(
+      throw new QoniError(
         "resolveAnyBoundUser: the credential-bound GenAuth userpool returned no users. " +
           "Create a user in the userpool, or pass a real userId to delegateToken.",
-        { code: "eak.genauth.no_bound_users" },
+        { code: "qoni.genauth.no_bound_users" },
       );
     }
     return userId;
   }
 
-  request<T = unknown>(input: RawRequestInput): Promise<EAKResponse<T>> {
+  request<T = unknown>(input: RawRequestInput): Promise<QoniResponse<T>> {
     return this.unstableRequest<T>(input);
   }
 
-  unstableRequest<T = unknown>(input: RawRequestInput): Promise<EAKResponse<T>> {
-    return this.baseUrlFor("eak").then((baseUrl) => this.jsonRequest<T>(baseUrl, input.path, {
+  unstableRequest<T = unknown>(input: RawRequestInput): Promise<QoniResponse<T>> {
+    return this.baseUrlFor("qoni").then((baseUrl) => this.jsonRequest<T>(baseUrl, input.path, {
       method: input.method,
       token: input.token,
       query: input.query,
       body: input.body,
       headers: input.headers,
-      service: "eak",
+      service: "qoni",
     }));
   }
 
-  private eakJson<T>(
-    method: EAKHttpMethod,
+  private qoniJson<T>(
+    method: QoniHttpMethod,
     path: string,
     token?: string,
     payload: RequestPayload = {},
-  ): Promise<EAKResponse<T>> {
-    return this.baseUrlFor("eak").then((baseUrl) => this.jsonRequest<T>(baseUrl, path, {
+  ): Promise<QoniResponse<T>> {
+    return this.baseUrlFor("qoni").then((baseUrl) => this.jsonRequest<T>(baseUrl, path, {
       ...payload,
       method,
       token,
-      service: "eak",
+      service: "qoni",
     }));
   }
 
   private genauthJson<T>(
-    method: EAKHttpMethod,
+    method: QoniHttpMethod,
     path: string,
     token?: string,
     payload: RequestPayload = {},
-  ): Promise<EAKResponse<T>> {
+  ): Promise<QoniResponse<T>> {
     return this.baseUrlFor("genauth").then((baseUrl) => this.jsonRequest<T>(baseUrl, path, {
       ...payload,
       method,
@@ -209,11 +209,11 @@ export class EazoAgentKit {
   }
 
   private async gumemJson<T>(
-    method: EAKHttpMethod,
+    method: QoniHttpMethod,
     path: string,
     token?: string,
     payload: RequestPayload = {},
-  ): Promise<EAKResponse<T>> {
+  ): Promise<QoniResponse<T>> {
     const runtimeToken = await this.productTokenFor("gumem", token, payload.requiredScopes);
     const baseUrl = await this.baseUrlFor("gumem");
     return this.jsonRequest<T>(baseUrl, path, {
@@ -228,7 +228,7 @@ export class EazoAgentKit {
     path: string,
     token?: string,
     payload: RequestPayload & { lastEventId?: string; signal?: AbortSignal } = {},
-  ): AsyncIterable<EAKEvent<T>> {
+  ): AsyncIterable<QoniEvent<T>> {
     const runtimeToken = await this.productTokenFor("gumem", token, payload.requiredScopes);
     const baseUrl = await this.baseUrlFor("gumem");
     for await (const event of this.sseRequest<T>(baseUrl, path, {
@@ -241,11 +241,11 @@ export class EazoAgentKit {
   }
 
   private async webAgentJson<T>(
-    method: EAKHttpMethod,
+    method: QoniHttpMethod,
     path: string,
     token?: string,
     payload: RequestPayload = {},
-  ): Promise<EAKResponse<T>> {
+  ): Promise<QoniResponse<T>> {
     const runtimeToken = await this.productTokenFor("webagent", token, payload.requiredScopes);
     const baseUrl = await this.baseUrlFor("webagent");
     return this.jsonRequest<T>(
@@ -256,7 +256,7 @@ export class EazoAgentKit {
   }
 
   // Binary GET against the WebAgent API — artifact content downloads. JSON
-  // error payloads still map to typed EAKErrors.
+  // error payloads still map to typed QoniErrors.
   private async webAgentBytes(
     path: string,
     token?: string,
@@ -279,7 +279,7 @@ export class EazoAgentKit {
       throw errorFromPayload(
         response.status,
         await readJson(response),
-        `EAK request failed with HTTP ${response.status}`,
+        `Qoni request failed with HTTP ${response.status}`,
       );
     }
     const buffer = await response.arrayBuffer();
@@ -297,7 +297,7 @@ export class EazoAgentKit {
       signal?: AbortSignal;
       onReconnect?: (info: { attempt: number; lastEventId?: string; error: unknown }) => void;
     } = {},
-  ): AsyncIterable<EAKEvent<T>> {
+  ): AsyncIterable<QoniEvent<T>> {
     const runtimeToken = await this.productTokenFor("webagent", token, payload.requiredScopes);
     const baseUrl = await this.baseUrlFor("webagent");
     for await (const event of this.sseRequest<T>(
@@ -314,14 +314,14 @@ export class EazoAgentKit {
     )) {
       // WebAgent run streams carry no SSE `event:` line — the wire event type
       // lives in the envelope's `type` field. Surface it as `event.event` so
-      // callers can match against EAKEventTypes (e.g. RUN_COMPLETED) instead of
+      // callers can match against QoniEventTypes (e.g. RUN_COMPLETED) instead of
       // reaching into the payload. `data` is left intact (envelope with
       // `type` / `task_id` / `session_id` / `data`).
       yield normalizeWebAgentEvent(event);
     }
   }
 
-  private async signedPost<T>(pathname: string, body: object): Promise<EAKResponse<T>> {
+  private async signedPost<T>(pathname: string, body: object): Promise<QoniResponse<T>> {
     const payload = toRecord(body);
     const headers = buildSignedHeaders(
       {
@@ -332,11 +332,11 @@ export class EazoAgentKit {
       pathname,
       payload,
     );
-    return this.jsonRequest<T>(await this.baseUrlFor("eak"), pathname, {
+    return this.jsonRequest<T>(await this.baseUrlFor("qoni"), pathname, {
       method: "POST",
       body: payload,
       headers,
-      service: "eak",
+      service: "qoni",
       signed: true,
     });
   }
@@ -345,12 +345,12 @@ export class EazoAgentKit {
     baseUrl: string,
     pathname: string,
     options: RequestPayload & {
-      method: EAKHttpMethod;
+      method: QoniHttpMethod;
       token?: string;
-      service: EAKService;
+      service: QoniService;
       signed?: boolean;
     },
-  ): Promise<EAKResponse<T>> {
+  ): Promise<QoniResponse<T>> {
     const response = await this.fetchWithTimeout(
       urlWithBasePath(baseUrl, pathname, options.query),
       {
@@ -364,7 +364,7 @@ export class EazoAgentKit {
       throw errorFromPayload(
         response.status,
         payload,
-        `EAK request failed with HTTP ${response.status}`,
+        `Qoni request failed with HTTP ${response.status}`,
       );
     }
     const envelopeStatus = errorEnvelopeStatus(payload);
@@ -372,7 +372,7 @@ export class EazoAgentKit {
       throw errorFromPayload(
         envelopeStatus,
         payload,
-        `EAK request failed with statusCode ${envelopeStatus}`,
+        `Qoni request failed with statusCode ${envelopeStatus}`,
       );
     }
     return normalizeResponse<T>(payload, options.service);
@@ -388,7 +388,7 @@ export class EazoAgentKit {
     pathname: string,
     options: RequestPayload & {
       token: string;
-      service: EAKService;
+      service: QoniService;
       lastEventId?: string;
       signal?: AbortSignal;
       // Re-resolved before every (re)connect so a long stream survives product
@@ -397,7 +397,7 @@ export class EazoAgentKit {
       // Observability: called before each reconnect attempt (not the first).
       onReconnect?: (info: { attempt: number; lastEventId?: string; error: unknown }) => void;
     },
-  ): AsyncIterable<EAKEvent<T>> {
+  ): AsyncIterable<QoniEvent<T>> {
     let lastEventId = options.lastEventId;
     let attempt = 0;
     for (;;) {
@@ -432,11 +432,11 @@ export class EazoAgentKit {
     pathname: string,
     options: RequestPayload & {
       token: string;
-      service: EAKService;
+      service: QoniService;
       lastEventId?: string;
       signal?: AbortSignal;
     },
-  ): AsyncIterable<EAKEvent<T>> {
+  ): AsyncIterable<QoniEvent<T>> {
     const response = await this.fetchWithTimeout(
       urlWithBasePath(baseUrl, pathname, options.query),
       {
@@ -455,11 +455,11 @@ export class EazoAgentKit {
       throw errorFromPayload(
         response.status,
         await readJson(response),
-        `EAK stream failed with HTTP ${response.status}`,
+        `Qoni stream failed with HTTP ${response.status}`,
       );
     }
     if (!response.body) {
-      throw errorFromPayload(502, undefined, "EAK stream response has no body");
+      throw errorFromPayload(502, undefined, "Qoni stream response has no body");
     }
 
     const reader = response.body.getReader();
@@ -531,20 +531,20 @@ export class EazoAgentKit {
     }
   }
 
-  private async baseUrlFor(service: EAKService): Promise<string> {
+  private async baseUrlFor(service: QoniService): Promise<string> {
     const explicit = this.explicitBaseUrlFor(service);
     if (explicit) return explicit;
     const runtime = await this.runtimeConfig();
-    if (service === "eak") return runtime.eakBaseUrl ?? this.host;
+    if (service === "qoni") return runtime.qoniBaseUrl ?? this.host;
     const hostOrigin = originBaseUrl(this.host);
     if (service === "genauth") return runtime.genauthBaseUrl ?? hostOrigin;
     if (service === "gumem") return runtime.gumemBaseUrl ?? hostOrigin;
     return runtime.webAgentBaseUrl ?? hostOrigin;
   }
 
-  private explicitBaseUrlFor(service: EAKService): string | undefined {
-    if (service === "eak") {
-      const value = this.options.eakBaseUrl ?? this.options.genauthBaseUrl;
+  private explicitBaseUrlFor(service: QoniService): string | undefined {
+    if (service === "qoni") {
+      const value = this.options.qoniBaseUrl ?? this.options.genauthBaseUrl;
       return value ? normalizeBaseUrl(value) : undefined;
     }
     if (service === "genauth" && this.options.genauthBaseUrl) {
@@ -577,7 +577,7 @@ export class EazoAgentKit {
   }
 
   private async fetchRuntimeConfig(): Promise<ResolvedRuntimeConfig> {
-    const pathname = "/api/v3/eak/runtime-config";
+    const pathname = "/api/v3/qoni/runtime-config";
     const headers = buildSignedHeaders(
       {
         accessKey: this.accessKey,
@@ -602,7 +602,7 @@ export class EazoAgentKit {
       throw errorFromPayload(
         response.status,
         payload,
-        `EAK runtime config request failed with HTTP ${response.status}`,
+        `Qoni runtime config request failed with HTTP ${response.status}`,
       );
     }
     return normalizeRuntimeConfig(payload);
@@ -622,14 +622,14 @@ export class EazoAgentKit {
     requiredScopes: readonly string[] | undefined,
   ): Promise<string> {
     const runtimeToken = requiredRuntimeToken(token);
-    if (!isEakDelegationToken(runtimeToken)) return runtimeToken;
+    if (!isQoniDelegationToken(runtimeToken)) return runtimeToken;
 
     const scopes = [...(requiredScopes || [])].sort();
     const cacheKey = [service, runtimeToken, scopes.join(" ")].join(":");
     const cached = this.productTokenCache.get(cacheKey);
     if (cached && cached.expiresAt > Date.now() + 30_000) return cached.token;
 
-    const response = await this.signedPost<unknown>("/api/v3/eak/token-exchange", {
+    const response = await this.signedPost<unknown>("/api/v3/qoni/token-exchange", {
       subjectToken: runtimeToken,
       resource: service === "gumem" ? "gumem" : "webagent",
       scopes,
@@ -640,7 +640,7 @@ export class EazoAgentKit {
       throw errorFromPayload(
         502,
         payload,
-        "EAK product token exchange response did not include an access token",
+        "Qoni product token exchange response did not include an access token",
       );
     }
 
@@ -657,7 +657,7 @@ export class EazoAgentKit {
       return { accessToken: cached.accessToken, userPoolId: cached.userPoolId };
     }
 
-    const response = await this.signedPost<unknown>("/api/v3/eak/genauth/admin-token", {});
+    const response = await this.signedPost<unknown>("/api/v3/qoni/genauth/admin-token", {});
     const payload = response.data;
     const accessToken = readAccessToken(payload);
     const userPoolId =
@@ -668,7 +668,7 @@ export class EazoAgentKit {
       throw errorFromPayload(
         502,
         payload,
-        "EAK GenAuth admin-token response did not include accessToken and userPoolId",
+        "Qoni GenAuth admin-token response did not include accessToken and userPoolId",
       );
     }
 
@@ -681,10 +681,10 @@ export class EazoAgentKit {
   }
 }
 
-export { EazoAgentKit as EAK };
+export { QoniAgentKit as Qoni };
 
 interface ResolvedRuntimeConfig {
-  eakBaseUrl?: string;
+  qoniBaseUrl?: string;
   genauthBaseUrl?: string;
   gumemBaseUrl?: string;
   webAgentBaseUrl?: string;
@@ -724,7 +724,7 @@ async function readJson(response: Response): Promise<unknown> {
   return response.json().catch(() => undefined);
 }
 
-function normalizeResponse<T>(payload: unknown, _service: EAKService): EAKResponse<T> {
+function normalizeResponse<T>(payload: unknown, _service: QoniService): QoniResponse<T> {
   if (isJsonObject(payload) && ("data" in payload || "meta" in payload)) {
     return {
       data: ("data" in payload ? payload.data : payload) as T,
@@ -767,7 +767,7 @@ function urlWithBasePath(baseUrl: string, pathname: string, query?: JsonObject):
 function resolveLocalGenauthRequest(input: URL): { url: URL; hostHeader?: string } {
   const url = new URL(input.toString());
   if (
-    process.env.EAK_LOCAL_GENAUTH_REWRITE === "false" ||
+    process.env.QONI_LOCAL_GENAUTH_REWRITE === "false" ||
     url.protocol !== "http:" ||
     !url.hostname.endsWith(".genauth.localhost")
   ) {
@@ -775,7 +775,7 @@ function resolveLocalGenauthRequest(input: URL): { url: URL; hostHeader?: string
   }
 
   const hostHeader = url.host;
-  url.hostname = process.env.EAK_LOCAL_GENAUTH_TARGET_HOST || "127.0.0.1";
+  url.hostname = process.env.QONI_LOCAL_GENAUTH_TARGET_HOST || "127.0.0.1";
   return { url, hostHeader };
 }
 
@@ -802,8 +802,8 @@ function originBaseUrl(host: string): string {
 }
 
 function serviceHostOption(
-  options: EAKOptions,
-  service: Exclude<EAKService, "eak">,
+  options: QoniOptions,
+  service: Exclude<QoniService, "qoni">,
 ): string | undefined {
   if (service === "genauth") {
     return options.genauthHost;
@@ -817,9 +817,9 @@ function serviceHostOption(
 function normalizeRuntimeConfig(payload: unknown): ResolvedRuntimeConfig {
   const data = envelopeData(payload);
   if (!isJsonObject(data)) return {};
-  const config = data as EAKRuntimeConfig;
+  const config = data as QoniRuntimeConfig;
   return {
-    eakBaseUrl: runtimeServiceUrl(config, "eak", "eakBaseUrl"),
+    qoniBaseUrl: runtimeServiceUrl(config, "qoni", "qoniBaseUrl"),
     genauthBaseUrl: runtimeServiceUrl(config, "genauth", "genauthBaseUrl"),
     gumemBaseUrl: runtimeServiceUrl(config, "gumem", "gumemBaseUrl"),
     webAgentBaseUrl:
@@ -834,9 +834,9 @@ function envelopeData(payload: unknown): unknown {
 }
 
 function runtimeServiceUrl(
-  config: EAKRuntimeConfig,
-  service: keyof NonNullable<EAKRuntimeConfig["services"]>,
-  topLevelKey: keyof EAKRuntimeConfig,
+  config: QoniRuntimeConfig,
+  service: keyof NonNullable<QoniRuntimeConfig["services"]>,
+  topLevelKey: keyof QoniRuntimeConfig,
 ): string | undefined {
   const topLevel = config[topLevelKey];
   if (typeof topLevel === "string" && topLevel.trim()) return normalizeBaseUrl(topLevel);
@@ -869,11 +869,11 @@ function normalizeDelegateTokenInput(input: DelegateTokenInput): JsonObject {
   // Silent delegation acts for a specific end user, so a user id is required.
   // Fail locally with a precise message instead of letting an un-attributed
   // request reach the gateway and come back as a confusing signing/auth error
-  // (interactive mode is exempt — the EAK Console resolves the login during
+  // (interactive mode is exempt — the Qoni Console resolves the login during
   // authorization). The TS overloads already enforce this; the guard is for
   // plain-JS callers where types don't apply.
   if (input.mode !== "interactive" && !body.userId) {
-    throw new EAKValidationError(
+    throw new QoniValidationError(
       "delegateToken: silent mode requires a user — pass `user: { id: <genauthUserId> }` " +
         "(or the deprecated top-level `userId`). Interactive mode (`mode: \"interactive\"`) " +
         "does not need one.",
@@ -895,11 +895,11 @@ function resolveDelegationScopes(
 ): string[] {
   const resolved = new Set<string>();
   for (const product of products ?? []) {
-    const expansion = EAKProductScopes[product as EAKProduct];
+    const expansion = QoniProductScopes[product as QoniProduct];
     if (!expansion) {
-      throw new EAKValidationError(
+      throw new QoniValidationError(
         `delegateToken: unknown product "${product}" — expected one of ` +
-          `${Object.keys(EAKProductScopes).join(", ")}`,
+          `${Object.keys(QoniProductScopes).join(", ")}`,
       );
     }
     for (const scope of expansion) resolved.add(scope);
@@ -909,7 +909,7 @@ function resolveDelegationScopes(
     resolved.add(scope);
   }
   if (resolved.size === 0) {
-    throw new EAKValidationError(
+    throw new QoniValidationError(
       "delegateToken requires at least one scope — pass scopes (e.g. " +
         '["webagent.do_anything:manage"]) and/or products (e.g. ["doAnything"])',
     );
@@ -922,14 +922,14 @@ function validateScopeFormat(scope: string): void {
   // A known scope minus its service prefix — the most common mistake.
   const prefixed = KNOWN_SCOPES.find((known) => known.endsWith(`.${scope}`) || known === `webagent.${scope}`);
   if (prefixed) {
-    throw new EAKValidationError(
+    throw new QoniValidationError(
       `delegateToken: scope "${scope}" is missing its service prefix — write "${prefixed}"`,
     );
   }
   // Unknown scopes are allowed if well-formed (the server is the authority on
   // newly added scopes); malformed ones fail locally with the correct form.
   if (!/^[a-z0-9_]+(\.[a-z0-9_]+)+:[a-z0-9_]+$/.test(scope)) {
-    throw new EAKValidationError(
+    throw new QoniValidationError(
       `delegateToken: malformed scope "${scope}" — scopes look like ` +
         '"<service>.<resource>:<action>", e.g. "webagent.do_anything:manage"',
     );
@@ -958,8 +958,8 @@ function safeDecodeJwtPayload(token: string): JsonObject | undefined {
   }
 }
 
-function isEakDelegationToken(token: string): boolean {
-  return safeDecodeJwtPayload(token)?.token_type === "eak_delegation_token";
+function isQoniDelegationToken(token: string): boolean {
+  return safeDecodeJwtPayload(token)?.token_type === "qoni_delegation_token";
 }
 
 function readAccessToken(payload: unknown): string | undefined {
@@ -1019,9 +1019,9 @@ function nestedString(value: unknown, path: readonly string[]): string | undefin
 
 // WebAgent run events arrive as `id: <n>\ndata: <envelope>` with no SSE
 // `event:` line; the type is the envelope's `type` field. Lift it to
-// `event.event` so callers can match EAKEventTypes. Non-record / typed events
+// `event.event` so callers can match QoniEventTypes. Non-record / typed events
 // pass through unchanged.
-function normalizeWebAgentEvent<T>(event: EAKEvent<T>): EAKEvent<T> {
+function normalizeWebAgentEvent<T>(event: QoniEvent<T>): QoniEvent<T> {
   if (event.event) return event;
   const data = event.data as { type?: unknown } | null | undefined;
   if (data && typeof data === "object" && typeof data.type === "string") {
@@ -1092,7 +1092,7 @@ function firstBoundUserId(data: unknown): string | undefined {
   return undefined;
 }
 
-function parseSSEEvent<T>(chunk: string): EAKEvent<T> | null {
+function parseSSEEvent<T>(chunk: string): QoniEvent<T> | null {
   const lines = chunk.split(/\r?\n/);
   let id: string | undefined;
   let event: string | undefined;
@@ -1121,14 +1121,14 @@ function parseEventData<T>(raw: string): T {
 
 function requiredRuntimeToken(token: string | undefined): string {
   if (token && token.trim()) return token;
-  throw new EAKDelegationRequiredError(
+  throw new QoniDelegationRequiredError(
     "Product capability calls require an explicit token in the token field",
   );
 }
 
 function normalizeDelegateAgentTokenResponse<T extends DelegateAgentResponse>(
-  response: EAKResponse<T>,
-): EAKResponse<T> {
+  response: QoniResponse<T>,
+): QoniResponse<T> {
   if (!isJsonObject(response.data)) return response;
   const grantState =
     typeof response.data.grantState === "string"

@@ -1,12 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { EAKValidationError } from "../src";
+import { QoniValidationError } from "../src";
 import { InteractionHandle, normalizeInteraction } from "../src/interactions";
 import type { Action, Interaction } from "../src/interactions";
 import { normalizeRunEvent } from "../src/run-events";
-import type { EAKEvent } from "../src/types";
+import type { QoniEvent } from "../src/types";
 
 // A wire `run.interaction` SSE event (double envelope, snake_case payload).
-function interactionEvent(payload: Record<string, unknown>): EAKEvent<unknown> {
+function interactionEvent(payload: Record<string, unknown>): QoniEvent<unknown> {
   return {
     id: "1",
     event: "run.interaction",
@@ -18,7 +18,7 @@ function interactionEvent(payload: Record<string, unknown>): EAKEvent<unknown> {
       occurred_at: "2026-06-12T08:00:01+00:00",
       data: payload,
     },
-  } as unknown as EAKEvent<unknown>;
+  } as unknown as QoniEvent<unknown>;
 }
 
 describe("normalizeInteraction", () => {
@@ -204,7 +204,7 @@ describe("InteractionHandle", () => {
       { kind: "skip", label: "Skip", method: "POST", endpoint: "/x/skip" },
     ]);
     expect(handle.can("confirm")).toBe(false);
-    await expect(handle.confirm()).rejects.toBeInstanceOf(EAKValidationError);
+    await expect(handle.confirm()).rejects.toBeInstanceOf(QoniValidationError);
     expect(posted).toEqual([]); // nothing posted
   });
 });

@@ -20,7 +20,7 @@ const EXPECTED_TITLE_RE = /universally unique identifier/i;
 // A real browsing run (search-box interaction on browserbase) measures
 // ~150s — well past the suite's 120s default testTimeout, so the wait test
 // carries its own budget like the deep-research one does.
-const WAIT_TIMEOUT_MS = Number(process.env.EAK_LIVE_WAIT_TIMEOUT_MS || 360_000);
+const WAIT_TIMEOUT_MS = Number(process.env.QONI_LIVE_WAIT_TIMEOUT_MS || 360_000);
 
 // Live coverage of the frozen contract's mainline (public-surface doc §2/§4):
 // run() → RunHandle → wait(), token passed once at the entry call, screenshots

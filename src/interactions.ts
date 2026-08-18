@@ -1,4 +1,4 @@
-import { EAKValidationError } from "./errors";
+import { QoniValidationError } from "./errors";
 import { camelizeRecord } from "./run-events";
 import {
   ActionKinds,
@@ -10,7 +10,7 @@ import { isJsonObject, type JsonObject } from "./types";
 
 /**
  * Curated interaction surface (axis B of the interaction model, see
- * webagentbackend/docs/eak-interaction-model.md §2.3). A single wire event
+ * webagentbackend/docs/qoni-interaction-model.md §2.3). A single wire event
  * `run.interaction` carries the complete, typed object across its whole
  * lifecycle (created / updated / resolved), discriminated by `type` and driven
  * by a backend-authoritative `status`. This replaces the old `run.input_request`
@@ -332,7 +332,7 @@ export class InteractionHandle<T extends InteractionType = InteractionType> {
     const action = this.interaction.actions.find((a) => a.kind === kind);
     if (!action) {
       const offered = this.interaction.actions.map((a) => a.kind).join(", ") || "none";
-      throw new EAKValidationError(
+      throw new QoniValidationError(
         `interaction "${this.interaction.id}" (${this.interaction.type}) does not offer the ` +
           `"${kind}" action — the backend declared: ${offered}. ` +
           "Only call methods whose action the interaction currently offers.",

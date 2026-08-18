@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { WireEventTypes, WIRE_EVENT_TYPE_VALUES } from "../src/events";
-import { WIRE_TO_SEMANTIC, EAKEventTypes } from "../src/run-events";
+import { WIRE_TO_SEMANTIC, QoniEventTypes } from "../src/run-events";
 import {
   InteractionTypes,
   InteractionStatuses,
@@ -121,8 +121,8 @@ describe("WireEventTypes ↔ vendored catalog", () => {
     }
   });
 
-  it("EAKEventTypes constants are exactly the produced event.type values", () => {
-    // EAKEventTypes is the developer-facing vocabulary; it must cover precisely
+  it("QoniEventTypes constants are exactly the produced event.type values", () => {
+    // QoniEventTypes is the developer-facing vocabulary; it must cover precisely
     // the set of event.type values the normalizer can emit: WIRE_TO_SEMANTIC
     // values + out-of-band "screenshot"/"done"/"interaction" + the Track
     // monitor-stream types (triggered/checkCompleted, produced by the monitor.*
@@ -135,9 +135,9 @@ describe("WireEventTypes ↔ vendored catalog", () => {
       "triggered",
       "checkCompleted",
     ]);
-    expect(new Set(Object.values(EAKEventTypes))).toEqual(produced);
+    expect(new Set(Object.values(QoniEventTypes))).toEqual(produced);
     // no duplicate values
-    const vals = Object.values(EAKEventTypes);
+    const vals = Object.values(QoniEventTypes);
     expect(vals.length).toBe(new Set(vals).size);
   });
 

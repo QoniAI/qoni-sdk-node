@@ -1,6 +1,6 @@
 # Open Source Readiness
 
-Use this checklist before publishing or mirroring `@eazo/eak` as an open SDK.
+Use this checklist before publishing or mirroring `@qoniai/qoni` as an open SDK.
 
 ## Consumer Surface
 
@@ -42,6 +42,7 @@ Run the full local gate before publishing:
 
 ```bash
 pnpm typecheck
+pnpm check:brand
 pnpm test
 pnpm build
 pnpm pack --dry-run

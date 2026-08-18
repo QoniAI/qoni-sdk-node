@@ -1,4 +1,0 @@
-interface:
-  display_name: "EAK SDK"
-  short_description: "Integrate EAK SDK delegation and product APIs"
-  default_prompt: "Use $eak-sdk to build or debug a Node.js @eazo/eak integration with EzaoAgentKit, delegateToken, runtime-config discovery, and GUMem/WebAgent product calls."

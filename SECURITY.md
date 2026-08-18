@@ -1,6 +1,6 @@
 # Security Policy
 
-`@eazo/eak` handles server-side credentials and short-lived tokens. Treat issues
+`@qoniai/qoni` handles server-side credentials and short-lived tokens. Treat issues
 in credential handling, token exchange, scope enforcement, or runtime discovery
 as security-sensitive.
 
@@ -8,12 +8,12 @@ as security-sensitive.
 
 | Version | Supported |
 | --- | --- |
-| `0.1.x` | Yes |
+| `0.4.x` | Yes |
 
 ## Reporting a Vulnerability
 
 Report suspected vulnerabilities privately through the project issue tracker or
-the internal security response channel used by the EAK team. Do not include live
+the internal security response channel used by the Qoni team. Do not include live
 AK/SK values, access tokens, delegation tokens, product tokens, customer data, or
 recordings in public issues.
 
@@ -28,7 +28,7 @@ Please include:
 
 ## Credential Handling
 
-- Keep EAK `accessKey` and `secretKey` on trusted servers only.
+- Keep Qoni `accessKey` and `secretKey` on trusted servers only.
 - Do not ship AK/SK to browsers, mobile apps, public CLIs, or untrusted Agent
   runtimes.
 - Do not log AK/SK, delegation tokens, or exchanged product access tokens.

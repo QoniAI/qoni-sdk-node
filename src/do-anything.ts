@@ -1,4 +1,4 @@
-import { EAKValidationError } from "./errors";
+import { QoniValidationError } from "./errors";
 import {
   RunHandle,
   type CaptureOptions,
@@ -8,10 +8,10 @@ import {
 import type { DoAnythingEvent } from "./run-events";
 import {
   isJsonObject,
-  type EAKEvent,
-  type EAKHttpMethod,
-  type EAKResponse,
-  type EAKTransport,
+  type QoniEvent,
+  type QoniHttpMethod,
+  type QoniResponse,
+  type QoniTransport,
   type JsonObject,
   type RuntimeTokenInput,
 } from "./types";
@@ -108,16 +108,16 @@ const PLATFORM_DECIDED_RUN_OPTIONS = [
   "cacheScript",
 ] as const;
 
-export function createDoAnythingNamespace(transport: EAKTransport) {
+export function createDoAnythingNamespace(transport: QoniTransport) {
   /**
    * Wire-level escape hatch — 1:1 with the backend HTTP contract
    * (snake_case fields). Run-scoped methods use the single-ID route family
-   * `/do_anything/runs/{run_id}` (eak-sdk-public-surface.md §12.1); session
+   * `/do_anything/runs/{run_id}` (qoni-sdk-public-surface.md §12.1); session
    * endpoints stay session-scoped. Shapes here may evolve with the API and
    * are not covered by the frozen public contract.
    */
   const api = {
-    createSession: <T = unknown>(input: RuntimeTokenInput & JsonObject): Promise<EAKResponse<T>> =>
+    createSession: <T = unknown>(input: RuntimeTokenInput & JsonObject): Promise<QoniResponse<T>> =>
       transport.webAgentJson("POST", "/do_anything/sessions", input.token, {
         body: omit(input, "token"),
         requiredScopes: ["webagent.do_anything:manage"],
@@ -129,7 +129,7 @@ export function createDoAnythingNamespace(transport: EAKTransport) {
      * run is a follow-up in that session (409 while the prior run is
      * non-terminal).
      */
-    createRun: <T = unknown>(input: RuntimeTokenInput & JsonObject): Promise<EAKResponse<T>> =>
+    createRun: <T = unknown>(input: RuntimeTokenInput & JsonObject): Promise<QoniResponse<T>> =>
       transport.webAgentJson("POST", "/do_anything/runs", input.token, {
         body: normalizeDoAnythingRunInput(omit(input, "token")),
         requiredScopes: ["webagent.do_anything:manage"],
@@ -137,7 +137,7 @@ export function createDoAnythingNamespace(transport: EAKTransport) {
 
     getRun: <T = unknown>(
       input: RuntimeTokenInput & { runId: string },
-    ): Promise<EAKResponse<T>> =>
+    ): Promise<QoniResponse<T>> =>
       transport.webAgentJson(
         "GET",
         `/do_anything/runs/${encodeURIComponent(input.runId)}`,
@@ -165,7 +165,7 @@ export function createDoAnythingNamespace(transport: EAKTransport) {
         onlyTopLevel?: boolean;
         onReconnect?: (info: { attempt: number; lastEventId?: string; error: unknown }) => void;
       },
-    ): AsyncIterable<EAKEvent<T>> {
+    ): AsyncIterable<QoniEvent<T>> {
       const path = `/do_anything/runs/${encodeURIComponent(input.runId)}/events`;
       const stream = transport.webAgentSSE<T>(path, input.token, {
         lastEventId: input.lastEventId,
@@ -187,7 +187,7 @@ export function createDoAnythingNamespace(transport: EAKTransport) {
 
     intervene: <T = unknown>(
       input: RuntimeTokenInput & { runId: string } & JsonObject,
-    ): Promise<EAKResponse<T>> =>
+    ): Promise<QoniResponse<T>> =>
       transport.webAgentJson(
         "POST",
         `/do_anything/runs/${encodeURIComponent(input.runId)}/intervene`,
@@ -200,7 +200,7 @@ export function createDoAnythingNamespace(transport: EAKTransport) {
 
     cancel: <T = unknown>(
       input: RuntimeTokenInput & { runId: string; reason?: string },
-    ): Promise<EAKResponse<T>> =>
+    ): Promise<QoniResponse<T>> =>
       transport.webAgentJson(
         "POST",
         `/do_anything/runs/${encodeURIComponent(input.runId)}/cancel`,
@@ -213,7 +213,7 @@ export function createDoAnythingNamespace(transport: EAKTransport) {
 
     readArtifacts: <T = DoAnythingSnapshot>(
       input: RuntimeTokenInput & { sessionId: string; artifactId: string },
-    ): Promise<EAKResponse<T>> =>
+    ): Promise<QoniResponse<T>> =>
       transport.webAgentJson(
         "GET",
         `/do_anything/sessions/${encodeURIComponent(input.sessionId)}/artifacts/${encodeURIComponent(input.artifactId)}`,
@@ -225,7 +225,7 @@ export function createDoAnythingNamespace(transport: EAKTransport) {
 
     readRecording: <T = unknown>(
       input: RuntimeTokenInput & { sessionId: string },
-    ): Promise<EAKResponse<T>> =>
+    ): Promise<QoniResponse<T>> =>
       transport.webAgentJson(
         "GET",
         `/do_anything/sessions/${encodeURIComponent(input.sessionId)}/recording`,
@@ -254,7 +254,7 @@ export function createDoAnythingNamespace(transport: EAKTransport) {
         }),
       postAction: async (action, body) => {
         await transport.webAgentJson(
-          (action.method || "POST") as EAKHttpMethod,
+          (action.method || "POST") as QoniHttpMethod,
           action.endpoint,
           token,
           {
@@ -281,7 +281,7 @@ export function createDoAnythingNamespace(transport: EAKTransport) {
     run: async (input: DoAnythingRunOptions): Promise<RunHandle<DoAnythingEvent>> => {
       const { token, prompt, capture, limits, session, ...rest } = input;
       if (!prompt || typeof prompt !== "string") {
-        throw new EAKValidationError("doAnything.run requires a prompt string");
+        throw new QoniValidationError("doAnything.run requires a prompt string");
       }
 
       // Fail loudly on options the wire create body cannot carry — a silent
@@ -291,7 +291,7 @@ export function createDoAnythingNamespace(transport: EAKTransport) {
         (key) => rest[key] !== undefined,
       );
       if (unsupported.length > 0) {
-        throw new EAKValidationError(
+        throw new QoniValidationError(
           `doAnything.run does not support ${unsupported.join(", ")} — the wire create body ` +
             "has no such field (the platform decides these server-side), so the value would " +
             "be silently dropped. Remove it from the call.",
@@ -309,7 +309,7 @@ export function createDoAnythingNamespace(transport: EAKTransport) {
       });
       const runId = created.data.run_id || created.data.id;
       if (!runId) {
-        throw new EAKValidationError("doAnything run create did not return a run id");
+        throw new QoniValidationError("doAnything run create did not return a run id");
       }
       const sessionId =
         typeof created.data.session_id === "string" && created.data.session_id
@@ -369,7 +369,7 @@ function normalizeDoAnythingInterveneInput(input: JsonObject): JsonObject {
 
 // The run/task id on a WebAgent run event envelope (`event.data.task_id`) —
 // used to tell a top-level run's events from its internal sub-runs.
-function envelopeTaskId(event: EAKEvent): string | undefined {
+function envelopeTaskId(event: QoniEvent): string | undefined {
   const env = event.data as { task_id?: unknown } | null | undefined;
   return env && typeof env === "object" && typeof env.task_id === "string"
     ? env.task_id

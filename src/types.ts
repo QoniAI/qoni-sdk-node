@@ -3,10 +3,10 @@ export type JsonValue = JsonPrimitive | JsonObject | JsonValue[];
 export type JsonObject = Record<string, unknown>;
 
 export type DelegationMode = "silent" | "interactive";
-export type EAKService = "eak" | "genauth" | "gumem" | "webagent";
-export type EAKHttpMethod = "GET" | "POST" | "PATCH" | "DELETE";
+export type QoniService = "qoni" | "genauth" | "gumem" | "webagent";
+export type QoniHttpMethod = "GET" | "POST" | "PATCH" | "DELETE";
 
-export interface EAKOptions {
+export interface QoniOptions {
   accessKey?: string;
   secretKey?: string;
   host?: string;
@@ -20,13 +20,13 @@ export interface EAKOptions {
   accessKeyId?: string;
   /** @deprecated Use secretKey. */
   accessKeySecret?: string;
-  /** @deprecated Prefer host runtime discovery for normal EAK Console gateway access. */
-  eakBaseUrl?: string;
-  /** @deprecated Use host for normal EAK Gateway access. */
+  /** @deprecated Prefer host runtime discovery for normal Qoni Console gateway access. */
+  qoniBaseUrl?: string;
+  /** @deprecated Use host for normal Qoni Gateway access. */
   genauthBaseUrl?: string;
-  /** @deprecated Use host for normal EAK Gateway access. */
+  /** @deprecated Use host for normal Qoni Gateway access. */
   gumemBaseUrl?: string;
-  /** @deprecated Use host for normal EAK Gateway access. */
+  /** @deprecated Use host for normal Qoni Gateway access. */
   webAgentBaseUrl?: string;
   fetch?: typeof fetch;
   timeoutMs?: number;
@@ -38,13 +38,13 @@ export interface EAKOptions {
   sseMaxRetries?: number;
 }
 
-export interface EAKRuntimeConfig {
-  eakBaseUrl?: string;
+export interface QoniRuntimeConfig {
+  qoniBaseUrl?: string;
   genauthBaseUrl?: string;
   gumemBaseUrl?: string;
   webAgentBaseUrl?: string;
   services?: {
-    eak?: string | { baseUrl?: string; url?: string; host?: string };
+    qoni?: string | { baseUrl?: string; url?: string; host?: string };
     genauth?: string | { baseUrl?: string; url?: string; host?: string };
     gumem?: string | { baseUrl?: string; url?: string; host?: string };
     webAgent?: string | { baseUrl?: string; url?: string; host?: string };
@@ -52,17 +52,17 @@ export interface EAKRuntimeConfig {
   };
 }
 
-export interface EAKMeta {
+export interface QoniMeta {
   requestId?: string;
   traceId?: string;
   auditId?: string;
-  service?: EAKService;
+  service?: QoniService;
   [key: string]: unknown;
 }
 
-export interface EAKResponse<T = unknown> {
+export interface QoniResponse<T = unknown> {
   data: T;
-  meta: EAKMeta;
+  meta: QoniMeta;
 }
 
 export interface UserRef {
@@ -80,16 +80,16 @@ interface DelegateTokenBaseInput {
   /** Fine-grained scopes. May be combined with `products`. */
   scopes?: readonly string[];
   /** Per-product authorization sugar — expands to the product's scope set. */
-  products?: readonly EAKProductName[];
+  products?: readonly QoniProductName[];
   expiresIn?: string | number;
   idempotencyKey?: string;
 }
 
 /**
  * Product names accepted by `delegateToken({ products })`. Mirrors
- * `EAKProduct` in scopes.ts (duplicated to keep this module import-free).
+ * `QoniProduct` in scopes.ts (duplicated to keep this module import-free).
  */
-export type EAKProductName = "doAnything" | "webSearch" | "deepResearch" | "track";
+export type QoniProductName = "doAnything" | "webSearch" | "deepResearch" | "track";
 
 export type DelegateTokenSilentInput = DelegateTokenBaseInput & {
   mode?: "silent";
@@ -178,7 +178,7 @@ export interface TokenInput {
 export type RuntimeTokenInput = TokenInput;
 
 export interface RawRequestInput extends TokenInput {
-  method: EAKHttpMethod;
+  method: QoniHttpMethod;
   path: string;
   query?: JsonObject;
   body?: JsonObject;
@@ -192,44 +192,44 @@ export interface RequestPayload {
   requiredScopes?: readonly string[];
 }
 
-export interface EAKEvent<T = unknown> {
+export interface QoniEvent<T = unknown> {
   id?: string;
   event?: string;
   data: T;
 }
 
-export type EAKSSEEvent<T = unknown> = EAKEvent<T>;
+export type QoniSSEEvent<T = unknown> = QoniEvent<T>;
 
-export interface EAKTransport {
-  eakJson<T>(
-    method: EAKHttpMethod,
+export interface QoniTransport {
+  qoniJson<T>(
+    method: QoniHttpMethod,
     path: string,
     token?: string,
     payload?: RequestPayload,
-  ): Promise<EAKResponse<T>>;
+  ): Promise<QoniResponse<T>>;
   genauthJson<T>(
-    method: EAKHttpMethod,
+    method: QoniHttpMethod,
     path: string,
     token?: string,
     payload?: RequestPayload,
-  ): Promise<EAKResponse<T>>;
+  ): Promise<QoniResponse<T>>;
   gumemJson<T>(
-    method: EAKHttpMethod,
+    method: QoniHttpMethod,
     path: string,
     token?: string,
     payload?: RequestPayload,
-  ): Promise<EAKResponse<T>>;
+  ): Promise<QoniResponse<T>>;
   gumemSSE<T>(
     path: string,
     token?: string,
     payload?: RequestPayload & { lastEventId?: string; signal?: AbortSignal },
-  ): AsyncIterable<EAKEvent<T>>;
+  ): AsyncIterable<QoniEvent<T>>;
   webAgentJson<T>(
-    method: EAKHttpMethod,
+    method: QoniHttpMethod,
     path: string,
     token?: string,
     payload?: RequestPayload,
-  ): Promise<EAKResponse<T>>;
+  ): Promise<QoniResponse<T>>;
   /** Binary GET — used for artifact content downloads. */
   webAgentBytes(
     path: string,
@@ -244,7 +244,7 @@ export interface EAKTransport {
       signal?: AbortSignal;
       onReconnect?: (info: { attempt: number; lastEventId?: string; error: unknown }) => void;
     },
-  ): AsyncIterable<EAKEvent<T>>;
+  ): AsyncIterable<QoniEvent<T>>;
 }
 
 export function isJsonObject(value: unknown): value is JsonObject {

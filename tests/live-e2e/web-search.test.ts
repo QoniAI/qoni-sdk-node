@@ -58,7 +58,7 @@ describeLiveE2E("live e2e: Web Search (semantic surface)", () => {
           // A real, evergreen query that search engines can always match.
           // Do NOT embed a nonce here: engines tokenize it into noise and
           // return 0 hits nondeterministically; traceability comes from run.id.
-          prompt: "EAK SDK quickstart guide",
+          prompt: "Qoni SDK quickstart guide",
           maxResultsPerQuery: 1,
           siteWhitelist: SITE_WHITELIST,
         }),
@@ -79,7 +79,7 @@ describeLiveE2E("live e2e: Web Search (semantic surface)", () => {
       recordedFile = recorder.file;
       console.log(`recording run ${run.id} → ${recorder.dir}`);
       const result = await run.wait({
-        timeoutMs: Number(process.env.EAK_LIVE_STREAM_TIMEOUT_MS || 120_000),
+        timeoutMs: Number(process.env.QONI_LIVE_STREAM_TIMEOUT_MS || 120_000),
         onEvent: (event) => recorder.record(event),
       });
       recordedEvents = recorder.count();

@@ -1,17 +1,17 @@
 import { describe, expect, it } from "vitest";
-import { EazoAgentKit, MonitorHandle, RunHandle } from "../src";
+import { QoniAgentKit, MonitorHandle, RunHandle } from "../src";
 
 // Anti-drift guard for the frozen public contract
-// (wa/docs/eak-sdk-public-surface.md §2-§9). The sets below are asserted with
+// (wa/docs/qoni-sdk-public-surface.md §2-§9). The sets below are asserted with
 // EXACT equality on purpose: removing a contract method fails, and so does
 // adding one that the contract doesn't define. If this test is red, either
 // the change is a contract violation, or the contract document was amended
 // first and this pin must be updated in the same commit.
 
-const client = new EazoAgentKit({
+const client = new QoniAgentKit({
   accessKey: "ak_test",
   secretKey: "sk_test",
-  host: "https://eak.example.com",
+  host: "https://qoni.example.com",
 });
 
 function publicKeys(value: object): string[] {
@@ -53,7 +53,18 @@ describe("frozen contract surface", () => {
 
   it("MonitorHandle has exactly the contract §6 methods", () => {
     expect(prototypeMethods(MonitorHandle)).toEqual(
-      ["delete", "events", "get", "interactionHandle", "run", "runNow", "runs", "update"].sort(),
+      [
+        "delete",
+        "events",
+        "get",
+        "interactionHandle",
+        "pause",
+        "refine",
+        "resume",
+        "run",
+        "runNow",
+        "runs",
+      ].sort(),
     );
   });
 });

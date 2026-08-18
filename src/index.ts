@@ -1,22 +1,22 @@
 export { buildAuthorization, buildSignature, buildStringToSign } from "./signature";
-export { EAK, EazoAgentKit } from "./client";
+export { Qoni, QoniAgentKit } from "./client";
 export {
-  EAKAuthError,
-  EAKDelegationRequiredError,
-  EAKError,
-  EAKPermissionDeniedError,
-  EAKRateLimitError,
-  EAKTimeoutError,
-  EAKTokenExpiredError,
-  EAKUpstreamError,
-  EAKValidationError,
+  QoniAuthError,
+  QoniDelegationRequiredError,
+  QoniError,
+  QoniPermissionDeniedError,
+  QoniRateLimitError,
+  QoniTimeoutError,
+  QoniTokenExpiredError,
+  QoniUpstreamError,
+  QoniValidationError,
 } from "./errors";
-export type { EAKErrorCode, EAKErrorOptions } from "./errors";
-// `EAKEventTypes` (the curated `event.type` values) is exported from
+export type { QoniErrorCode, QoniErrorOptions } from "./errors";
+// `QoniEventTypes` (the curated `event.type` values) is exported from
 // run-events.ts below. The raw 45-entry wire catalog (WireEventTypes) stays
 // internal (events.ts) — it backs the wire→curated mapping + drift tests.
-export { EAKProductScopes, EAKScopeBundles, EAKScopes } from "./scopes";
-export type { EAKProduct } from "./scopes";
+export { QoniProductScopes, QoniScopeBundles, QoniScopes } from "./scopes";
+export type { QoniProduct } from "./scopes";
 export { RunHandle } from "./run-handle";
 export type {
   Artifact,
@@ -27,9 +27,9 @@ export type {
   RunWaitOptions,
   SessionRef,
 } from "./run-handle";
-export { EAKEventTypes } from "./run-events";
+export { QoniEventTypes } from "./run-events";
 export type {
-  EAKEventType,
+  QoniEventType,
   RunEvent,
   RunImage,
   // Per-product event types (分型) — each product handle is typed to these.
@@ -112,13 +112,13 @@ export type {
   DelegateTokenSilentResponse,
   DelegationMode,
   DelegationTokenResponse,
-  EAKEvent,
-  EAKMeta,
-  EAKOptions,
-  EAKResponse,
-  EAKProductName,
-  EAKRuntimeConfig,
-  EAKSSEEvent,
+  QoniEvent,
+  QoniMeta,
+  QoniOptions,
+  QoniResponse,
+  QoniProductName,
+  QoniRuntimeConfig,
+  QoniSSEEvent,
   InteractiveDelegationResponse,
   JsonObject,
   RawRequestInput,

@@ -1,4 +1,4 @@
-import type { EAKResponse, EAKTransport, JsonObject, RuntimeTokenInput } from "./types";
+import type { QoniResponse, QoniTransport, JsonObject, RuntimeTokenInput } from "./types";
 
 export interface GumemCreateSessionInput extends RuntimeTokenInput {
   userId?: string;
@@ -44,15 +44,15 @@ export interface GumemUploadResourceInput extends RuntimeTokenInput {
   contentType?: string;
 }
 
-export function createGumemNamespace(transport: EAKTransport) {
+export function createGumemNamespace(transport: QoniTransport) {
   return {
-    createSession: <T = unknown>(input: GumemCreateSessionInput): Promise<EAKResponse<T>> =>
+    createSession: <T = unknown>(input: GumemCreateSessionInput): Promise<QoniResponse<T>> =>
       transport.gumemJson("POST", "/api/sessions", input.token, {
         body: gumemBody(omit(input, "token")),
         requiredScopes: ["gumem.memory:write"],
       }),
 
-    addMessages: <T = unknown>(input: GumemAddMessagesInput): Promise<EAKResponse<T>> =>
+    addMessages: <T = unknown>(input: GumemAddMessagesInput): Promise<QoniResponse<T>> =>
       transport.gumemJson(
         "POST",
         `/api/sessions/${encodeURIComponent(input.sessionId)}/messages`,
@@ -63,7 +63,7 @@ export function createGumemNamespace(transport: EAKTransport) {
         },
       ),
 
-    recall: <T = unknown>(input: GumemRecallInput): Promise<EAKResponse<T>> =>
+    recall: <T = unknown>(input: GumemRecallInput): Promise<QoniResponse<T>> =>
       transport.gumemJson(
         "POST",
         `/api/sessions/${encodeURIComponent(input.sessionId || "default")}/context`,
@@ -75,7 +75,7 @@ export function createGumemNamespace(transport: EAKTransport) {
         },
       ),
 
-    uploadResource: <T = unknown>(input: GumemUploadResourceInput): Promise<EAKResponse<T>> => {
+    uploadResource: <T = unknown>(input: GumemUploadResourceInput): Promise<QoniResponse<T>> => {
       const form = new FormData();
       form.set("file", input.file, input.filename);
       const userId = input.userId ?? input.user_id;
@@ -90,19 +90,19 @@ export function createGumemNamespace(transport: EAKTransport) {
     },
 
     actions: {
-      record: <T = unknown>(input: RuntimeTokenInput & JsonObject): Promise<EAKResponse<T>> =>
+      record: <T = unknown>(input: RuntimeTokenInput & JsonObject): Promise<QoniResponse<T>> =>
         transport.gumemJson("POST", "/api/user/actions", input.token, {
           body: omit(input, "token"),
           requiredScopes: ["gumem.action:write"],
         }),
 
-      recall: <T = unknown>(input: RuntimeTokenInput & JsonObject): Promise<EAKResponse<T>> =>
+      recall: <T = unknown>(input: RuntimeTokenInput & JsonObject): Promise<QoniResponse<T>> =>
         transport.gumemJson("GET", "/api/user/actions/query", input.token, {
           query: omit(input, "token"),
           requiredScopes: ["gumem.action:read"],
         }),
 
-      stream: <T = unknown>(input: RuntimeTokenInput & JsonObject): Promise<EAKResponse<T>> =>
+      stream: <T = unknown>(input: RuntimeTokenInput & JsonObject): Promise<QoniResponse<T>> =>
         transport.gumemJson("GET", "/api/user/actions/stream", input.token, {
           query: omit(input, "token"),
           requiredScopes: ["gumem.action:read"],

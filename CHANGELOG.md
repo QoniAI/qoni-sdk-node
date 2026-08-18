@@ -1,12 +1,24 @@
 # Changelog
 
-All notable changes to `@eazo/eak` are documented in this file.
+All notable changes to `@qoniai/qoni` are documented in this file.
 
 This project follows semantic versioning. Before `1.0.0`, minor versions may
 include SDK API changes, while patch versions are reserved for backward
 compatible fixes.
 
 ## Unreleased
+
+## 0.4.0 - 2026-08-18
+
+### Breaking
+
+- Rename the package from its previous product name to `@qoniai/qoni`.
+- Rename the primary constructor and all branded exports to `QoniAgentKit`,
+  `Qoni`, and the corresponding `Qoni*` types, constants, and error classes.
+- Rename the product namespace to `client.qoni`, environment variables to
+  `QONI_*`, and SDK gateway routes to `/api/v3/qoni/*`.
+- Rename the bundled integration skill to `qoni-sdk` and update repository,
+  package publishing, smoke-test, and runtime-discovery metadata.
 
 ## 0.3.4 - 2026-06-18
 
@@ -50,7 +62,7 @@ compatible fixes.
 
 ### Fixed
 
-- `delegateToken` in silent mode now fails locally with `EAKValidationError`
+- `delegateToken` in silent mode now fails locally with `QoniValidationError`
   when no `user` / `userId` is given, instead of letting an un-attributed
   request reach the gateway and surface as a confusing signing error. The TS
   overloads already enforced this; the guard covers plain-JS callers.
@@ -59,15 +71,15 @@ compatible fixes.
 
 README pass driven by an external review:
 
-- Document all exported error classes (`EAKAuthError`, `EAKTokenExpiredError`,
-  `EAKUpstreamError`, `EAKDelegationRequiredError`, …), not just three; note
+- Document all exported error classes (`QoniAuthError`, `QoniTokenExpiredError`,
+  `QoniUpstreamError`, `QoniDelegationRequiredError`, …), not just three; note
   that the SDK does not auto-retry and `retryable` is yours to act on.
 - Clarify that `client.timeoutMs` bounds individual requests, not the live
   run stream — long runs stream fine; bound waiting with `wait({ timeoutMs })`.
 - Spell out the `delegateToken` input shape (silent requires `user: { id }`;
   interactive needs none).
 - Point at the exported constants (`InteractionTypes`, `InteractionStatuses`,
-  `ActionKinds`, `EAKScopes`, `EAKProductScopes`) instead of bare literals.
+  `ActionKinds`, `QoniScopes`, `QoniProductScopes`) instead of bare literals.
 - Document the `RunResult` / `Artifact` shapes returned by `wait()`.
 - Note the dual ESM/CommonJS builds; remove stray Chinese from the English README.
 
@@ -79,7 +91,7 @@ Documentation-only release; no SDK code changes.
 
 - README delegation examples passed `user: { subject: userId }`, but `UserRef`
   requires `id` and the SDK only reads `user.id` — as written the silent
-  delegation throws `eak.delegation.user_id_required`. Corrected to
+  delegation throws `qoni.delegation.user_id_required`. Corrected to
   `user: { id: userId }` in both README.md and README.zh-CN.md.
 - Replaced non-runnable placeholder example prompts (an undefined "customer
   website", a literal `…`, a fake `example.com/pricing`) with concrete,
@@ -104,8 +116,8 @@ methods moved (no compatibility aliases).
   (`get()`, `update()`, `runNow()`, `events()`, `respond()`, `runs()`,
   `run(runId)`, `delete()`). Monitor HITL answers (`respond`) and tick-run
   read views (`runs` / `run`) are newly exposed.
-- The 1:1 wire-level methods moved to `eak.<product>.api.*` (e.g.
-  `eak.doAnything.api.createSession`, `eak.deepResearch.api.followUp`); their
+- The 1:1 wire-level methods moved to `qoni.<product>.api.*` (e.g.
+  `qoni.doAnything.api.createSession`, `qoni.deepResearch.api.followUp`); their
   shapes may evolve with the API and are no longer the documented mainline.
 - Handle event streams yield semantic `RunEvent`s (`type` / `runId` / `at` /
   `isTerminal` / camelCase `data` / `raw`), end automatically at the terminal
@@ -114,7 +126,7 @@ methods moved (no compatibility aliases).
   `stream.events` subscriptions; core events are always subscribed.
 - `delegateToken`: `agent` is optional (default `"sdk"`), `products` sugar
   expands to per-product scope sets, and scope strings are validated locally —
-  malformed scopes throw `EAKValidationError` before any request.
+  malformed scopes throw `QoniValidationError` before any request.
 
 ### Added
 
@@ -129,7 +141,7 @@ streaming. **Breaking** — see below.
 
 ### Breaking
 
-- `EAKEventTypes` now holds the real backend wire event names (`run.*`, e.g.
+- `QoniEventTypes` now holds the real backend wire event names (`run.*`, e.g.
   `RUN_COMPLETED = "run.completed"`, `RUN_ACTION_STARTED`, `RUN_INPUT_REQUEST`,
   `RUN_BROWSER_LIVE_URL_CHANGED`), replacing the previous placeholder constants
   (`DO_ANYTHING_FINAL = "final"`, `DO_ANYTHING_ACTION = "action"`, …) that never
@@ -165,32 +177,32 @@ streaming. **Breaking** — see below.
   event stream to a terminal state, and resolves a settled
   `{ status, output, terminalReason, isTaskSuccessful, runId, sessionId }`.
   Falls back to `getRun` if the stream closes without a terminal event.
-- `eak.resolveAnyBoundUser()` — returns a real user id from the credential-bound
+- `qoni.resolveAnyBoundUser()` — returns a real user id from the credential-bound
   GenAuth userpool, for demos / smoke tests that need a `userId` for silent
   `delegateToken` without hardcoding one.
-- Onboarding hints: errors for `eak.delegation.user_not_bound` and
-  `eak.genauth.userpool_binding_missing` now append a one-line, actionable hint
+- Onboarding hints: errors for `qoni.delegation.user_not_bound` and
+  `qoni.genauth.userpool_binding_missing` now append a one-line, actionable hint
   to the message (e.g. pointing at `resolveAnyBoundUser` / `currentUser`).
-- `EAKError.code` is now typed as `EAKErrorCode` — a union of the known SDK /
+- `QoniError.code` is now typed as `QoniErrorCode` — a union of the known SDK /
   backend codes plus `(string & {})` — so you get literal autocomplete and can
   write an exhaustive `switch (err.code)` while still tolerating new backend
-  codes. Exported as `EAKErrorCode`.
+  codes. Exported as `QoniErrorCode`.
 
 ## 0.1.0 - 2026-06-02
 
-Initial public release of `@eazo/eak`.
+Initial public release of `@qoniai/qoni`.
 
 ### What ships
 
-- Server-side `EazoAgentKit` constructor for EAK Agent delegation and product
+- Server-side `QoniAgentKit` constructor for Qoni Agent delegation and product
   runtime calls.
-- Runtime service discovery from the EAK Console gateway through
-  `GET /api/v3/eak/runtime-config`.
+- Runtime service discovery from the Qoni Console gateway through
+  `GET /api/v3/qoni/runtime-config`.
 - One-step `delegateToken` flow for binding a GenAuth user, Agent identity,
   scope list, expiry, and audit metadata.
 - Automatic product-token exchange before GUMem and WebAgent runtime requests,
   so integrations can pass the delegation token returned by `delegateToken`.
-- Capability namespaces for `eak`, `genauth`, `gumem`, `webSearch`,
+- Capability namespaces for `qoni`, `genauth`, `gumem`, `webSearch`,
   `doAnything`, and `track`.
 - Typed SDK errors with request, trace, audit, retry, service, and HTTP status
   metadata.
@@ -201,7 +213,7 @@ Initial public release of `@eazo/eak`.
 
 ### Compatibility
 
-- `EAK` remains available as a short constructor alias.
+- `Qoni` remains available as a short constructor alias.
 - `delegateAgent` and `completeDelegateAgent` remain available as deprecated
   aliases for older integrations, but new integrations should use
   `delegateToken`.

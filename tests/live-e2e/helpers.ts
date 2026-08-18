@@ -2,83 +2,83 @@ import fs from "node:fs";
 import path from "node:path";
 import { expect } from "vitest";
 import {
-  EAKError,
-  EAKRateLimitError,
-  EAKScopes,
-  EAKValidationError,
-  EazoAgentKit,
+  QoniError,
+  QoniRateLimitError,
+  QoniScopes,
+  QoniValidationError,
+  QoniAgentKit,
 } from "../../src";
 import type { JsonObject, RunEvent } from "../../src";
 import { loadDotEnvLocal, requiredEnv } from "../helpers/env";
 
 loadDotEnvLocal();
 
-export const liveE2EEnabled = process.env.EAK_LIVE_E2E === "1";
+export const liveE2EEnabled = process.env.QONI_LIVE_E2E === "1";
 export const livePrefix = `sdk-live-${Date.now()}`;
 
-export function liveClient(): EazoAgentKit {
-  const host = process.env.EAK_HOST?.trim();
+export function liveClient(): QoniAgentKit {
+  const host = process.env.QONI_HOST?.trim();
   // Point WebAgent data-plane calls at a different deployment (e.g. a local
-  // backend) while delegation/token-exchange stay on the EAK gateway.
-  const webAgentBaseUrl = process.env.EAK_WEBAGENT_BASE_URL?.trim();
-  return new EazoAgentKit({
-    accessKey: requiredEnv("EAK_ACCESS_KEY"),
-    secretKey: requiredEnv("EAK_SECRET_KEY"),
+  // backend) while delegation/token-exchange stay on the Qoni gateway.
+  const webAgentBaseUrl = process.env.QONI_WEBAGENT_BASE_URL?.trim();
+  return new QoniAgentKit({
+    accessKey: requiredEnv("QONI_ACCESS_KEY"),
+    secretKey: requiredEnv("QONI_SECRET_KEY"),
     ...(host ? { host } : {}),
     ...(webAgentBaseUrl ? { webAgentBaseUrl } : {}),
-    timeoutMs: Number(process.env.EAK_TIMEOUT_MS || 120_000),
+    timeoutMs: Number(process.env.QONI_TIMEOUT_MS || 120_000),
   });
 }
 
-export async function resolveLiveUserId(client: EazoAgentKit): Promise<string> {
+export async function resolveLiveUserId(client: QoniAgentKit): Promise<string> {
   const listed = await client.genauth.users.list({ page: 1, limit: 1 });
   const userId = firstUserId(listed.data);
   if (userId) return userId;
-  throw new Error("EAK live e2e could not resolve a real GenAuth user from users.list");
+  throw new Error("Qoni live e2e could not resolve a real GenAuth user from users.list");
 }
 
 export async function delegateLiveToken(
-  client: EazoAgentKit,
+  client: QoniAgentKit,
   scopes: readonly string[],
 ): Promise<{ token: string; userId: string }> {
   const userId = await resolveLiveUserId(client);
   const delegated = await client.delegateToken({
     mode: "silent",
     user: { id: userId },
-    agent: requiredEnv("EAK_AGENT_ID"),
+    agent: requiredEnv("QONI_AGENT_ID"),
     scopes,
-    expiresIn: Number(process.env.EAK_DELEGATION_EXPIRES_IN || 3600),
+    expiresIn: Number(process.env.QONI_DELEGATION_EXPIRES_IN || 3600),
   });
   return { token: delegated.data.token, userId };
 }
 
 export const gumemScopes = [
-  EAKScopes.GUMEM_MEMORY_READ,
-  EAKScopes.GUMEM_MEMORY_WRITE,
-  EAKScopes.GUMEM_MESSAGE_WRITE,
-  EAKScopes.GUMEM_ACTION_READ,
-  EAKScopes.GUMEM_ACTION_WRITE,
-  EAKScopes.GUMEM_RESOURCE_WRITE,
+  QoniScopes.GUMEM_MEMORY_READ,
+  QoniScopes.GUMEM_MEMORY_WRITE,
+  QoniScopes.GUMEM_MESSAGE_WRITE,
+  QoniScopes.GUMEM_ACTION_READ,
+  QoniScopes.GUMEM_ACTION_WRITE,
+  QoniScopes.GUMEM_RESOURCE_WRITE,
 ] as const;
 
 export const webSearchScopes = [
-  EAKScopes.WEB_SEARCH_READ,
-  EAKScopes.WEB_SEARCH_MANAGE,
+  QoniScopes.WEB_SEARCH_READ,
+  QoniScopes.WEB_SEARCH_MANAGE,
 ] as const;
 
 export const doAnythingScopes = [
-  EAKScopes.DO_ANYTHING_READ,
-  EAKScopes.DO_ANYTHING_MANAGE,
+  QoniScopes.DO_ANYTHING_READ,
+  QoniScopes.DO_ANYTHING_MANAGE,
 ] as const;
 
 export const trackScopes = [
-  EAKScopes.TRACK_READ,
-  EAKScopes.TRACK_MANAGE,
+  QoniScopes.TRACK_READ,
+  QoniScopes.TRACK_MANAGE,
 ] as const;
 
 export const deepResearchScopes = [
-  EAKScopes.DEEP_RESEARCH_READ,
-  EAKScopes.DEEP_RESEARCH_MANAGE,
+  QoniScopes.DEEP_RESEARCH_READ,
+  QoniScopes.DEEP_RESEARCH_MANAGE,
 ] as const;
 
 export function extractId(data: unknown, label: string): string {
@@ -96,7 +96,7 @@ export function extractId(data: unknown, label: string): string {
     "artifact_id",
   ]);
   if (value) return value;
-  throw new Error(`EAK live e2e could not read ${label} id from ${JSON.stringify(data)}`);
+  throw new Error(`Qoni live e2e could not read ${label} id from ${JSON.stringify(data)}`);
 }
 
 /**
@@ -119,7 +119,7 @@ export async function collectRunEvents(
   const controller = new AbortController();
   const timeout = setTimeout(
     () => controller.abort(),
-    options.timeoutMs ?? Number(process.env.EAK_LIVE_STREAM_TIMEOUT_MS || 15_000),
+    options.timeoutMs ?? Number(process.env.QONI_LIVE_STREAM_TIMEOUT_MS || 15_000),
   );
   const events: RunEvent[] = [];
   let matched = !options.until;
@@ -161,7 +161,7 @@ export async function collectRunEvents(
 
 /**
  * On-disk raw event recorder. Resolves the output directory
- * (`EAK_OUT_DIR` or `.secrets/runs/<label>`), truncates `events.jsonl`, and
+ * (`QONI_OUT_DIR` or `.secrets/runs/<label>`), truncates `events.jsonl`, and
  * appends every event's ORIGINAL wire envelope (`event.raw`) as it arrives —
  * the semantic stream carries the wire event along, so recording does not
  * need the `api.*` escape hatch.
@@ -172,7 +172,7 @@ export function openRawEventRecorder(label: string): {
   count: () => number;
   record: (event: RunEvent) => void;
 } {
-  const dir = process.env.EAK_OUT_DIR || path.join(process.cwd(), ".secrets", "runs", label);
+  const dir = process.env.QONI_OUT_DIR || path.join(process.cwd(), ".secrets", "runs", label);
   fs.mkdirSync(dir, { recursive: true });
   const file = path.join(dir, "events.jsonl");
   fs.writeFileSync(file, ""); // truncate any prior run's log
@@ -195,7 +195,7 @@ export function openRawEventRecorder(label: string): {
 
 export function livePassword(): string {
   return (
-    process.env.EAK_LIVE_TEST_USER_PASSWORD ||
+    process.env.QONI_LIVE_TEST_USER_PASSWORD ||
     process.env.GENAUTH_DEMO_USER_PASSWORD ||
     `SdkLive!${Date.now()}Aa1`
   );
@@ -207,13 +207,13 @@ const liveConstraintMessages = [
   "media object storage is not configured",
 ] as const;
 
-export function isLiveEnvironmentConstraint(error: unknown): error is EAKError {
+export function isLiveEnvironmentConstraint(error: unknown): error is QoniError {
   return (
-    error instanceof EAKError &&
+    error instanceof QoniError &&
     liveConstraintMessages.some((message) => error.message.includes(message)) &&
-    (error instanceof EAKRateLimitError ||
-      error instanceof EAKValidationError ||
-      error.name === "EAKError")
+    (error instanceof QoniRateLimitError ||
+      error instanceof QoniValidationError ||
+      error.name === "QoniError")
   );
 }
 

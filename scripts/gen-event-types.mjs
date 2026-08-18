@@ -63,7 +63,7 @@ function render(catalog) {
 /**
  * INTERNAL — the raw wire event types (the complete mirror of the backend
  * \`EventType\` enum, in canonical order). NOT a public export. Developers use
- * the curated \`EAKEventTypes\` / \`event.type\` (run-events.ts); these raw wire
+ * the curated \`QoniEventTypes\` / \`event.type\` (run-events.ts); these raw wire
  * names back the wire→curated mapping, \`event.raw.event\`, and the drift tests.
  */
 export const WireEventTypes = {

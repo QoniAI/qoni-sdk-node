@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
-  EAKError,
-  EAKPermissionDeniedError,
-  EAKValidationError,
-  EazoAgentKit,
+  QoniError,
+  QoniPermissionDeniedError,
+  QoniValidationError,
+  QoniAgentKit,
 } from "../src";
 import type { RunEvent } from "../src";
 
@@ -59,12 +59,12 @@ interface Captured {
 
 function makeClient(routes: (call: Captured) => Response | Promise<Response>) {
   const calls: Captured[] = [];
-  const client = new EazoAgentKit({
+  const client = new QoniAgentKit({
     accessKey: "ak_test",
     secretKey: "sk_test",
-    host: "https://eak.example.com",
-    genauthBaseUrl: "https://eak.example.com",
-    webAgentBaseUrl: "https://eak.example.com",
+    host: "https://qoni.example.com",
+    genauthBaseUrl: "https://qoni.example.com",
+    webAgentBaseUrl: "https://qoni.example.com",
     fetch: (async (url: URL | RequestInfo, init?: RequestInit) => {
       const headers: Record<string, string> = {};
       new Headers(init?.headers).forEach((value, key) => {
@@ -128,7 +128,7 @@ describe("delegateToken semantic enhancements", () => {
     await expect(
       client.delegateToken({ user: { id: "user_1" }, scopes: ["do_anything:manage"] }),
     ).rejects.toMatchObject({
-      name: "EAKValidationError",
+      name: "QoniValidationError",
       message: expect.stringContaining("webagent.do_anything:manage"),
     });
     expect(calls).toHaveLength(0); // failed locally — nothing hit the wire
@@ -143,7 +143,7 @@ describe("delegateToken semantic enhancements", () => {
 
     await expect(
       client.delegateToken({ user: { id: "user_1" }, scopes: ["not a scope"] }),
-    ).rejects.toBeInstanceOf(EAKValidationError);
+    ).rejects.toBeInstanceOf(QoniValidationError);
     expect(calls).toHaveLength(0);
 
     // Forward-compat: the server is the authority on newly added scopes.
@@ -154,7 +154,7 @@ describe("delegateToken semantic enhancements", () => {
   it("requires at least one of scopes / products", async () => {
     const { client, calls } = makeClient(() => jsonResponse({ data: {} }));
     await expect(client.delegateToken({ user: { id: "user_1" } })).rejects.toBeInstanceOf(
-      EAKValidationError,
+      QoniValidationError,
     );
     expect(calls).toHaveLength(0);
   });
@@ -243,7 +243,7 @@ describe("doAnything.run → RunHandle", () => {
     ]) {
       await expect(
         client.doAnything.run({ token: TOKEN, prompt: "go", ...options }),
-      ).rejects.toBeInstanceOf(EAKValidationError);
+      ).rejects.toBeInstanceOf(QoniValidationError);
     }
     expect(calls).toHaveLength(0); // rejected locally — nothing was silently dropped
   });
@@ -508,7 +508,7 @@ describe("doAnything.run → RunHandle", () => {
     });
 
     const run = await client.doAnything.run({ token: TOKEN, prompt: "go" });
-    await expect(run.cancel()).rejects.toBeInstanceOf(EAKPermissionDeniedError);
+    await expect(run.cancel()).rejects.toBeInstanceOf(QoniPermissionDeniedError);
   });
 
   it("interaction action methods post to the action's declared endpoint", async () => {
@@ -561,7 +561,7 @@ describe("doAnything.run → RunHandle", () => {
     // The interaction did NOT declare a confirm action — calling it must throw,
     // not silently post (closes off "dead recovery affordances").
     expect(handle.can("confirm")).toBe(false);
-    await expect(handle.confirm()).rejects.toBeInstanceOf(EAKValidationError);
+    await expect(handle.confirm()).rejects.toBeInstanceOf(QoniValidationError);
 
     expect(posts).toEqual([
       {
@@ -606,9 +606,9 @@ describe("webSearch.run → RunHandle", () => {
   it("maps query sugar to queries and returns a handle", async () => {
     const { client, calls } = makeClient(() => jsonResponse({ data: { run_id: "ws_1" } }));
 
-    const run = await client.webSearch.run({ token: TOKEN, prompt: "eak sdk" });
+    const run = await client.webSearch.run({ token: TOKEN, prompt: "qoni sdk" });
     expect(run.id).toBe("ws_1");
-    expect(calls[0].body).toEqual({ queries: ["eak sdk"] });
+    expect(calls[0].body).toEqual({ queries: ["qoni sdk"] });
   });
 
   it("attach() verifies the run and adopts its sessionRef from the detail", async () => {
@@ -636,7 +636,7 @@ describe("webSearch.run → RunHandle", () => {
       ],
       payload: { question: "?" },
     });
-    await expect(handle.answer("answer")).rejects.toBeInstanceOf(EAKError);
+    await expect(handle.answer("answer")).rejects.toBeInstanceOf(QoniError);
     expect(calls.length).toBe(before); // failed locally, no wire call
   });
 });
@@ -857,7 +857,7 @@ describe("track.create → MonitorHandle", () => {
 
     // A refine with nothing to change fails locally, before any request.
     const before = calls.length;
-    await expect(monitor.refine({})).rejects.toMatchObject({ name: "EAKValidationError" });
+    await expect(monitor.refine({})).rejects.toMatchObject({ name: "QoniValidationError" });
     expect(calls.length).toBe(before);
   });
 
@@ -957,7 +957,7 @@ describe("permission errors", () => {
     await expect(
       client.webSearch.api.get({ token: TOKEN, runId: "ws_1" }),
     ).rejects.toMatchObject({
-      name: "EAKPermissionDeniedError",
+      name: "QoniPermissionDeniedError",
       message: expect.stringContaining("Known scopes: gumem.session:create"),
     });
   });

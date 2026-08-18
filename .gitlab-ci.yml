@@ -10,7 +10,7 @@ stages:
   - sync
 
 variables:
-  GITHUB_REPOSITORY: "EazoAI/eak-sdk-node"
+  GITHUB_REPOSITORY: "QONIAI/qoni-sdk-node"
 
 cache:
   key:
@@ -30,6 +30,7 @@ verify:
     # build first: tests/package-surface.test.ts imports the built dist/, so
     # `tsc --noEmit` (which typechecks tests/) can't resolve it until dist exists.
     - pnpm build
+    - pnpm check:brand
     - pnpm typecheck
     - pnpm test:ci
     - pnpm pack --dry-run
@@ -87,8 +88,8 @@ publish_npm:
     - test -n "$NPM_TOKEN"
     - printf '//registry.npmjs.org/:_authToken=%s\n' "$NPM_TOKEN" > .npmrc
     - npm whoami
-    - npm org ls eazo --json
-    - npm access list packages @eazo --json
+    - npm org ls qoniai --json
+    - npm access list packages @qoniai --json
     - pnpm build
     - npm publish --access public --registry https://registry.npmjs.org/
   after_script:
@@ -136,10 +137,10 @@ publish_npm:
 sync_main_or_master_to_fellou:
   extends: .sync_main_or_master
   tags:
-    - eak-us
+    - qoni-us
   variables:
     SYNC_SSH_PRIVATE_KEY_FILE: "$FELLOU_SYNC_SSH_PRIVATE_KEY"
-    SYNC_TARGET_REPOSITORY: "ssh://git@gitlab.asix.inc:6022/sak/eak-sdk-node.git"
+    SYNC_TARGET_REPOSITORY: "ssh://git@gitlab.asix.inc:6022/sak/qoni-sdk-node.git"
     SYNC_TARGET_HOST_KEY: "[gitlab.asix.inc]:6022 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJPT8mi8hCLKAg7gMVOzOsFFiQAsU/sEmWSykPsdyWGV"
   rules:
     - if: '$CI_SERVER_HOST == "gitlab.authing-inc.co" && $CI_PIPELINE_SOURCE == "push" && ($CI_COMMIT_BRANCH == "main" || $CI_COMMIT_BRANCH == "master")'
@@ -149,7 +150,7 @@ sync_main_or_master_to_authing:
   extends: .sync_main_or_master
   variables:
     SYNC_SSH_PRIVATE_KEY_FILE: "$AUTHING_SYNC_SSH_PRIVATE_KEY"
-    SYNC_TARGET_REPOSITORY: "ssh://git@gitlab.authing-inc.co:22/sak-steamory-agent-kit/eak-sdk-node.git"
+    SYNC_TARGET_REPOSITORY: "ssh://git@gitlab.authing-inc.co:22/sak-steamory-agent-kit/qoni-sdk-node.git"
     SYNC_TARGET_HOST_KEY: "gitlab.authing-inc.co ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIKmQ1URQCIBWHjkS6Q2TK+aTeFm/gvot3Vgsxj0iI5dQ"
   rules:
     - if: '$CI_SERVER_HOST == "gitlab.asix.inc" && $CI_PIPELINE_SOURCE == "push" && ($CI_COMMIT_BRANCH == "main" || $CI_COMMIT_BRANCH == "master")'

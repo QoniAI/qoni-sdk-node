@@ -35,7 +35,7 @@ describeLiveE2E("live e2e: auth and GUMem", () => {
         userId,
         sessionId,
         title: `${livePrefix} GUMem live e2e`,
-        metadata: { source: "eak-sdk-node-live-e2e", livePrefix },
+        metadata: { source: "qoni-sdk-node-live-e2e", livePrefix },
       });
     })();
     return sessionReady;
@@ -48,11 +48,11 @@ describeLiveE2E("live e2e: auth and GUMem", () => {
   });
 
   it("currentUser({ accessToken })", async () => {
-    if (!process.env.EAK_USER_ACCESS_TOKEN) {
-      expect("EAK_USER_ACCESS_TOKEN not configured").toBeTruthy();
+    if (!process.env.QONI_USER_ACCESS_TOKEN) {
+      expect("QONI_USER_ACCESS_TOKEN not configured").toBeTruthy();
       return;
     }
-    const user = await client.currentUser({ accessToken: process.env.EAK_USER_ACCESS_TOKEN });
+    const user = await client.currentUser({ accessToken: process.env.QONI_USER_ACCESS_TOKEN });
     expect(user.data).toBeTruthy();
   });
 
@@ -82,7 +82,7 @@ describeLiveE2E("live e2e: auth and GUMem", () => {
       query: `${livePrefix} live e2e`,
       details: true,
       recallConfig: { topK: 3 },
-      metadataFilters: { source: "eak-sdk-node-live-e2e" },
+      metadataFilters: { source: "qoni-sdk-node-live-e2e" },
     });
     expect(recall.data).toBeTruthy();
   });

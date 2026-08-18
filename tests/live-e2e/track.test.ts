@@ -102,7 +102,7 @@ describeLiveE2E("live e2e: Track (semantic surface)", () => {
 
   // Raw-recording test, implemented via the semantic stream: every normalized
   // event carries the original wire envelope on `event.raw`, which is what
-  // gets persisted under .secrets/runs/track-<monitorId>/ (EAK_OUT_DIR
+  // gets persisted under .secrets/runs/track-<monitorId>/ (QONI_OUT_DIR
   // overrides).
   //
   // This must witness the SCHEDULE actually RECURRING, not just "a tick fired".
@@ -142,7 +142,7 @@ describeLiveE2E("live e2e: Track (semantic surface)", () => {
       () => controller.abort(),
       // First fresh tick can arrive within seconds (immediate on re-register);
       // the second only after a full interval. Budget ~3 intervals of headroom.
-      Number(process.env.EAK_LIVE_TRACK_TICK_TIMEOUT_MS || 220_000),
+      Number(process.env.QONI_LIVE_TRACK_TICK_TIMEOUT_MS || 220_000),
     );
     try {
       // Monitor streams have no terminal event — the caller decides when to

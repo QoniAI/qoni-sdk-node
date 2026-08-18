@@ -1,4 +1,4 @@
-import { EAKValidationError } from "./errors";
+import { QoniValidationError } from "./errors";
 import {
   RunHandle,
   type Artifact,
@@ -10,10 +10,10 @@ import type { DeepResearchEvent } from "./run-events";
 import type { RunLimits } from "./do-anything";
 import {
   isJsonObject,
-  type EAKEvent,
-  type EAKHttpMethod,
-  type EAKResponse,
-  type EAKTransport,
+  type QoniEvent,
+  type QoniHttpMethod,
+  type QoniResponse,
+  type QoniTransport,
   type JsonObject,
   type RuntimeTokenInput,
 } from "./types";
@@ -50,7 +50,7 @@ export interface DeepResearchAttachOptions {
  * until a cited report is produced. Mirrors the backend contract at
  * `/api/v1/projects/{tenant}/deep_research/...`.
  */
-export function createDeepResearchNamespace(transport: EAKTransport) {
+export function createDeepResearchNamespace(transport: QoniTransport) {
   /**
    * Wire-level escape hatch — 1:1 with the backend HTTP contract. Shapes
    * here may evolve with the API and are not covered by the frozen public
@@ -58,13 +58,13 @@ export function createDeepResearchNamespace(transport: EAKTransport) {
    * rating) live only here.
    */
   const api = {
-    run: <T = unknown>(input: RuntimeTokenInput & JsonObject): Promise<EAKResponse<T>> =>
+    run: <T = unknown>(input: RuntimeTokenInput & JsonObject): Promise<QoniResponse<T>> =>
       transport.webAgentJson("POST", "/deep_research/runs", input.token, {
         body: normalizeDeepResearchRunInput(omit(input, "token")),
         requiredScopes: ["webagent.deep_research:manage"],
       }),
 
-    get: <T = unknown>(input: RuntimeTokenInput & { runId: string }): Promise<EAKResponse<T>> =>
+    get: <T = unknown>(input: RuntimeTokenInput & { runId: string }): Promise<QoniResponse<T>> =>
       transport.webAgentJson(
         "GET",
         `/deep_research/runs/${encodeURIComponent(input.runId)}`,
@@ -76,7 +76,7 @@ export function createDeepResearchNamespace(transport: EAKTransport) {
 
     events: <T = unknown>(
       input: RuntimeTokenInput & { runId: string; lastEventId?: string; signal?: AbortSignal },
-    ): AsyncIterable<EAKEvent<T>> =>
+    ): AsyncIterable<QoniEvent<T>> =>
       transport.webAgentSSE(
         `/deep_research/runs/${encodeURIComponent(input.runId)}/events`,
         input.token,
@@ -89,7 +89,7 @@ export function createDeepResearchNamespace(transport: EAKTransport) {
 
     followUp: <T = unknown>(
       input: RuntimeTokenInput & { runId: string; text: string },
-    ): Promise<EAKResponse<T>> =>
+    ): Promise<QoniResponse<T>> =>
       transport.webAgentJson(
         "POST",
         `/deep_research/runs/${encodeURIComponent(input.runId)}/messages`,
@@ -102,7 +102,7 @@ export function createDeepResearchNamespace(transport: EAKTransport) {
 
     cancel: <T = unknown>(
       input: RuntimeTokenInput & { runId: string },
-    ): Promise<EAKResponse<T>> =>
+    ): Promise<QoniResponse<T>> =>
       transport.webAgentJson(
         "POST",
         `/deep_research/runs/${encodeURIComponent(input.runId)}/cancel`,
@@ -115,7 +115,7 @@ export function createDeepResearchNamespace(transport: EAKTransport) {
 
     feedback: <T = unknown>(
       input: RuntimeTokenInput & { runId: string } & JsonObject,
-    ): Promise<EAKResponse<T>> =>
+    ): Promise<QoniResponse<T>> =>
       transport.webAgentJson(
         "POST",
         `/deep_research/runs/${encodeURIComponent(input.runId)}/feedback`,
@@ -128,7 +128,7 @@ export function createDeepResearchNamespace(transport: EAKTransport) {
 
     listArtifacts: <T = unknown>(
       input: RuntimeTokenInput & { runId: string },
-    ): Promise<EAKResponse<T>> =>
+    ): Promise<QoniResponse<T>> =>
       transport.webAgentJson(
         "GET",
         `/deep_research/runs/${encodeURIComponent(input.runId)}/artifacts`,
@@ -140,7 +140,7 @@ export function createDeepResearchNamespace(transport: EAKTransport) {
 
     getArtifact: <T = unknown>(
       input: RuntimeTokenInput & { runId: string; artifactId: string },
-    ): Promise<EAKResponse<T>> =>
+    ): Promise<QoniResponse<T>> =>
       transport.webAgentJson(
         "GET",
         `/deep_research/runs/${encodeURIComponent(input.runId)}/artifacts/${encodeURIComponent(input.artifactId)}`,
@@ -158,7 +158,7 @@ export function createDeepResearchNamespace(transport: EAKTransport) {
         api.events({ token, runId, lastEventId: opts.lastEventId, signal: opts.signal }),
       postAction: async (action, body) => {
         await transport.webAgentJson(
-          (action.method || "POST") as EAKHttpMethod,
+          (action.method || "POST") as QoniHttpMethod,
           action.endpoint,
           token,
           {
@@ -203,7 +203,7 @@ export function createDeepResearchNamespace(transport: EAKTransport) {
     run: async (input: DeepResearchRunOptions): Promise<RunHandle<DeepResearchEvent>> => {
       const { token, prompt, capture, limits, session, ...rest } = input;
       if (!prompt) {
-        throw new EAKValidationError("deepResearch.run requires a prompt");
+        throw new QoniValidationError("deepResearch.run requires a prompt");
       }
 
       const run = await api.run<{ run_id?: string; id?: string }>({
@@ -217,7 +217,7 @@ export function createDeepResearchNamespace(transport: EAKTransport) {
       });
       const runId = run.data.run_id || run.data.id;
       if (!runId) {
-        throw new EAKValidationError("deepResearch run create did not return a run id");
+        throw new QoniValidationError("deepResearch run create did not return a run id");
       }
       return new RunHandle<DeepResearchEvent>(buildOps(token, runId), {
         id: runId,

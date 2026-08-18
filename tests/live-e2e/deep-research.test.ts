@@ -17,7 +17,7 @@ const describeLiveE2E = liveE2EEnabled ? describe : describe.skip;
 // there is no outline-approval gate), so it gets a budget independent of the
 // generic stream timeout the other products use.
 const DR_WAIT_TIMEOUT_MS = Number(
-  process.env.EAK_LIVE_DEEP_RESEARCH_WAIT_TIMEOUT_MS || 600_000,
+  process.env.QONI_LIVE_DEEP_RESEARCH_WAIT_TIMEOUT_MS || 600_000,
 );
 
 describeLiveE2E("live e2e: Deep Research (semantic surface)", () => {
@@ -57,7 +57,7 @@ describeLiveE2E("live e2e: Deep Research (semantic surface)", () => {
           targetAudience: "SDK maintainers",
           limits: {
             maxDurationMinutes: Number(
-              process.env.EAK_LIVE_DEEP_RESEARCH_MAX_DURATION_MINUTES || 10,
+              process.env.QONI_LIVE_DEEP_RESEARCH_MAX_DURATION_MINUTES || 10,
             ),
           },
           domainWhitelist: ["example.com"],
@@ -72,7 +72,7 @@ describeLiveE2E("live e2e: Deep Research (semantic surface)", () => {
   // PLAN flows straight to GATHER (no outline-approval gate), so the run runs
   // to completion without any human intervention. The recorder persists every
   // original wire envelope (event.raw) under
-  // .secrets/runs/deep_research-<runId>/ (EAK_OUT_DIR overrides).
+  // .secrets/runs/deep_research-<runId>/ (QONI_OUT_DIR overrides).
   function ensureResult() {
     resultReady ??= (async () => {
       const run = await ensureRun();

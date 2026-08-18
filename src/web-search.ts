@@ -1,4 +1,4 @@
-import { EAKError, EAKValidationError } from "./errors";
+import { QoniError, QoniValidationError } from "./errors";
 import {
   RunHandle,
   type CaptureOptions,
@@ -9,9 +9,9 @@ import type { WebSearchEvent } from "./run-events";
 import type { RunLimits } from "./do-anything";
 import {
   isJsonObject,
-  type EAKEvent,
-  type EAKResponse,
-  type EAKTransport,
+  type QoniEvent,
+  type QoniResponse,
+  type QoniTransport,
   type JsonObject,
   type RuntimeTokenInput,
 } from "./types";
@@ -38,20 +38,20 @@ export interface WebSearchAttachOptions {
   capture?: CaptureOptions;
 }
 
-export function createWebSearchNamespace(transport: EAKTransport) {
+export function createWebSearchNamespace(transport: QoniTransport) {
   /**
    * Wire-level escape hatch — 1:1 with the backend HTTP contract. Shapes
    * here may evolve with the API and are not covered by the frozen public
    * contract.
    */
   const api = {
-    run: <T = unknown>(input: RuntimeTokenInput & JsonObject): Promise<EAKResponse<T>> =>
+    run: <T = unknown>(input: RuntimeTokenInput & JsonObject): Promise<QoniResponse<T>> =>
       transport.webAgentJson("POST", "/web_search/runs", input.token, {
         body: normalizeWebSearchRunInput(omit(input, "token")),
         requiredScopes: ["webagent.web_search:manage"],
       }),
 
-    get: <T = unknown>(input: RuntimeTokenInput & { runId: string }): Promise<EAKResponse<T>> =>
+    get: <T = unknown>(input: RuntimeTokenInput & { runId: string }): Promise<QoniResponse<T>> =>
       transport.webAgentJson(
         "GET",
         `/web_search/runs/${encodeURIComponent(input.runId)}`,
@@ -63,7 +63,7 @@ export function createWebSearchNamespace(transport: EAKTransport) {
 
     events: <T = unknown>(
       input: RuntimeTokenInput & { runId: string; lastEventId?: string; signal?: AbortSignal },
-    ): AsyncIterable<EAKEvent<T>> =>
+    ): AsyncIterable<QoniEvent<T>> =>
       transport.webAgentSSE(
         `/web_search/runs/${encodeURIComponent(input.runId)}/events`,
         input.token,
@@ -76,7 +76,7 @@ export function createWebSearchNamespace(transport: EAKTransport) {
 
     cancel: <T = unknown>(
       input: RuntimeTokenInput & { runId: string; reason?: string },
-    ): Promise<EAKResponse<T>> =>
+    ): Promise<QoniResponse<T>> =>
       transport.webAgentJson(
         "POST",
         `/web_search/runs/${encodeURIComponent(input.runId)}/cancel`,
@@ -99,7 +99,7 @@ export function createWebSearchNamespace(transport: EAKTransport) {
       postAction: async () => {
         // webSearch runs never emit interactions; failing loudly beats a
         // confusing 404.
-        throw new EAKError(
+        throw new QoniError(
           "webSearch runs never request interaction — there is no action to invoke",
           { code: "validation.failed" },
         );
@@ -122,18 +122,18 @@ export function createWebSearchNamespace(transport: EAKTransport) {
     run: async (input: WebSearchRunOptions): Promise<RunHandle<WebSearchEvent>> => {
       const { token, prompt, capture, limits, session, ...rest } = input;
       if (session) {
-        throw new EAKValidationError(
+        throw new QoniValidationError(
           "webSearch runs do not execute in reusable sessions — drop the session option",
         );
       }
       if (limits) {
-        throw new EAKValidationError(
+        throw new QoniValidationError(
           "webSearch does not support limits yet — drop the limits option",
         );
       }
       const resolvedQueries = Array.isArray(prompt) ? prompt : prompt ? [prompt] : undefined;
       if (!resolvedQueries || resolvedQueries.length === 0) {
-        throw new EAKValidationError("webSearch.run requires a prompt");
+        throw new QoniValidationError("webSearch.run requires a prompt");
       }
 
       const run = await api.run<{ run_id?: string; id?: string }>({
@@ -143,7 +143,7 @@ export function createWebSearchNamespace(transport: EAKTransport) {
       });
       const runId = run.data.run_id || run.data.id;
       if (!runId) {
-        throw new EAKValidationError("webSearch run create did not return a run id");
+        throw new QoniValidationError("webSearch run create did not return a run id");
       }
       return new RunHandle<WebSearchEvent>(buildOps(token, runId), { id: runId, capture });
     },

@@ -1,16 +1,16 @@
 import { describe, expect, it } from "vitest";
 import {
-  EAK,
-  EAKPermissionDeniedError,
-  EAKScopes,
-  EAKScopeBundles,
-  EazoAgentKit,
+  Qoni,
+  QoniPermissionDeniedError,
+  QoniScopes,
+  QoniScopeBundles,
+  QoniAgentKit,
   buildStringToSign,
 } from "../src";
 // Raw wire-type catalog is internal (not a public export) — import via the
 // internal module for the wire-shape fixtures/assertions in this file.
 import { WireEventTypes } from "../src/events";
-import type { EAKOptions } from "../src";
+import type { QoniOptions } from "../src";
 import * as sdk from "../src";
 
 function jwt(payload: Record<string, unknown>): string {
@@ -33,20 +33,20 @@ function sseResponse(body: string): Response {
   });
 }
 
-describe("EazoAgentKit", () => {
-  it("keeps EazoAgentKit as the public constructor and EAK as its alias", () => {
-    expect(EazoAgentKit.name).toBe("EazoAgentKit");
-    expect(EAK).toBe(EazoAgentKit);
-    expect("EzaoAgentKit" in sdk).toBe(false);
+describe("QoniAgentKit", () => {
+  it("keeps QoniAgentKit as the public constructor and Qoni as its alias", () => {
+    expect(QoniAgentKit.name).toBe("QoniAgentKit");
+    expect(Qoni).toBe(QoniAgentKit);
+    expect("QnoiAgentKit" in sdk).toBe(false);
   });
 
   it("signs delegateToken requests with accessKey/secretKey and returns token", async () => {
     const seen: { url?: string; init?: RequestInit; body?: unknown } = {};
-    const client = new EazoAgentKit({
+    const client = new QoniAgentKit({
       accessKey: "ak_test",
       secretKey: "sk_test",
-      host: "https://eak.example.com",
-      genauthBaseUrl: "https://eak.example.com",
+      host: "https://qoni.example.com",
+      genauthBaseUrl: "https://qoni.example.com",
       fetch: (async (url: URL | RequestInfo, init?: RequestInit) => {
         seen.url = String(url);
         seen.init = init;
@@ -68,11 +68,11 @@ describe("EazoAgentKit", () => {
     const result = await client.delegateToken({
       user: { id: "user_1", subject: "user_1", name: "Test User" },
       agent: "research-assistant",
-      scopes: EAKScopeBundles.DO_ANYTHING,
+      scopes: QoniScopeBundles.DO_ANYTHING,
       mode: "silent",
     });
 
-    expect(seen.url).toBe("https://eak.example.com/api/v3/eak/delegations");
+    expect(seen.url).toBe("https://qoni.example.com/api/v3/qoni/delegations");
     expect(seen.init?.method).toBe("POST");
     const headers = seen.init?.headers as Record<string, string>;
     expect(headers.authorization).toMatch(/^authing ak_test:/);
@@ -85,9 +85,9 @@ describe("EazoAgentKit", () => {
     expect(result.meta).toEqual({ requestId: "req_1" });
   });
 
-  it("can initialize with only EAK AK/SK and exposes currentUser at the top level", async () => {
+  it("can initialize with only Qoni AK/SK and exposes currentUser at the top level", async () => {
     const seen: { url?: string; init?: RequestInit } = {};
-    const client = new EazoAgentKit({
+    const client = new QoniAgentKit({
       accessKey: "ak_test",
       secretKey: "sk_test",
       fetch: (async (url: URL | RequestInfo, init?: RequestInit) => {
@@ -105,7 +105,7 @@ describe("EazoAgentKit", () => {
 
     const user = await client.currentUser({ accessToken: "genauth-access-token" });
 
-    expect(seen.url).toBe("https://eak.eazo.ai/oidc/me");
+    expect(seen.url).toBe("https://qoni.eazo.ai/oidc/me");
     expect((seen.init?.headers as Record<string, string>).authorization).toBe(
       "Bearer genauth-access-token",
     );
@@ -114,15 +114,15 @@ describe("EazoAgentKit", () => {
 
   it("uses the dashboard base path for default runtime discovery", async () => {
     const calls: string[] = [];
-    const client = new EazoAgentKit({
+    const client = new QoniAgentKit({
       accessKey: "ak_test",
       secretKey: "sk_test",
       fetch: (async (url: URL | RequestInfo) => {
         calls.push(String(url));
-        if (String(url) === "https://eak.eazo.ai/dashboard/api/v3/eak/runtime-config") {
+        if (String(url) === "https://qoni.eazo.ai/dashboard/api/v3/qoni/runtime-config") {
           return jsonResponse({
             data: {
-              eakBaseUrl: "https://eak-runtime.example.com",
+              qoniBaseUrl: "https://qoni-runtime.example.com",
             },
           });
         }
@@ -146,23 +146,23 @@ describe("EazoAgentKit", () => {
     });
 
     expect(calls).toEqual([
-      "https://eak.eazo.ai/dashboard/api/v3/eak/runtime-config",
-      "https://eak-runtime.example.com/api/v3/eak/delegations",
+      "https://qoni.eazo.ai/dashboard/api/v3/qoni/runtime-config",
+      "https://qoni-runtime.example.com/api/v3/qoni/delegations",
     ]);
   });
 
   it("preserves base paths returned by runtime config for signed JSON requests", async () => {
     const calls: string[] = [];
-    const client = new EazoAgentKit({
+    const client = new QoniAgentKit({
       accessKey: "ak_test",
       secretKey: "sk_test",
-      host: "https://eak.example.com/dashboard",
+      host: "https://qoni.example.com/dashboard",
       fetch: (async (url: URL | RequestInfo) => {
         calls.push(String(url));
-        if (String(url) === "https://eak.example.com/dashboard/api/v3/eak/runtime-config") {
+        if (String(url) === "https://qoni.example.com/dashboard/api/v3/qoni/runtime-config") {
           return jsonResponse({
             data: {
-              eakBaseUrl: "https://eak-runtime.example.com/sdk",
+              qoniBaseUrl: "https://qoni-runtime.example.com/sdk",
             },
           });
         }
@@ -186,16 +186,16 @@ describe("EazoAgentKit", () => {
     });
 
     expect(calls).toEqual([
-      "https://eak.example.com/dashboard/api/v3/eak/runtime-config",
-      "https://eak-runtime.example.com/sdk/api/v3/eak/delegations",
+      "https://qoni.example.com/dashboard/api/v3/qoni/runtime-config",
+      "https://qoni-runtime.example.com/sdk/api/v3/qoni/delegations",
     ]);
   });
 
-  it("exposes delegateToken through the EAK namespace", async () => {
-    const client = new EazoAgentKit({
+  it("exposes delegateToken through the Qoni namespace", async () => {
+    const client = new QoniAgentKit({
       accessKey: "ak_test",
       secretKey: "sk_test",
-      host: "https://eak.example.com",
+      host: "https://qoni.example.com",
       fetch: (async () =>
         jsonResponse({
           data: {
@@ -208,10 +208,10 @@ describe("EazoAgentKit", () => {
         })) as typeof fetch,
     });
 
-    const result = await client.eak.delegateToken({
+    const result = await client.qoni.delegateToken({
       user: { id: "user_1" },
       agent: "support-assistant",
-      scopes: [EAKScopes.GUMEM_MEMORY_READ],
+      scopes: [QoniScopes.GUMEM_MEMORY_READ],
       mode: "silent",
     });
 
@@ -223,11 +223,11 @@ describe("EazoAgentKit", () => {
 
   it("creates interactive delegateToken grants without user or userId", async () => {
     const seen: { url?: string; init?: RequestInit; body?: unknown } = {};
-    const client = new EazoAgentKit({
+    const client = new QoniAgentKit({
       accessKey: "ak_test",
       secretKey: "sk_test",
-      host: "https://eak.example.com",
-      eakBaseUrl: "https://eak.example.com",
+      host: "https://qoni.example.com",
+      qoniBaseUrl: "https://qoni.example.com",
       fetch: (async (url: URL | RequestInfo, init?: RequestInit) => {
         seen.url = String(url);
         seen.init = init;
@@ -235,7 +235,7 @@ describe("EazoAgentKit", () => {
         return jsonResponse({
           data: {
             mode: "interactive",
-            authorizationUrl: "https://eak.example.com/authorize?grant_id=grant_interactive",
+            authorizationUrl: "https://qoni.example.com/authorize?grant_id=grant_interactive",
             grantId: "grant_interactive",
             grantState: "grant_state_1",
             requestedScopes: ["gumem.memory:read", "webagent.do_anything:manage"],
@@ -247,24 +247,24 @@ describe("EazoAgentKit", () => {
 
     const result = await client.delegateToken({
       mode: "interactive",
-      redirectUri: "https://app.example.com/eak/callback",
+      redirectUri: "https://app.example.com/qoni/callback",
       state: "business_state_1",
       agent: "research-assistant",
       scopes: ["gumem.memory:read", "webagent.do_anything:manage"],
     });
 
-    expect(seen.url).toBe("https://eak.example.com/api/v3/eak/delegations");
+    expect(seen.url).toBe("https://qoni.example.com/api/v3/qoni/delegations");
     expect(seen.init?.method).toBe("POST");
     expect(seen.body).toEqual({
       mode: "interactive",
-      redirectUri: "https://app.example.com/eak/callback",
+      redirectUri: "https://app.example.com/qoni/callback",
       state: "business_state_1",
       agent: "research-assistant",
       scopes: ["gumem.memory:read", "webagent.do_anything:manage"],
     });
     expect(result.data).toMatchObject({
       mode: "interactive",
-      authorizationUrl: "https://eak.example.com/authorize?grant_id=grant_interactive",
+      authorizationUrl: "https://qoni.example.com/authorize?grant_id=grant_interactive",
       grantId: "grant_interactive",
       grantState: "grant_state_1",
       state: "grant_state_1",
@@ -274,7 +274,7 @@ describe("EazoAgentKit", () => {
 
   it("rejects a silent delegateToken with no user locally, before any request", async () => {
     let fetched = false;
-    const client = new EazoAgentKit({
+    const client = new QoniAgentKit({
       accessKey: "ak_test",
       secretKey: "sk_test",
       fetch: (async () => {
@@ -289,23 +289,23 @@ describe("EazoAgentKit", () => {
         products: ["doAnything"],
       }),
     ).rejects.toMatchObject({
-      name: "EAKValidationError",
+      name: "QoniValidationError",
       message: expect.stringContaining("silent mode requires a user"),
     });
     expect(fetched).toBe(false);
   });
 
   it("normalizes interactive delegateToken state into grantState and state", async () => {
-    const client = new EazoAgentKit({
+    const client = new QoniAgentKit({
       accessKey: "ak_test",
       secretKey: "sk_test",
-      host: "https://eak.example.com",
-      eakBaseUrl: "https://eak.example.com",
+      host: "https://qoni.example.com",
+      qoniBaseUrl: "https://qoni.example.com",
       fetch: (async () =>
         jsonResponse({
           data: {
             mode: "interactive",
-            authorizationUrl: "https://eak.example.com/authorize?grant_id=grant_interactive",
+            authorizationUrl: "https://qoni.example.com/authorize?grant_id=grant_interactive",
             grantId: "grant_interactive",
             state: "legacy_state_1",
           },
@@ -314,14 +314,14 @@ describe("EazoAgentKit", () => {
 
     const result = await client.delegateToken({
       mode: "interactive",
-      redirectUri: "https://app.example.com/eak/callback",
+      redirectUri: "https://app.example.com/qoni/callback",
       state: "business_state_1",
       agent: "research-assistant",
       scopes: ["gumem.memory:read"],
     });
 
     expect(result.data).toMatchObject({
-      authorizationUrl: "https://eak.example.com/authorize?grant_id=grant_interactive",
+      authorizationUrl: "https://qoni.example.com/authorize?grant_id=grant_interactive",
       grantId: "grant_interactive",
       grantState: "legacy_state_1",
       state: "legacy_state_1",
@@ -329,16 +329,16 @@ describe("EazoAgentKit", () => {
   });
 
   it("falls back interactive delegateToken state fields to grantId when upstream omits state", async () => {
-    const client = new EazoAgentKit({
+    const client = new QoniAgentKit({
       accessKey: "ak_test",
       secretKey: "sk_test",
-      host: "https://eak.example.com",
-      eakBaseUrl: "https://eak.example.com",
+      host: "https://qoni.example.com",
+      qoniBaseUrl: "https://qoni.example.com",
       fetch: (async () =>
         jsonResponse({
           data: {
             mode: "interactive",
-            authorizationUrl: "https://eak.example.com/authorize?grant_id=grant_without_state",
+            authorizationUrl: "https://qoni.example.com/authorize?grant_id=grant_without_state",
             grantId: "grant_without_state",
           },
         })) as typeof fetch,
@@ -346,7 +346,7 @@ describe("EazoAgentKit", () => {
 
     const result = await client.delegateToken({
       mode: "interactive",
-      redirectUri: "https://app.example.com/eak/callback",
+      redirectUri: "https://app.example.com/qoni/callback",
       state: "business_state_1",
       agent: "research-assistant",
       scopes: ["gumem.memory:read"],
@@ -360,16 +360,16 @@ describe("EazoAgentKit", () => {
   });
 
   it("returns mode-specific delegateToken result types", async () => {
-    const client = new EazoAgentKit({
+    const client = new QoniAgentKit({
       accessKey: "ak_test",
       secretKey: "sk_test",
-      host: "https://eak.example.com",
-      eakBaseUrl: "https://eak.example.com",
+      host: "https://qoni.example.com",
+      qoniBaseUrl: "https://qoni.example.com",
       fetch: (async () =>
         jsonResponse({
           data: {
             mode: "interactive",
-            authorizationUrl: "https://eak.example.com/authorize?grant_id=grant_type",
+            authorizationUrl: "https://qoni.example.com/authorize?grant_id=grant_type",
             grantId: "grant_type",
           },
         })) as typeof fetch,
@@ -377,7 +377,7 @@ describe("EazoAgentKit", () => {
 
     const interactive = await client.delegateToken({
       mode: "interactive",
-      redirectUri: "https://app.example.com/eak/callback",
+      redirectUri: "https://app.example.com/qoni/callback",
       state: "business_state_1",
       agent: "research-assistant",
       scopes: ["gumem.memory:read"],
@@ -428,10 +428,10 @@ describe("EazoAgentKit", () => {
   });
 
   it("treats GenAuth statusCode error envelopes as SDK errors", async () => {
-    const client = new EazoAgentKit({
+    const client = new QoniAgentKit({
       accessKey: "ak_test",
       secretKey: "sk_test",
-      host: "https://eak.example.com",
+      host: "https://qoni.example.com",
       fetch: (async () =>
         jsonResponse({
           statusCode: 403,
@@ -444,26 +444,26 @@ describe("EazoAgentKit", () => {
       client.delegateToken({
         user: { id: "user_1" },
         agent: "do_anything",
-        scopes: [EAKScopes.GUMEM_MEMORY_READ],
+        scopes: [QoniScopes.GUMEM_MEMORY_READ],
         mode: "silent",
       }),
     ).rejects.toMatchObject({
-      name: "EAKPermissionDeniedError",
+      name: "QoniPermissionDeniedError",
       status: 403,
       requestId: "req_denied",
     });
   });
 
   it("preserves GenAuth apiCode fields from statusCode error envelopes", async () => {
-    const client = new EazoAgentKit({
+    const client = new QoniAgentKit({
       accessKey: "ak_test",
       secretKey: "sk_test",
-      host: "https://eak.example.com",
+      host: "https://qoni.example.com",
       fetch: (async () =>
         jsonResponse({
           statusCode: 403,
-          apiCode: "eak.delegation.user_not_bound",
-          message: "userId is not valid for this EAK credential",
+          apiCode: "qoni.delegation.user_not_bound",
+          message: "userId is not valid for this Qoni credential",
           requestId: "req_user_not_bound",
         })) as typeof fetch,
     });
@@ -472,14 +472,14 @@ describe("EazoAgentKit", () => {
       client.delegateToken({
         user: { id: "missing_user" },
         agent: "memory_agent",
-        scopes: [EAKScopes.GUMEM_MEMORY_READ],
+        scopes: [QoniScopes.GUMEM_MEMORY_READ],
         mode: "silent",
       }),
     ).rejects.toMatchObject({
-      name: "EAKPermissionDeniedError",
-      code: "eak.delegation.user_not_bound",
+      name: "QoniPermissionDeniedError",
+      code: "qoni.delegation.user_not_bound",
       // The backend message is preserved, with an actionable onboarding hint appended.
-      message: expect.stringContaining("userId is not valid for this EAK credential"),
+      message: expect.stringContaining("userId is not valid for this Qoni credential"),
       status: 403,
       requestId: "req_user_not_bound",
     });
@@ -487,7 +487,7 @@ describe("EazoAgentKit", () => {
       client.delegateToken({
         user: { id: "missing_user" },
         agent: "memory_agent",
-        scopes: [EAKScopes.GUMEM_MEMORY_READ],
+        scopes: [QoniScopes.GUMEM_MEMORY_READ],
         mode: "silent",
       }),
     ).rejects.toThrow(/resolveAnyBoundUser/);
@@ -495,11 +495,11 @@ describe("EazoAgentKit", () => {
 
   it("keeps delegateAgent and completeDelegateAgent as deprecated compatibility aliases", async () => {
     const seen: { bodies: unknown[] } = { bodies: [] };
-    const client = new EazoAgentKit({
+    const client = new QoniAgentKit({
       accessKey: "ak_test",
       secretKey: "sk_test",
-      host: "https://eak.example.com",
-      genauthBaseUrl: "https://eak.example.com",
+      host: "https://qoni.example.com",
+      genauthBaseUrl: "https://qoni.example.com",
       fetch: (async (_url: URL | RequestInfo, init?: RequestInit) => {
         seen.bodies.push(JSON.parse(String(init?.body)));
         return jsonResponse({
@@ -523,7 +523,7 @@ describe("EazoAgentKit", () => {
     const alias = client.delegateAgent({
       user: { id: "user_1" },
       agent: "compat_agent",
-      scopes: [EAKScopes.GUMEM_MEMORY_READ],
+      scopes: [QoniScopes.GUMEM_MEMORY_READ],
       mode: "silent",
     });
 
@@ -539,11 +539,11 @@ describe("EazoAgentKit", () => {
 
   it("exposes completeDelegateToken as the recommended callback helper", async () => {
     const calls: Array<{ url: string; body: unknown }> = [];
-    const client = new EazoAgentKit({
+    const client = new QoniAgentKit({
       accessKey: "ak_test",
       secretKey: "sk_test",
-      host: "https://eak.example.com",
-      eakBaseUrl: "https://eak.example.com",
+      host: "https://qoni.example.com",
+      qoniBaseUrl: "https://qoni.example.com",
       fetch: (async (url: URL | RequestInfo, init?: RequestInit) => {
         calls.push({ url: String(url), body: JSON.parse(String(init?.body)) });
         return jsonResponse({
@@ -563,7 +563,7 @@ describe("EazoAgentKit", () => {
       code: "code_1",
       state: "state_1",
     });
-    const namespaceResult = await client.eak.completeDelegateToken({
+    const namespaceResult = await client.qoni.completeDelegateToken({
       grantId: "grant_2",
       code: "code_2",
       state: "state_2",
@@ -571,11 +571,11 @@ describe("EazoAgentKit", () => {
 
     expect(calls).toEqual([
       {
-        url: "https://eak.example.com/api/v3/eak/delegations/complete",
+        url: "https://qoni.example.com/api/v3/qoni/delegations/complete",
         body: { grantId: "grant_1", code: "code_1", state: "state_1" },
       },
       {
-        url: "https://eak.example.com/api/v3/eak/delegations/complete",
+        url: "https://qoni.example.com/api/v3/qoni/delegations/complete",
         body: { grantId: "grant_2", code: "code_2", state: "state_2" },
       },
     ]);
@@ -594,13 +594,13 @@ describe("EazoAgentKit", () => {
     }
   });
 
-  it("exposes GenAuth helpers through the EAK gateway host", async () => {
+  it("exposes GenAuth helpers through the Qoni gateway host", async () => {
     const calls: Array<{ url: string; init?: RequestInit }> = [];
-    const client = new EazoAgentKit({
+    const client = new QoniAgentKit({
       accessKey: "ak_test",
       secretKey: "sk_test",
-      host: "https://eak.example.com",
-      genauthBaseUrl: "https://eak.example.com",
+      host: "https://qoni.example.com",
+      genauthBaseUrl: "https://qoni.example.com",
       fetch: (async (url: URL | RequestInfo, init?: RequestInit) => {
         calls.push({ url: String(url), init });
         return jsonResponse({ data: { ok: true } });
@@ -611,8 +611,8 @@ describe("EazoAgentKit", () => {
     await client.genauth.introspectDelegationToken({ token: "delegate-token" });
 
     expect(calls.map((call) => call.url)).toEqual([
-      "https://eak.example.com/oidc/me",
-      "https://eak.example.com/api/v3/eak/delegations/introspect",
+      "https://qoni.example.com/oidc/me",
+      "https://qoni.example.com/api/v3/qoni/delegations/introspect",
     ]);
     expect(calls[0].init?.method).toBe("GET");
     expect((calls[0].init?.headers as Record<string, string>).authorization).toBe(
@@ -626,16 +626,16 @@ describe("EazoAgentKit", () => {
 
   it("exchanges AK/SK for a GenAuth admin token before listing users", async () => {
     const calls: Array<{ url: string; init?: RequestInit; body?: unknown }> = [];
-    const client = new EazoAgentKit({
+    const client = new QoniAgentKit({
       accessKey: "ak_test",
       secretKey: "sk_test",
-      host: "https://eak.example.com",
-      eakBaseUrl: "https://eak.example.com",
+      host: "https://qoni.example.com",
+      qoniBaseUrl: "https://qoni.example.com",
       genauthBaseUrl: "https://tenant-a.genauth.example.com",
       fetch: (async (url: URL | RequestInfo, init?: RequestInit) => {
         const body = init?.body ? JSON.parse(String(init.body)) : undefined;
         calls.push({ url: String(url), init, body });
-        if (String(url) === "https://eak.example.com/api/v3/eak/genauth/admin-token") {
+        if (String(url) === "https://qoni.example.com/api/v3/qoni/genauth/admin-token") {
           return jsonResponse({
             data: {
               accessToken: "genauth-admin-token",
@@ -652,7 +652,7 @@ describe("EazoAgentKit", () => {
 
     expect(result.data).toMatchObject({ totalCount: 1 });
     expect(calls.map((call) => call.url)).toEqual([
-      "https://eak.example.com/api/v3/eak/genauth/admin-token",
+      "https://qoni.example.com/api/v3/qoni/genauth/admin-token",
       "https://tenant-a.genauth.example.com/api/v3/list-users",
     ]);
     expect(calls[0].body).toEqual({});
@@ -671,16 +671,16 @@ describe("EazoAgentKit", () => {
 
   it("maps GenAuth user CRUD helpers to v3 management endpoints", async () => {
     const calls: Array<{ url: string; init?: RequestInit; body?: unknown }> = [];
-    const client = new EazoAgentKit({
+    const client = new QoniAgentKit({
       accessKey: "ak_test",
       secretKey: "sk_test",
-      host: "https://eak.example.com",
-      eakBaseUrl: "https://eak.example.com",
+      host: "https://qoni.example.com",
+      qoniBaseUrl: "https://qoni.example.com",
       genauthBaseUrl: "https://tenant-a.genauth.example.com",
       fetch: (async (url: URL | RequestInfo, init?: RequestInit) => {
         const body = init?.body ? JSON.parse(String(init.body)) : undefined;
         calls.push({ url: String(url), init, body });
-        if (String(url) === "https://eak.example.com/api/v3/eak/genauth/admin-token") {
+        if (String(url) === "https://qoni.example.com/api/v3/qoni/genauth/admin-token") {
           return jsonResponse({
             data: {
               accessToken: "genauth-admin-token",
@@ -701,7 +701,7 @@ describe("EazoAgentKit", () => {
     await client.genauth.users.deleteBatch({ userIds: ["user_1"] });
 
     expect(calls.map((call) => call.url)).toEqual([
-      "https://eak.example.com/api/v3/eak/genauth/admin-token",
+      "https://qoni.example.com/api/v3/qoni/genauth/admin-token",
       "https://tenant-a.genauth.example.com/api/v3/get-user?userId=user_1",
       "https://tenant-a.genauth.example.com/api/v3/create-user",
       "https://tenant-a.genauth.example.com/api/v3/create-users-batch",
@@ -719,15 +719,15 @@ describe("EazoAgentKit", () => {
 
   it("caches one GenAuth management token for all user management helpers", async () => {
     const calls: string[] = [];
-    const client = new EazoAgentKit({
+    const client = new QoniAgentKit({
       accessKey: "ak_test",
       secretKey: "sk_test",
-      host: "https://eak.example.com",
-      eakBaseUrl: "https://eak.example.com",
+      host: "https://qoni.example.com",
+      qoniBaseUrl: "https://qoni.example.com",
       genauthBaseUrl: "https://tenant-a.genauth.example.com",
       fetch: (async (url: URL | RequestInfo) => {
         calls.push(String(url));
-        if (String(url) === "https://eak.example.com/api/v3/eak/genauth/admin-token") {
+        if (String(url) === "https://qoni.example.com/api/v3/qoni/genauth/admin-token") {
           return jsonResponse({
             data: {
               token: "cached-genauth-admin-token",
@@ -743,7 +743,7 @@ describe("EazoAgentKit", () => {
     await client.genauth.users.list({ page: 2 });
 
     expect(calls).toEqual([
-      "https://eak.example.com/api/v3/eak/genauth/admin-token",
+      "https://qoni.example.com/api/v3/qoni/genauth/admin-token",
       "https://tenant-a.genauth.example.com/api/v3/list-users",
       "https://tenant-a.genauth.example.com/api/v3/list-users",
     ]);
@@ -752,23 +752,23 @@ describe("EazoAgentKit", () => {
   it("discovers runtime service URLs from the configured host and routes calls to returned services", async () => {
     const token = jwt({ webagent_tenant_id: "tenant_1" });
     const calls: Array<{ url: string; init?: RequestInit }> = [];
-    const client = new EazoAgentKit({
+    const client = new QoniAgentKit({
       accessKey: "ak_test",
       secretKey: "sk_test",
       host: "https://console.example.com",
       fetch: (async (url: URL | RequestInfo, init?: RequestInit) => {
         calls.push({ url: String(url), init });
-        if (String(url) === "https://console.example.com/api/v3/eak/runtime-config") {
+        if (String(url) === "https://console.example.com/api/v3/qoni/runtime-config") {
           return jsonResponse({
             data: {
-              eakBaseUrl: "https://eak-runtime.example.com",
+              qoniBaseUrl: "https://qoni-runtime.example.com",
               genauthBaseUrl: "https://tenant-a.genauth.example.com",
               gumemBaseUrl: "https://gumem.example.com/api",
               webAgentBaseUrl: "https://webagent.example.com",
             },
           });
         }
-        if (String(url) === "https://eak-runtime.example.com/api/v3/eak/delegations") {
+        if (String(url) === "https://qoni-runtime.example.com/api/v3/qoni/delegations") {
           return jsonResponse({
             data: {
               mode: "silent",
@@ -787,15 +787,15 @@ describe("EazoAgentKit", () => {
     await client.delegateToken({
       user: { id: "user_1" },
       agent: "do_anything",
-      scopes: [EAKScopes.GUMEM_MEMORY_READ],
+      scopes: [QoniScopes.GUMEM_MEMORY_READ],
       mode: "silent",
     });
     await client.gumem.recall({ token, sessionId: "default", query: "memory" });
     await client.doAnything.api.createSession({ token });
 
     expect(calls.map((call) => call.url)).toEqual([
-      "https://console.example.com/api/v3/eak/runtime-config",
-      "https://eak-runtime.example.com/api/v3/eak/delegations",
+      "https://console.example.com/api/v3/qoni/runtime-config",
+      "https://qoni-runtime.example.com/api/v3/qoni/delegations",
       "https://gumem.example.com/api/sessions/default/context?query=memory&details=false",
       "https://webagent.example.com/api/v1/projects/tenant_1/do_anything/sessions",
     ]);
@@ -810,7 +810,7 @@ describe("EazoAgentKit", () => {
   it("uses configured service hosts instead of runtime-config service URLs", async () => {
     const token = jwt({ webagent_tenant_id: "tenant_1" });
     const calls: Array<{ url: string; init?: RequestInit }> = [];
-    const client = new EazoAgentKit({
+    const client = new QoniAgentKit({
       accessKey: "ak_test",
       secretKey: "sk_test",
       host: "https://console.example.com",
@@ -819,17 +819,17 @@ describe("EazoAgentKit", () => {
       webAgentHost: "https://configured.webagent.example.com",
       fetch: (async (url: URL | RequestInfo, init?: RequestInit) => {
         calls.push({ url: String(url), init });
-        if (String(url) === "https://console.example.com/api/v3/eak/runtime-config") {
+        if (String(url) === "https://console.example.com/api/v3/qoni/runtime-config") {
           return jsonResponse({
             data: {
-              eakBaseUrl: "https://eak-runtime.example.com",
+              qoniBaseUrl: "https://qoni-runtime.example.com",
               genauthBaseUrl: "https://runtime.genauth.example.com",
               gumemBaseUrl: "https://runtime.gumem.example.com/api",
               webAgentBaseUrl: "https://runtime.webagent.example.com",
             },
           });
         }
-        if (String(url) === "https://eak-runtime.example.com/api/v3/eak/delegations") {
+        if (String(url) === "https://qoni-runtime.example.com/api/v3/qoni/delegations") {
           return jsonResponse({
             data: {
               mode: "silent",
@@ -848,7 +848,7 @@ describe("EazoAgentKit", () => {
     await client.delegateToken({
       user: { id: "user_1" },
       agent: "do_anything",
-      scopes: [EAKScopes.GUMEM_MEMORY_READ],
+      scopes: [QoniScopes.GUMEM_MEMORY_READ],
       mode: "silent",
     });
     await client.currentUser({ accessToken: "genauth-access-token" });
@@ -860,8 +860,8 @@ describe("EazoAgentKit", () => {
     await client.doAnything.api.createSession({ token });
 
     expect(calls.map((call) => call.url)).toEqual([
-      "https://console.example.com/api/v3/eak/runtime-config",
-      "https://eak-runtime.example.com/api/v3/eak/delegations",
+      "https://console.example.com/api/v3/qoni/runtime-config",
+      "https://qoni-runtime.example.com/api/v3/qoni/delegations",
       "https://configured.genauth.example.com/oidc/me",
       "https://configured.gumem.example.com/api/sessions/default/context?query=memory&details=false",
       "https://configured.webagent.example.com/api/v1/projects/tenant_1/do_anything/sessions",
@@ -875,7 +875,7 @@ describe("EazoAgentKit", () => {
       genauthHost: "https://configured.genauth.example.com",
       gumemHost: "https://configured.gumem.example.com/api",
       webAgentHost: "https://configured.webagent.example.com",
-    } satisfies EAKOptions;
+    } satisfies QoniOptions;
 
     expect(options.webAgentHost).toBe("https://configured.webagent.example.com");
 
@@ -884,25 +884,25 @@ describe("EazoAgentKit", () => {
       secretKey: "sk_test",
       // @ts-expect-error service host overrides use camelCase names.
       GenauthHost: "https://configured.genauth.example.com",
-    } satisfies EAKOptions);
+    } satisfies QoniOptions);
   });
 
-  it("exchanges EAK delegation tokens before calling Gumem", async () => {
+  it("exchanges Qoni delegation tokens before calling Gumem", async () => {
     const delegationToken = jwt({
-      token_type: "eak_delegation_token",
+      token_type: "qoni_delegation_token",
       aud: "genauth:token-exchange",
-      eak_tenant_id: "eak_tnt_1",
+      qoni_tenant_id: "qoni_tnt_1",
     });
     const productToken = jwt({
       aud: "gumem",
       product_resource: { type: "gumem_project", id: "proj_1" },
     });
     const calls: Array<{ url: string; init?: RequestInit; body?: unknown }> = [];
-    const client = new EazoAgentKit({
+    const client = new QoniAgentKit({
       accessKey: "ak_test",
       secretKey: "sk_test",
-      host: "https://eak.example.com",
-      eakBaseUrl: "https://eak.example.com",
+      host: "https://qoni.example.com",
+      qoniBaseUrl: "https://qoni.example.com",
       gumemBaseUrl: "https://gumem.example.com/api",
       fetch: (async (url: URL | RequestInfo, init?: RequestInit) => {
         const body = init?.body
@@ -911,7 +911,7 @@ describe("EazoAgentKit", () => {
             : JSON.parse(String(init.body))
           : undefined;
         calls.push({ url: String(url), init, body });
-        if (String(url) === "https://eak.example.com/api/v3/eak/token-exchange") {
+        if (String(url) === "https://qoni.example.com/api/v3/qoni/token-exchange") {
           return jsonResponse({
             data: {
               accessToken: productToken,
@@ -930,7 +930,7 @@ describe("EazoAgentKit", () => {
     await client.gumem.recall({ token: delegationToken, sessionId: "default", query: "memory" });
 
     expect(calls.map((call) => call.url)).toEqual([
-      "https://eak.example.com/api/v3/eak/token-exchange",
+      "https://qoni.example.com/api/v3/qoni/token-exchange",
       "https://gumem.example.com/api/sessions/default/context?query=memory&details=false",
     ]);
     expect(calls[0].body).toEqual({
@@ -948,20 +948,20 @@ describe("EazoAgentKit", () => {
 
   it("surfaces upstream token exchange configuration errors in the thrown message", async () => {
     const delegationToken = jwt({
-      token_type: "eak_delegation_token",
+      token_type: "qoni_delegation_token",
       aud: "genauth:token-exchange",
-      eak_tenant_id: "eak_tnt_1",
+      qoni_tenant_id: "qoni_tnt_1",
     });
-    const client = new EazoAgentKit({
+    const client = new QoniAgentKit({
       accessKey: "ak_test",
       secretKey: "sk_test",
-      host: "https://eak.example.com",
-      eakBaseUrl: "https://eak.example.com",
+      host: "https://qoni.example.com",
+      qoniBaseUrl: "https://qoni.example.com",
       gumemBaseUrl: "https://gumem.example.com/api",
       fetch: (async () =>
         jsonResponse({
           statusCode: 400,
-          code: "eak.token_exchange.upstream_failed",
+          code: "qoni.token_exchange.upstream_failed",
           message: "OIDC token exchange failed",
           requestId: "req_token_exchange",
           details: {
@@ -978,8 +978,8 @@ describe("EazoAgentKit", () => {
     await expect(
       client.gumem.recall({ token: delegationToken, sessionId: "default", query: "memory" }),
     ).rejects.toMatchObject({
-      name: "EAKValidationError",
-      code: "eak.token_exchange.upstream_failed",
+      name: "QoniValidationError",
+      code: "qoni.token_exchange.upstream_failed",
       status: 400,
       requestId: "req_token_exchange",
       message: expect.stringContaining("grant_type is not enabled"),
@@ -989,10 +989,10 @@ describe("EazoAgentKit", () => {
   it("sends product access tokens directly to Gumem", async () => {
     const token = jwt({ aud: "gumem" });
     const calls: Array<{ url: string; init?: RequestInit }> = [];
-    const client = new EazoAgentKit({
+    const client = new QoniAgentKit({
       accessKey: "ak_test",
       secretKey: "sk_test",
-      host: "https://eak.example.com",
+      host: "https://qoni.example.com",
       gumemBaseUrl: "https://gumem.example.com/api",
       fetch: (async (url: URL | RequestInfo, init?: RequestInit) => {
         calls.push({ url: String(url), init });
@@ -1008,20 +1008,20 @@ describe("EazoAgentKit", () => {
     expect((calls[0].init?.headers as Record<string, string>).authorization).toBe(`Bearer ${token}`);
   });
 
-  it("routes local EAK token exchanges through the EAK endpoint", async () => {
-    const delegationToken = jwt({ token_type: "eak_delegation_token" });
+  it("routes local Qoni token exchanges through the Qoni endpoint", async () => {
+    const delegationToken = jwt({ token_type: "qoni_delegation_token" });
     const productToken = jwt({ aud: "gumem" });
     const calls: Array<{ url: string; init?: RequestInit; body?: unknown }> = [];
-    const client = new EazoAgentKit({
+    const client = new QoniAgentKit({
       accessKey: "ak_test",
       secretKey: "sk_test",
       host: "http://core.genauth.localhost:3000",
-      eakBaseUrl: "http://core.genauth.localhost:3000",
+      qoniBaseUrl: "http://core.genauth.localhost:3000",
       gumemBaseUrl: "https://gumem.example.com/api",
       fetch: (async (url: URL | RequestInfo, init?: RequestInit) => {
         const body = init?.body ? JSON.parse(String(init.body)) : undefined;
         calls.push({ url: String(url), init, body });
-        if (String(url) === "http://127.0.0.1:3000/api/v3/eak/token-exchange") {
+        if (String(url) === "http://127.0.0.1:3000/api/v3/qoni/token-exchange") {
           return jsonResponse({ data: { accessToken: productToken, expiresIn: 3600 } });
         }
         return jsonResponse({ data: { ok: true } });
@@ -1030,7 +1030,7 @@ describe("EazoAgentKit", () => {
 
     await client.gumem.recall({ token: delegationToken, sessionId: "default", query: "memory" });
 
-    expect(calls[0].url).toBe("http://127.0.0.1:3000/api/v3/eak/token-exchange");
+    expect(calls[0].url).toBe("http://127.0.0.1:3000/api/v3/qoni/token-exchange");
     expect((calls[0].init?.headers as Record<string, string>).Host).toBe(
       "core.genauth.localhost:3000",
     );
@@ -1042,7 +1042,7 @@ describe("EazoAgentKit", () => {
   });
 
   it("requires product capability calls to receive an explicit token", async () => {
-    const client = new EazoAgentKit({
+    const client = new QoniAgentKit({
       accessKey: "ak_test",
       secretKey: "sk_test",
       gumemBaseUrl: "https://gumem.example.com/api",
@@ -1052,7 +1052,7 @@ describe("EazoAgentKit", () => {
     await expect(
       client.gumem.recall({ sessionId: "default", query: "memory" } as any),
     ).rejects.toMatchObject({
-      name: "EAKDelegationRequiredError",
+      name: "QoniDelegationRequiredError",
       code: "delegation.required",
       message: expect.stringContaining("token"),
     });
@@ -1064,10 +1064,10 @@ describe("EazoAgentKit", () => {
       resource_bindings: { webagent: { tenant_id: "web_tnt_1" } },
     });
     const calls: Array<{ url: string; init?: RequestInit; body?: unknown }> = [];
-    const client = new EazoAgentKit({
+    const client = new QoniAgentKit({
       accessKey: "ak_test",
       secretKey: "sk_test",
-      host: "https://eak.example.com",
+      host: "https://qoni.example.com",
       webAgentBaseUrl: "https://webagent.example.com",
       fetch: (async (url: URL | RequestInfo, init?: RequestInit) => {
         const body = init?.body
@@ -1094,7 +1094,7 @@ describe("EazoAgentKit", () => {
     expect(
       buildStringToSign(
         "POST",
-        "/api/v3/eak/delegations",
+        "/api/v3/qoni/delegations",
         {
           "x-authing-date": "1",
           "x-authing-signature-method": "HMAC-SHA1",
@@ -1103,78 +1103,78 @@ describe("EazoAgentKit", () => {
         { b: "2", a: "1" },
       ),
     ).toBe(
-      "POST\nx-authing-date:1\nx-authing-signature-method:HMAC-SHA1\nx-authing-signature-version:1.0\n/api/v3/eak/delegations?a=1&b=2",
+      "POST\nx-authing-date:1\nx-authing-signature-method:HMAC-SHA1\nx-authing-signature-version:1.0\n/api/v3/qoni/delegations?a=1&b=2",
     );
   });
 
   it("exports stable scope and event constants", () => {
-    expect(EAKScopes.GUMEM_MEMORY_READ).toBe("gumem.memory:read");
-    expect("GENAUTH_USER_LIST" in EAKScopes).toBe(false);
-    expect(EAKScopes.DO_ANYTHING_READ).toBe("webagent.do_anything:read");
-    expect(EAKScopes.DO_ANYTHING_MANAGE).toBe("webagent.do_anything:manage");
-    expect(EAKScopes.WEB_SEARCH_READ).toBe("webagent.web_search:read");
-    expect(EAKScopes.WEB_SEARCH_MANAGE).toBe("webagent.web_search:manage");
-    expect(EAKScopes.DEEP_RESEARCH_READ).toBe("webagent.deep_research:read");
-    expect(EAKScopes.DEEP_RESEARCH_MANAGE).toBe("webagent.deep_research:manage");
-    expect(EAKScopes.TRACK_READ).toBe("webagent.track:read");
-    expect(EAKScopes.TRACK_MANAGE).toBe("webagent.track:manage");
+    expect(QoniScopes.GUMEM_MEMORY_READ).toBe("gumem.memory:read");
+    expect("GENAUTH_USER_LIST" in QoniScopes).toBe(false);
+    expect(QoniScopes.DO_ANYTHING_READ).toBe("webagent.do_anything:read");
+    expect(QoniScopes.DO_ANYTHING_MANAGE).toBe("webagent.do_anything:manage");
+    expect(QoniScopes.WEB_SEARCH_READ).toBe("webagent.web_search:read");
+    expect(QoniScopes.WEB_SEARCH_MANAGE).toBe("webagent.web_search:manage");
+    expect(QoniScopes.DEEP_RESEARCH_READ).toBe("webagent.deep_research:read");
+    expect(QoniScopes.DEEP_RESEARCH_MANAGE).toBe("webagent.deep_research:manage");
+    expect(QoniScopes.TRACK_READ).toBe("webagent.track:read");
+    expect(QoniScopes.TRACK_MANAGE).toBe("webagent.track:manage");
     // Legacy verb constants are gone — read/manage is the whole model.
-    expect("DO_ANYTHING_RUN" in EAKScopes).toBe(false);
-    expect("DO_ANYTHING_STOP" in EAKScopes).toBe(false);
-    expect("DO_ANYTHING_CONTROL" in EAKScopes).toBe(false);
-    expect("WEB_SEARCH_RUN" in EAKScopes).toBe(false);
-    expect("WEB_SEARCH_STOP" in EAKScopes).toBe(false);
-    expect("DEEP_RESEARCH_RUN" in EAKScopes).toBe(false);
-    expect("DEEP_RESEARCH_STOP" in EAKScopes).toBe(false);
-    expect("DEEP_RESEARCH_CONTROL" in EAKScopes).toBe(false);
-    expect("TRACK_RUN" in EAKScopes).toBe(false);
-    expect("TRACK_STOP" in EAKScopes).toBe(false);
-    expect("WEBAGENT_TASK_RUN" in EAKScopes).toBe(false);
-    expect("WEBAGENT_DO_ANYTHING_EVENTS" in EAKScopes).toBe(false);
-    expect(EAKScopeBundles.GUMEM_SESSION_RECALL).toEqual([
-      EAKScopes.GUMEM_MEMORY_READ,
-      EAKScopes.GUMEM_MEMORY_WRITE,
-      EAKScopes.GUMEM_MESSAGE_WRITE,
+    expect("DO_ANYTHING_RUN" in QoniScopes).toBe(false);
+    expect("DO_ANYTHING_STOP" in QoniScopes).toBe(false);
+    expect("DO_ANYTHING_CONTROL" in QoniScopes).toBe(false);
+    expect("WEB_SEARCH_RUN" in QoniScopes).toBe(false);
+    expect("WEB_SEARCH_STOP" in QoniScopes).toBe(false);
+    expect("DEEP_RESEARCH_RUN" in QoniScopes).toBe(false);
+    expect("DEEP_RESEARCH_STOP" in QoniScopes).toBe(false);
+    expect("DEEP_RESEARCH_CONTROL" in QoniScopes).toBe(false);
+    expect("TRACK_RUN" in QoniScopes).toBe(false);
+    expect("TRACK_STOP" in QoniScopes).toBe(false);
+    expect("WEBAGENT_TASK_RUN" in QoniScopes).toBe(false);
+    expect("WEBAGENT_DO_ANYTHING_EVENTS" in QoniScopes).toBe(false);
+    expect(QoniScopeBundles.GUMEM_SESSION_RECALL).toEqual([
+      QoniScopes.GUMEM_MEMORY_READ,
+      QoniScopes.GUMEM_MEMORY_WRITE,
+      QoniScopes.GUMEM_MESSAGE_WRITE,
     ]);
-    expect("GENAUTH_USER_ADMIN" in EAKScopeBundles).toBe(false);
-    expect(EAKScopeBundles.DO_ANYTHING).toEqual([
-      EAKScopes.DO_ANYTHING_READ,
-      EAKScopes.DO_ANYTHING_MANAGE,
+    expect("GENAUTH_USER_ADMIN" in QoniScopeBundles).toBe(false);
+    expect(QoniScopeBundles.DO_ANYTHING).toEqual([
+      QoniScopes.DO_ANYTHING_READ,
+      QoniScopes.DO_ANYTHING_MANAGE,
     ]);
-    expect(EAKScopeBundles.WEB_SEARCH).toEqual([
-      EAKScopes.WEB_SEARCH_READ,
-      EAKScopes.WEB_SEARCH_MANAGE,
+    expect(QoniScopeBundles.WEB_SEARCH).toEqual([
+      QoniScopes.WEB_SEARCH_READ,
+      QoniScopes.WEB_SEARCH_MANAGE,
     ]);
-    expect(EAKScopeBundles.DEEP_RESEARCH).toEqual([
-      EAKScopes.DEEP_RESEARCH_READ,
-      EAKScopes.DEEP_RESEARCH_MANAGE,
+    expect(QoniScopeBundles.DEEP_RESEARCH).toEqual([
+      QoniScopes.DEEP_RESEARCH_READ,
+      QoniScopes.DEEP_RESEARCH_MANAGE,
     ]);
-    expect(EAKScopeBundles.TRACK).toEqual([
-      EAKScopes.TRACK_READ,
-      EAKScopes.TRACK_MANAGE,
+    expect(QoniScopeBundles.TRACK).toEqual([
+      QoniScopes.TRACK_READ,
+      QoniScopes.TRACK_MANAGE,
     ]);
     expect(WireEventTypes.RUN_COMPLETED).toBe("run.completed");
   });
 
   it("uses canonical WebAgent scopes when exchanging delegation tokens", async () => {
     const delegationToken = jwt({
-      token_type: "eak_delegation_token",
+      token_type: "qoni_delegation_token",
       aud: "genauth:token-exchange",
-      eak_tenant_id: "eak_tnt_1",
+      qoni_tenant_id: "qoni_tnt_1",
     });
     const productToken = jwt({
       aud: "webagent",
       product_resource: { type: "webagent_tenant", id: "web_tnt_1" },
     });
     const exchanges: unknown[] = [];
-    const client = new EazoAgentKit({
+    const client = new QoniAgentKit({
       accessKey: "ak_test",
       secretKey: "sk_test",
-      host: "https://eak.example.com",
-      eakBaseUrl: "https://eak.example.com",
+      host: "https://qoni.example.com",
+      qoniBaseUrl: "https://qoni.example.com",
       webAgentBaseUrl: "https://webagent.example.com",
       fetch: (async (url: URL | RequestInfo, init?: RequestInit) => {
-        if (String(url) === "https://eak.example.com/api/v3/eak/token-exchange") {
+        if (String(url) === "https://qoni.example.com/api/v3/qoni/token-exchange") {
           exchanges.push(JSON.parse(String(init?.body)));
           return jsonResponse({
             data: { accessToken: productToken, expiresIn: 3600 },
@@ -1188,10 +1188,10 @@ describe("EazoAgentKit", () => {
     await client.doAnything.api.getRun({ token: delegationToken, runId: "run_1" });
     await client.doAnything.api.cancel({ token: delegationToken, runId: "run_1" });
     await client.doAnything.api.intervene({ token: delegationToken, runId: "run_1", text: "continue" });
-    await client.webSearch.api.run({ token: delegationToken, query: "EAK" });
+    await client.webSearch.api.run({ token: delegationToken, query: "Qoni" });
     await client.webSearch.api.get({ token: delegationToken, runId: "search_1" });
     await client.webSearch.api.cancel({ token: delegationToken, runId: "search_1" });
-    await client.deepResearch.api.run({ token: delegationToken, topic: "EAK" });
+    await client.deepResearch.api.run({ token: delegationToken, topic: "Qoni" });
     await client.deepResearch.api.get({ token: delegationToken, runId: "research_1" });
     await client.deepResearch.api.cancel({ token: delegationToken, runId: "research_1" });
     await client.deepResearch.api.followUp({ token: delegationToken, runId: "research_1", text: "more" });
@@ -1220,11 +1220,11 @@ describe("EazoAgentKit", () => {
   it("uses webagent_tenant_id from token for WebAgent calls", async () => {
     const token = jwt({ webagent_tenant_id: "tenant_1" });
     const seen: { url?: string; init?: RequestInit } = {};
-    const client = new EazoAgentKit({
+    const client = new QoniAgentKit({
       accessKey: "ak_test",
       secretKey: "sk_test",
-      host: "https://eak.example.com",
-      webAgentBaseUrl: "https://eak.example.com",
+      host: "https://qoni.example.com",
+      webAgentBaseUrl: "https://qoni.example.com",
       fetch: (async (url: URL | RequestInfo, init?: RequestInit) => {
         seen.url = String(url);
         seen.init = init;
@@ -1238,7 +1238,7 @@ describe("EazoAgentKit", () => {
     });
 
     expect(seen.url).toBe(
-      "https://eak.example.com/api/v1/projects/tenant_1/do_anything/runs",
+      "https://qoni.example.com/api/v1/projects/tenant_1/do_anything/runs",
     );
     expect((seen.init?.headers as Record<string, string>).authorization).toBe(`Bearer ${token}`);
     expect(JSON.parse(String(seen.init?.body))).toEqual({ instructions: "open the site" });
@@ -1247,11 +1247,11 @@ describe("EazoAgentKit", () => {
   it("posts doAnything.intervene to the backend /intervene route", async () => {
     const token = jwt({ webagent_tenant_id: "tenant_1" });
     const seen: { url?: string; init?: RequestInit } = {};
-    const client = new EazoAgentKit({
+    const client = new QoniAgentKit({
       accessKey: "ak_test",
       secretKey: "sk_test",
-      host: "https://eak.example.com",
-      webAgentBaseUrl: "https://eak.example.com",
+      host: "https://qoni.example.com",
+      webAgentBaseUrl: "https://qoni.example.com",
       fetch: (async (url: URL | RequestInfo, init?: RequestInit) => {
         seen.url = String(url);
         seen.init = init;
@@ -1267,7 +1267,7 @@ describe("EazoAgentKit", () => {
     });
 
     expect(seen.url).toBe(
-      "https://eak.example.com/api/v1/projects/tenant_1/do_anything/runs/run_1/intervene",
+      "https://qoni.example.com/api/v1/projects/tenant_1/do_anything/runs/run_1/intervene",
     );
     expect(seen.init?.method).toBe("POST");
     expect(JSON.parse(String(seen.init?.body))).toEqual({
@@ -1280,11 +1280,11 @@ describe("EazoAgentKit", () => {
   it("reads doAnything artifacts from the session-scoped /sessions/{id}/artifacts/{id} route", async () => {
     const token = jwt({ webagent_tenant_id: "tenant_1" });
     const seen: { url?: string; init?: RequestInit } = {};
-    const client = new EazoAgentKit({
+    const client = new QoniAgentKit({
       accessKey: "ak_test",
       secretKey: "sk_test",
-      host: "https://eak.example.com",
-      webAgentBaseUrl: "https://eak.example.com",
+      host: "https://qoni.example.com",
+      webAgentBaseUrl: "https://qoni.example.com",
       fetch: (async (url: URL | RequestInfo, init?: RequestInit) => {
         seen.url = String(url);
         seen.init = init;
@@ -1295,7 +1295,7 @@ describe("EazoAgentKit", () => {
     await client.doAnything.api.readArtifacts({ token, sessionId: "session_1", artifactId: "artifact_1" });
 
     expect(seen.url).toBe(
-      "https://eak.example.com/api/v1/projects/tenant_1/do_anything/sessions/session_1/artifacts/artifact_1",
+      "https://qoni.example.com/api/v1/projects/tenant_1/do_anything/sessions/session_1/artifacts/artifact_1",
     );
     expect(seen.init?.method).toBe("GET");
   });
@@ -1304,11 +1304,11 @@ describe("EazoAgentKit", () => {
     const token = jwt({ webagent_tenant_id: "tenant_1" });
     const urls: string[] = [];
     const bodies: unknown[] = [];
-    const client = new EazoAgentKit({
+    const client = new QoniAgentKit({
       accessKey: "ak_test",
       secretKey: "sk_test",
-      host: "https://eak.example.com",
-      webAgentBaseUrl: "https://eak.example.com",
+      host: "https://qoni.example.com",
+      webAgentBaseUrl: "https://qoni.example.com",
       fetch: (async (url: URL | RequestInfo, init?: RequestInit) => {
         urls.push(String(url));
         bodies.push(init?.body ? JSON.parse(String(init.body)) : undefined);
@@ -1325,7 +1325,7 @@ describe("EazoAgentKit", () => {
     expect(run.id).toBe("run_auto");
     expect(run.sessionRef).toEqual({ sessionId: "sess_auto" });
     expect(urls).toEqual([
-      "https://eak.example.com/api/v1/projects/tenant_1/do_anything/runs",
+      "https://qoni.example.com/api/v1/projects/tenant_1/do_anything/runs",
     ]);
     // No write-time `stream` subscription — capture is read-time filtering.
     expect(bodies[0]).toEqual({ instructions: "open the docs" });
@@ -1334,11 +1334,11 @@ describe("EazoAgentKit", () => {
   it("passes webSearch queries through to the backend contract", async () => {
     const token = jwt({ webagent_tenant_id: "tenant_1" });
     const seen: { body?: unknown } = {};
-    const client = new EazoAgentKit({
+    const client = new QoniAgentKit({
       accessKey: "ak_test",
       secretKey: "sk_test",
-      host: "https://eak.example.com",
-      webAgentBaseUrl: "https://eak.example.com",
+      host: "https://qoni.example.com",
+      webAgentBaseUrl: "https://qoni.example.com",
       fetch: (async (_url: URL | RequestInfo, init?: RequestInit) => {
         seen.body = JSON.parse(String(init?.body));
         return jsonResponse({ data: { run_id: "run_1" } });
@@ -1347,13 +1347,13 @@ describe("EazoAgentKit", () => {
 
     await client.webSearch.api.run({
       token,
-      queries: ["EAK SDK"],
+      queries: ["Qoni SDK"],
       maxResultsPerQuery: 3,
       siteWhitelist: ["eazo.ai"],
     });
 
     expect(seen.body).toEqual({
-      queries: ["EAK SDK"],
+      queries: ["Qoni SDK"],
       max_results_per_query: 3,
       site_whitelist: ["eazo.ai"],
     });
@@ -1362,11 +1362,11 @@ describe("EazoAgentKit", () => {
   it("parses SSE events including JSON, text, and last-event-id", async () => {
     const token = jwt({ webagent_tenant_id: "tenant_1" });
     const seen: { headers?: Record<string, string>; url?: string } = {};
-    const client = new EazoAgentKit({
+    const client = new QoniAgentKit({
       accessKey: "ak_test",
       secretKey: "sk_test",
-      host: "https://eak.example.com",
-      webAgentBaseUrl: "https://eak.example.com/workspace",
+      host: "https://qoni.example.com",
+      webAgentBaseUrl: "https://qoni.example.com/workspace",
       fetch: (async (url: URL | RequestInfo, init?: RequestInit) => {
         seen.url = String(url);
         seen.headers = init?.headers as Record<string, string>;
@@ -1386,7 +1386,7 @@ describe("EazoAgentKit", () => {
     }
 
     expect(seen.url).toBe(
-      "https://eak.example.com/workspace/api/v1/projects/tenant_1/do_anything/runs/run_1/events",
+      "https://qoni.example.com/workspace/api/v1/projects/tenant_1/do_anything/runs/run_1/events",
     );
     expect(seen.headers?.["last-event-id"]).toBe("0");
     expect(events).toEqual([
@@ -1399,11 +1399,11 @@ describe("EazoAgentKit", () => {
     // Real backend frames carry no SSE `event:` line — the type is in the
     // envelope's `type` field. The SDK surfaces it as event.event.
     const token = jwt({ webagent_tenant_id: "tenant_1" });
-    const client = new EazoAgentKit({
+    const client = new QoniAgentKit({
       accessKey: "ak_test",
       secretKey: "sk_test",
-      host: "https://eak.example.com",
-      webAgentBaseUrl: "https://eak.example.com",
+      host: "https://qoni.example.com",
+      webAgentBaseUrl: "https://qoni.example.com",
       fetch: (async () =>
         sseResponse(
           'id: 1\ndata: {"type":"run.action.started","task_id":"run_1","data":{"kind":"navigate"}}\n\n' +
@@ -1432,11 +1432,11 @@ describe("EazoAgentKit", () => {
     const token = jwt({ webagent_tenant_id: "tenant_1" });
     const lastEventIds: (string | undefined)[] = [];
     let call = 0;
-    const client = new EazoAgentKit({
+    const client = new QoniAgentKit({
       accessKey: "ak_test",
       secretKey: "sk_test",
-      host: "https://eak.example.com",
-      webAgentBaseUrl: "https://eak.example.com",
+      host: "https://qoni.example.com",
+      webAgentBaseUrl: "https://qoni.example.com",
       sseMaxRetries: 3,
       fetch: (async (_url: URL | RequestInfo, init?: RequestInit) => {
         const headers = (init?.headers || {}) as Record<string, string>;
@@ -1491,11 +1491,11 @@ describe("EazoAgentKit", () => {
 
   it("events({ onlyTopLevel: true }) drops sub-run events", async () => {
     const token = jwt({ webagent_tenant_id: "tenant_1" });
-    const client = new EazoAgentKit({
+    const client = new QoniAgentKit({
       accessKey: "ak_test",
       secretKey: "sk_test",
-      host: "https://eak.example.com",
-      webAgentBaseUrl: "https://eak.example.com",
+      host: "https://qoni.example.com",
+      webAgentBaseUrl: "https://qoni.example.com",
       fetch: (async () =>
         sseResponse(
           'id: 1\ndata: {"type":"run.action.started","task_id":"run_1","data":{}}\n\n' +
@@ -1520,11 +1520,11 @@ describe("EazoAgentKit", () => {
   it("reconnect recovers from a 401 by retrying with a refreshed token", async () => {
     const token = jwt({ webagent_tenant_id: "tenant_1" });
     let call = 0;
-    const client = new EazoAgentKit({
+    const client = new QoniAgentKit({
       accessKey: "ak_test",
       secretKey: "sk_test",
-      host: "https://eak.example.com",
-      webAgentBaseUrl: "https://eak.example.com",
+      host: "https://qoni.example.com",
+      webAgentBaseUrl: "https://qoni.example.com",
       sseMaxRetries: 3,
       fetch: (async () => {
         call += 1;
@@ -1570,11 +1570,11 @@ describe("EazoAgentKit", () => {
   it("run().wait() drives a run to terminal and settles from the run-detail envelope", async () => {
     const token = jwt({ webagent_tenant_id: "tenant_1" });
     const actions: unknown[] = [];
-    const client = new EazoAgentKit({
+    const client = new QoniAgentKit({
       accessKey: "ak_test",
       secretKey: "sk_test",
-      host: "https://eak.example.com",
-      webAgentBaseUrl: "https://eak.example.com",
+      host: "https://qoni.example.com",
+      webAgentBaseUrl: "https://qoni.example.com",
       fetch: (async (url: URL | RequestInfo, init?: RequestInit) => {
         const u = String(url);
         if (u.endsWith("/do_anything/runs") && init?.method === "POST") {
@@ -1634,14 +1634,14 @@ describe("EazoAgentKit", () => {
   });
 
   it("resolveAnyBoundUser returns the first user from the bound userpool", async () => {
-    const client = new EazoAgentKit({
+    const client = new QoniAgentKit({
       accessKey: "ak_test",
       secretKey: "sk_test",
-      host: "https://eak.example.com",
-      eakBaseUrl: "https://eak.example.com",
+      host: "https://qoni.example.com",
+      qoniBaseUrl: "https://qoni.example.com",
       genauthBaseUrl: "https://tenant-a.genauth.example.com",
       fetch: (async (url: URL | RequestInfo) => {
-        if (String(url) === "https://eak.example.com/api/v3/eak/genauth/admin-token") {
+        if (String(url) === "https://qoni.example.com/api/v3/qoni/genauth/admin-token") {
           return jsonResponse({ data: { accessToken: "admin", userPoolId: "up_1" } });
         }
         return jsonResponse({ data: { list: [{ userId: "user_real_1" }], totalCount: 1 } });
@@ -1652,11 +1652,11 @@ describe("EazoAgentKit", () => {
   });
 
   it("maps permission errors to typed SDK errors", async () => {
-    const client = new EazoAgentKit({
+    const client = new QoniAgentKit({
       accessKey: "ak_test",
       secretKey: "sk_test",
-      host: "https://eak.example.com",
-      gumemBaseUrl: "https://eak.example.com",
+      host: "https://qoni.example.com",
+      gumemBaseUrl: "https://qoni.example.com",
       fetch: (async () =>
         jsonResponse(
           {
@@ -1674,21 +1674,21 @@ describe("EazoAgentKit", () => {
     await expect(
       client.gumem.recall({ token: "token", sessionId: "sess_1", query: "hello" }),
     ).rejects.toMatchObject({
-      name: "EAKPermissionDeniedError",
+      name: "QoniPermissionDeniedError",
       code: "permission_denied",
       status: 403,
       requestId: "req_1",
       auditId: "audit_1",
       retryable: false,
-    } satisfies Partial<EAKPermissionDeniedError>);
+    } satisfies Partial<QoniPermissionDeniedError>);
   });
 
   it("surfaces denied scopes inline in the error message", async () => {
-    const client = new EazoAgentKit({
+    const client = new QoniAgentKit({
       accessKey: "ak_test",
       secretKey: "sk_test",
-      host: "https://eak.example.com",
-      gumemBaseUrl: "https://eak.example.com",
+      host: "https://qoni.example.com",
+      gumemBaseUrl: "https://qoni.example.com",
       fetch: (async () =>
         jsonResponse(
           {
@@ -1707,12 +1707,12 @@ describe("EazoAgentKit", () => {
     ).rejects.toThrow(/scopes not granted: webagent\.deep_research:read/);
   });
 
-  it("supports unstable raw requests through EAK host without exposing service selection", async () => {
+  it("supports unstable raw requests through Qoni host without exposing service selection", async () => {
     const seen: { url?: string; init?: RequestInit } = {};
-    const client = new EazoAgentKit({
+    const client = new QoniAgentKit({
       accessKey: "ak_test",
       secretKey: "sk_test",
-      host: "https://eak.example.com",
+      host: "https://qoni.example.com",
       fetch: (async (url: URL | RequestInfo, init?: RequestInit) => {
         seen.url = String(url);
         seen.init = init;
@@ -1728,7 +1728,7 @@ describe("EazoAgentKit", () => {
     });
 
     expect(result.data).toEqual({ ok: true });
-    expect(seen.url).toBe("https://eak.example.com/api/webagent/deep_research/runs");
+    expect(seen.url).toBe("https://qoni.example.com/api/webagent/deep_research/runs");
     expect((seen.init?.headers as Record<string, string>).authorization).toBe(
       "Bearer delegate-agent-token",
     );
@@ -1736,11 +1736,11 @@ describe("EazoAgentKit", () => {
 
   it("accepts camelCase GUMem input while sending the existing backend field names", async () => {
     const seen: { body?: unknown } = {};
-    const client = new EazoAgentKit({
+    const client = new QoniAgentKit({
       accessKey: "ak_test",
       secretKey: "sk_test",
-      host: "https://eak.example.com",
-      gumemBaseUrl: "https://eak.example.com",
+      host: "https://qoni.example.com",
+      gumemBaseUrl: "https://qoni.example.com",
       fetch: (async (_url: URL | RequestInfo, init?: RequestInit) => {
         seen.body = JSON.parse(String(init?.body));
         return jsonResponse({ data: { id: "sess_1" } });
@@ -1759,11 +1759,11 @@ describe("EazoAgentKit", () => {
   it("snakeifies camelCase fields on the DoAnything escape-hatch create", async () => {
     const token = jwt({ webagent_tenant_id: "tenant_1" });
     const seen: { body?: unknown } = {};
-    const client = new EazoAgentKit({
+    const client = new QoniAgentKit({
       accessKey: "ak_test",
       secretKey: "sk_test",
-      host: "https://eak.example.com",
-      webAgentBaseUrl: "https://eak.example.com",
+      host: "https://qoni.example.com",
+      webAgentBaseUrl: "https://qoni.example.com",
       fetch: (async (_url: URL | RequestInfo, init?: RequestInit) => {
         seen.body = JSON.parse(String(init?.body));
         return jsonResponse({ data: { id: "run_1" } });
@@ -1787,11 +1787,11 @@ describe("EazoAgentKit", () => {
   it("routes webSearch read/cancel to the project-scoped run endpoints", async () => {
     const token = jwt({ webagent_tenant_id: "tenant_1" });
     const calls: Array<{ url: string; method?: string; body?: unknown }> = [];
-    const client = new EazoAgentKit({
+    const client = new QoniAgentKit({
       accessKey: "ak_test",
       secretKey: "sk_test",
-      host: "https://eak.example.com",
-      webAgentBaseUrl: "https://eak.example.com",
+      host: "https://qoni.example.com",
+      webAgentBaseUrl: "https://qoni.example.com",
       fetch: (async (url: URL | RequestInfo, init?: RequestInit) => {
         calls.push({
           url: String(url),
@@ -1805,7 +1805,7 @@ describe("EazoAgentKit", () => {
     await client.webSearch.api.get({ token, runId: "run_1" });
     await client.webSearch.api.cancel({ token, runId: "run_1", reason: "duplicate" });
 
-    const base = "https://eak.example.com/api/v1/projects/tenant_1/web_search/runs/run_1";
+    const base = "https://qoni.example.com/api/v1/projects/tenant_1/web_search/runs/run_1";
     expect(calls).toEqual([
       { url: base, method: "GET", body: undefined },
       { url: `${base}/cancel`, method: "POST", body: { reason: "duplicate" } },
@@ -1815,11 +1815,11 @@ describe("EazoAgentKit", () => {
   it("streams webSearch run events over SSE from the project-scoped endpoint", async () => {
     const token = jwt({ webagent_tenant_id: "tenant_1" });
     const seen: { url?: string; headers?: Record<string, string> } = {};
-    const client = new EazoAgentKit({
+    const client = new QoniAgentKit({
       accessKey: "ak_test",
       secretKey: "sk_test",
-      host: "https://eak.example.com",
-      webAgentBaseUrl: "https://eak.example.com",
+      host: "https://qoni.example.com",
+      webAgentBaseUrl: "https://qoni.example.com",
       fetch: (async (url: URL | RequestInfo, init?: RequestInit) => {
         seen.url = String(url);
         seen.headers = init?.headers as Record<string, string>;
@@ -1839,7 +1839,7 @@ describe("EazoAgentKit", () => {
     }
 
     expect(seen.url).toBe(
-      "https://eak.example.com/api/v1/projects/tenant_1/web_search/runs/run_1/events",
+      "https://qoni.example.com/api/v1/projects/tenant_1/web_search/runs/run_1/events",
     );
     expect(seen.headers?.["last-event-id"]).toBe("0");
     expect(events).toEqual([
@@ -1855,11 +1855,11 @@ describe("EazoAgentKit", () => {
   it("maps the full Track monitor lifecycle to the backend monitors contract", async () => {
     const token = jwt({ webagent_tenant_id: "tenant_1" });
     const calls: Array<{ url: string; method?: string; body?: unknown }> = [];
-    const client = new EazoAgentKit({
+    const client = new QoniAgentKit({
       accessKey: "ak_test",
       secretKey: "sk_test",
-      host: "https://eak.example.com",
-      webAgentBaseUrl: "https://eak.example.com",
+      host: "https://qoni.example.com",
+      webAgentBaseUrl: "https://qoni.example.com",
       fetch: (async (url: URL | RequestInfo, init?: RequestInit) => {
         calls.push({
           url: String(url),
@@ -1880,7 +1880,7 @@ describe("EazoAgentKit", () => {
     await client.track.api.updateMonitor({ token, monitorId: "mon_1", schedule: "0 9 * * *" });
     await client.track.api.deleteMonitor({ token, monitorId: "mon_1" });
 
-    const monitors = "https://eak.example.com/api/v1/projects/tenant_1/track/monitors";
+    const monitors = "https://qoni.example.com/api/v1/projects/tenant_1/track/monitors";
     expect(calls).toEqual([
       {
         url: monitors,
@@ -1900,11 +1900,11 @@ describe("EazoAgentKit", () => {
   it("streams Track monitor events over SSE", async () => {
     const token = jwt({ webagent_tenant_id: "tenant_1" });
     const seen: { url?: string; headers?: Record<string, string> } = {};
-    const client = new EazoAgentKit({
+    const client = new QoniAgentKit({
       accessKey: "ak_test",
       secretKey: "sk_test",
-      host: "https://eak.example.com",
-      webAgentBaseUrl: "https://eak.example.com",
+      host: "https://qoni.example.com",
+      webAgentBaseUrl: "https://qoni.example.com",
       fetch: (async (url: URL | RequestInfo, init?: RequestInit) => {
         seen.url = String(url);
         seen.headers = init?.headers as Record<string, string>;
@@ -1922,7 +1922,7 @@ describe("EazoAgentKit", () => {
     }
 
     expect(seen.url).toBe(
-      "https://eak.example.com/api/v1/projects/tenant_1/track/monitors/mon_1/events",
+      "https://qoni.example.com/api/v1/projects/tenant_1/track/monitors/mon_1/events",
     );
     expect(seen.headers?.["last-event-id"]).toBe("6");
     expect(events).toEqual([{ id: "7", event: "track_change", data: { changed: true } }]);
@@ -1935,11 +1935,11 @@ describe("EazoAgentKit", () => {
   it("creates a DeepResearch run and maps camelCase sugar to the backend contract", async () => {
     const token = jwt({ webagent_tenant_id: "tenant_1" });
     const seen: { url?: string; method?: string; body?: unknown } = {};
-    const client = new EazoAgentKit({
+    const client = new QoniAgentKit({
       accessKey: "ak_test",
       secretKey: "sk_test",
-      host: "https://eak.example.com",
-      webAgentBaseUrl: "https://eak.example.com",
+      host: "https://qoni.example.com",
+      webAgentBaseUrl: "https://qoni.example.com",
       fetch: (async (url: URL | RequestInfo, init?: RequestInit) => {
         seen.url = String(url);
         seen.method = init?.method;
@@ -1961,7 +1961,7 @@ describe("EazoAgentKit", () => {
 
     expect(run.data).toMatchObject({ id: "dr_run_1" });
     expect(seen.url).toBe(
-      "https://eak.example.com/api/v1/projects/tenant_1/deep_research/runs",
+      "https://qoni.example.com/api/v1/projects/tenant_1/deep_research/runs",
     );
     expect(seen.method).toBe("POST");
     expect(seen.body).toEqual({
@@ -1978,11 +1978,11 @@ describe("EazoAgentKit", () => {
   it("routes DeepResearch run read/followUp/cancel/feedback to backend endpoints", async () => {
     const token = jwt({ webagent_tenant_id: "tenant_1" });
     const calls: Array<{ url: string; method?: string; body?: unknown }> = [];
-    const client = new EazoAgentKit({
+    const client = new QoniAgentKit({
       accessKey: "ak_test",
       secretKey: "sk_test",
-      host: "https://eak.example.com",
-      webAgentBaseUrl: "https://eak.example.com",
+      host: "https://qoni.example.com",
+      webAgentBaseUrl: "https://qoni.example.com",
       fetch: (async (url: URL | RequestInfo, init?: RequestInit) => {
         calls.push({
           url: String(url),
@@ -2008,7 +2008,7 @@ describe("EazoAgentKit", () => {
       feedbackText: "thorough",
     });
 
-    const base = "https://eak.example.com/api/v1/projects/tenant_1/deep_research/runs/dr_run_1";
+    const base = "https://qoni.example.com/api/v1/projects/tenant_1/deep_research/runs/dr_run_1";
     expect(calls).toEqual([
       { url: base, method: "GET", body: undefined },
       {
@@ -2028,11 +2028,11 @@ describe("EazoAgentKit", () => {
   it("reads DeepResearch artifacts from the project-scoped artifact endpoints", async () => {
     const token = jwt({ webagent_tenant_id: "tenant_1" });
     const calls: Array<{ url: string; method?: string }> = [];
-    const client = new EazoAgentKit({
+    const client = new QoniAgentKit({
       accessKey: "ak_test",
       secretKey: "sk_test",
-      host: "https://eak.example.com",
-      webAgentBaseUrl: "https://eak.example.com",
+      host: "https://qoni.example.com",
+      webAgentBaseUrl: "https://qoni.example.com",
       fetch: (async (url: URL | RequestInfo, init?: RequestInit) => {
         calls.push({ url: String(url), method: init?.method });
         return jsonResponse({ data: { items: [] } });
@@ -2046,7 +2046,7 @@ describe("EazoAgentKit", () => {
       artifactId: "art_1",
     });
 
-    const base = "https://eak.example.com/api/v1/projects/tenant_1/deep_research/runs/dr_run_1";
+    const base = "https://qoni.example.com/api/v1/projects/tenant_1/deep_research/runs/dr_run_1";
     expect(calls).toEqual([
       { url: `${base}/artifacts`, method: "GET" },
       { url: `${base}/artifacts/art_1`, method: "GET" },
@@ -2056,11 +2056,11 @@ describe("EazoAgentKit", () => {
   it("streams DeepResearch run events over SSE", async () => {
     const token = jwt({ webagent_tenant_id: "tenant_1" });
     const seen: { url?: string; headers?: Record<string, string> } = {};
-    const client = new EazoAgentKit({
+    const client = new QoniAgentKit({
       accessKey: "ak_test",
       secretKey: "sk_test",
-      host: "https://eak.example.com",
-      webAgentBaseUrl: "https://eak.example.com",
+      host: "https://qoni.example.com",
+      webAgentBaseUrl: "https://qoni.example.com",
       fetch: (async (url: URL | RequestInfo, init?: RequestInit) => {
         seen.url = String(url);
         seen.headers = init?.headers as Record<string, string>;
@@ -2080,7 +2080,7 @@ describe("EazoAgentKit", () => {
     }
 
     expect(seen.url).toBe(
-      "https://eak.example.com/api/v1/projects/tenant_1/deep_research/runs/dr_run_1/events",
+      "https://qoni.example.com/api/v1/projects/tenant_1/deep_research/runs/dr_run_1/events",
     );
     expect(seen.headers?.["last-event-id"]).toBe("0");
     expect(events).toEqual([

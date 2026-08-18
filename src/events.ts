@@ -9,7 +9,7 @@
  * hatch, and the drift tests (SDK `tests/event-catalog.test.ts` + the
  * webagent-e2e contract suite vs the live backend enum).
  *
- * The developer-facing event vocabulary is `EAKEventTypes` (the curated
+ * The developer-facing event vocabulary is `QoniEventTypes` (the curated
  * `event.type` values) — see run-events.ts.
  */
 export {

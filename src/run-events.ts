@@ -1,5 +1,5 @@
 import { normalizeInteraction, type Interaction } from "./interactions";
-import { isJsonObject, type EAKEvent, type JsonObject } from "./types";
+import { isJsonObject, type QoniEvent, type JsonObject } from "./types";
 
 /**
  * Semantic run events — the public event surface for doAnything / webSearch /
@@ -9,24 +9,24 @@ import { isJsonObject, type EAKEvent, type JsonObject } from "./types";
  * reachable on `event.raw`.
  */
 /**
- * `EAKEventTypes` — the complete set of `event.type` values, as named
+ * `QoniEventTypes` — the complete set of `event.type` values, as named
  * constants. This is THE thing a developer matches on. Import it for
  * autocomplete + typo-safety instead of hand-typing strings:
  *
- *     import { EAKEventTypes } from "@eazo/eak";
+ *     import { QoniEventTypes } from "@qoniai/qoni";
  *     for await (const event of run.events()) {
  *       switch (event.type) {
- *         case EAKEventTypes.Results: …
- *         case EAKEventTypes.Done: …
+ *         case QoniEventTypes.Results: …
+ *         case QoniEventTypes.Done: …
  *       }
  *     }
  *
  * The raw wire types (supervisor orchestration, sub-agent execution, protocol
- * markers) are internal: all that churn folds into `EAKEventTypes.Progress`,
+ * markers) are internal: all that churn folds into `QoniEventTypes.Progress`,
  * and only the handful a developer reacts to get a distinct value. The exact
  * wire string is on `event.raw.event` if ever needed.
  */
-export const EAKEventTypes = {
+export const QoniEventTypes = {
   // --- Core (any product run can emit these) ---
   /** The agent is working — folds ALL internal steps (actions, plan/subtask, sections, telemetry, take-control, …); `event.data` is a best-effort human-readable line (string). */
   Progress: "progress",
@@ -55,15 +55,15 @@ export const EAKEventTypes = {
   CheckCompleted: "checkCompleted",
 } as const;
 
-/** Every `event.type` value. Derived from {@link EAKEventTypes} — the single source. */
-export type EAKEventType = (typeof EAKEventTypes)[keyof typeof EAKEventTypes];
+/** Every `event.type` value. Derived from {@link QoniEventTypes} — the single source. */
+export type QoniEventType = (typeof QoniEventTypes)[keyof typeof QoniEventTypes];
 
 /**
  * Categories WIRE_TO_SEMANTIC maps to. Excludes the out-of-band cases the
  * normalizer shapes directly (screenshot / done / interaction) — those don't
  * go through the generic `shapeData`.
  */
-export type RunProgressType = Exclude<EAKEventType, "screenshot" | "done" | "interaction">;
+export type RunProgressType = Exclude<QoniEventType, "screenshot" | "done" | "interaction">;
 
 /** A decoded screenshot frame. `bytes` are the raw image bytes. */
 export interface RunImage {
@@ -79,7 +79,7 @@ interface RunEventBase {
   /** ISO 8601 timestamp of when the event occurred. */
   at: string;
   /** The original wire event (escape hatch — shape may evolve with the API). */
-  raw: EAKEvent<unknown>;
+  raw: QoniEvent<unknown>;
 }
 
 // `event.data` shape per `event.type`. Simple events: `event.data` IS the value
@@ -343,10 +343,10 @@ export interface NormalizeRunEventOptions {
  * Returns null for frames that carry no run event (heartbeats / comments).
  * The wire type → semantic `type` mapping is explicit (WIRE_TO_SEMANTIC, plus
  * the three out-of-band cases handled here); the original wire event stays on
- * `event.raw` so you can match `event.raw.event` against `EAKEventTypes`.
+ * `event.raw` so you can match `event.raw.event` against `QoniEventTypes`.
  */
 export function normalizeRunEvent(
-  wire: EAKEvent<unknown>,
+  wire: QoniEvent<unknown>,
   options: NormalizeRunEventOptions = {},
 ): RunEvent | null {
   const envelope = isJsonObject(wire.data) ? wire.data : undefined;

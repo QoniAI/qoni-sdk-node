@@ -1,4 +1,4 @@
-import { EAKError, EAKTimeoutError } from "./errors";
+import { QoniError, QoniTimeoutError } from "./errors";
 import {
   InteractionHandle,
   type Action,
@@ -10,7 +10,7 @@ import {
   type RunEvent,
   type RunImage,
 } from "./run-events";
-import { isJsonObject, type EAKEvent, type JsonObject } from "./types";
+import { isJsonObject, type QoniEvent, type JsonObject } from "./types";
 
 /** Opaque reference to a backend browser/context session a run executed in. */
 export interface SessionRef {
@@ -64,7 +64,7 @@ export interface RunResult {
 }
 
 export interface RunWaitOptions {
-  /** Client-side wall-clock cap. On elapse, `wait` throws `EAKTimeoutError`; the run keeps executing server-side. */
+  /** Client-side wall-clock cap. On elapse, `wait` throws `QoniTimeoutError`; the run keeps executing server-side. */
   timeoutMs?: number;
   signal?: AbortSignal;
   onEvent?: (event: RunEvent) => void | Promise<void>;
@@ -87,7 +87,7 @@ export interface RunWaitOptions {
  */
 export interface RunWireOps {
   getDetail(): Promise<JsonObject>;
-  streamEvents(opts: RunEventsOptions): AsyncIterable<EAKEvent<unknown>>;
+  streamEvents(opts: RunEventsOptions): AsyncIterable<QoniEvent<unknown>>;
   /**
    * Invoke an interaction action by posting to its declared endpoint. The
    * Interaction model's `actions[]` carry the endpoint + method, so the SDK
@@ -191,7 +191,7 @@ export class RunHandle<E extends RunEvent = RunEvent> {
         const detail = await this.ops.getDetail();
         if (isTerminalRunStatus(detail.status)) break;
         if (sawCleanClose && lastEventId === eventIdAtLastClose) {
-          throw new EAKError(
+          throw new QoniError(
             "run event stream ended before a terminal event while the run is " +
               `still "${String(detail.status)}" — re-attach or poll status()`,
             { code: "upstream.failed", retryable: true },
@@ -202,7 +202,7 @@ export class RunHandle<E extends RunEvent = RunEvent> {
       }
     } catch (err) {
       if (timedOut() && !opts.signal?.aborted) {
-        throw new EAKTimeoutError(
+        throw new QoniTimeoutError(
           `run.wait timed out after ${opts.timeoutMs} ms — the run keeps executing ` +
             "server-side; attach() to it again or cancel() it",
           { cause: err },
@@ -248,7 +248,7 @@ export class RunHandle<E extends RunEvent = RunEvent> {
       this.#adoptSessionRef(data);
       return normalizeRunStatus(this.id, data);
     } catch (err) {
-      if (err instanceof EAKError && CANCEL_IDEMPOTENT_STATUSES.has(err.status ?? 0)) {
+      if (err instanceof QoniError && CANCEL_IDEMPOTENT_STATUSES.has(err.status ?? 0)) {
         let snapshot: RunStatus;
         try {
           snapshot = await this.status();
@@ -327,7 +327,7 @@ function inferStatus(detail: JsonObject): string {
   return "";
 }
 
-function isVideoFrame(wire: EAKEvent<unknown>): boolean {
+function isVideoFrame(wire: QoniEvent<unknown>): boolean {
   const type = wire.event ?? (isJsonObject(wire.data) ? wire.data.type : undefined);
   return type === "browser_video_frame" || type === "run.browser_video_frame";
 }

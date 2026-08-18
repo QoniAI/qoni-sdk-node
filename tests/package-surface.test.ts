@@ -2,24 +2,24 @@ import { createRequire } from "node:module";
 import { describe, expect, it } from "vitest";
 
 const publicExports = [
-  "EAK",
-  "EazoAgentKit",
-  "EAKScopes",
-  "EAKScopeBundles",
-  "EAKEventTypes",
+  "Qoni",
+  "QoniAgentKit",
+  "QoniScopes",
+  "QoniScopeBundles",
+  "QoniEventTypes",
   "InteractionHandle",
   "InteractionTypes",
   "InteractionStatuses",
   "ActionKinds",
-  "EAKError",
-  "EAKAuthError",
-  "EAKDelegationRequiredError",
-  "EAKPermissionDeniedError",
-  "EAKTokenExpiredError",
-  "EAKValidationError",
-  "EAKRateLimitError",
-  "EAKUpstreamError",
-  "EAKTimeoutError",
+  "QoniError",
+  "QoniAuthError",
+  "QoniDelegationRequiredError",
+  "QoniPermissionDeniedError",
+  "QoniTokenExpiredError",
+  "QoniValidationError",
+  "QoniRateLimitError",
+  "QoniUpstreamError",
+  "QoniTimeoutError",
   "buildAuthorization",
   "buildSignature",
   "buildStringToSign",
@@ -32,7 +32,7 @@ describe("built package surface", () => {
     for (const key of publicExports) {
       expect(esm, `missing ESM export ${key}`).toHaveProperty(key);
     }
-    expect(esm.EAK).toBe(esm.EazoAgentKit);
+    expect(esm.Qoni).toBe(esm.QoniAgentKit);
   });
 
   it("exports the public API from the CommonJS build", () => {
@@ -42,10 +42,10 @@ describe("built package surface", () => {
     for (const key of publicExports) {
       expect(cjs, `missing CJS export ${key}`).toHaveProperty(key);
     }
-    expect(cjs.EAK).toBe(cjs.EazoAgentKit);
+    expect(cjs.Qoni).toBe(cjs.QoniAgentKit);
   });
 
-  it("does NOT export the raw internal wire-type catalog (developers use EAKEventTypes / event.type)", async () => {
+  it("does NOT export the raw internal wire-type catalog (developers use QoniEventTypes / event.type)", async () => {
     const esm = await import("../dist/index.js");
     expect(esm).not.toHaveProperty("WireEventTypes");
     expect(esm).not.toHaveProperty("WIRE_EVENT_TYPE_VALUES");

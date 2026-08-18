@@ -8,22 +8,22 @@ import type {
   DelegateTokenResponse,
   DelegateTokenSilentResponse,
   DelegateTokenSilentInput,
-  EAKResponse,
-  EAKTransport,
+  QoniResponse,
+  QoniTransport,
   InteractiveDelegationResponse,
 } from "./types";
 
 type DelegateToken = {
-  (input: DelegateTokenInteractiveInput): Promise<EAKResponse<InteractiveDelegationResponse>>;
-  (input: DelegateTokenSilentInput): Promise<EAKResponse<DelegateTokenSilentResponse>>;
-  (input: DelegateTokenInput): Promise<EAKResponse<DelegateAgentResponse>>;
+  (input: DelegateTokenInteractiveInput): Promise<QoniResponse<InteractiveDelegationResponse>>;
+  (input: DelegateTokenSilentInput): Promise<QoniResponse<DelegateTokenSilentResponse>>;
+  (input: DelegateTokenInput): Promise<QoniResponse<DelegateAgentResponse>>;
 };
 type CompleteDelegateToken = (
   input: CompleteDelegateTokenInput,
-) => Promise<EAKResponse<DelegateTokenResponse>>;
+) => Promise<QoniResponse<DelegateTokenResponse>>;
 
-export function createEakNamespace(
-  _transport: EAKTransport,
+export function createQoniNamespace(
+  _transport: QoniTransport,
   delegateToken: DelegateToken,
   completeDelegateToken: CompleteDelegateToken,
 ) {

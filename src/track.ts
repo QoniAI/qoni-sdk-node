@@ -1,12 +1,12 @@
-import { EAKValidationError } from "./errors";
+import { QoniValidationError } from "./errors";
 import { InteractionHandle, type Interaction } from "./interactions";
 import { camelizeRecord, normalizeRunEvent, type MonitorEvent } from "./run-events";
 import {
   isJsonObject,
-  type EAKEvent,
-  type EAKHttpMethod,
-  type EAKResponse,
-  type EAKTransport,
+  type QoniEvent,
+  type QoniHttpMethod,
+  type QoniResponse,
+  type QoniTransport,
   type JsonObject,
   type RuntimeTokenInput,
 } from "./types";
@@ -60,7 +60,7 @@ interface MonitorWireOps {
   get(): Promise<JsonObject>;
   update(input: JsonObject): Promise<JsonObject>;
   runNow(): Promise<JsonObject>;
-  streamEvents(opts: MonitorEventsOptions): AsyncIterable<EAKEvent<unknown>>;
+  streamEvents(opts: MonitorEventsOptions): AsyncIterable<QoniEvent<unknown>>;
   postAction(action: Action, body: JsonObject | undefined): Promise<void>;
   listRuns(opts: MonitorRunsOptions): Promise<JsonObject>;
   getRun(runId: string): Promise<JsonObject>;
@@ -110,7 +110,7 @@ export class MonitorHandle {
     const body: JsonObject = snakeifyKeys(rest as JsonObject);
     if (schedule) body.schedule = normalizeSchedule(schedule);
     if (Object.keys(body).length === 0) {
-      throw new EAKValidationError(
+      throw new QoniValidationError(
         "track refine requires at least one field to change (schedule / targetUrls / " +
           "extractionSchema / triggerDsl / stopConditionDsl / notifyChannel)",
       );
@@ -169,14 +169,14 @@ export class MonitorHandle {
   }
 }
 
-export function createTrackNamespace(transport: EAKTransport) {
+export function createTrackNamespace(transport: QoniTransport) {
   /**
    * Wire-level escape hatch — 1:1 with the backend HTTP contract. Shapes
    * here may evolve with the API and are not covered by the frozen public
    * contract.
    */
   const api = {
-    createMonitor: <T = unknown>(input: RuntimeTokenInput & JsonObject): Promise<EAKResponse<T>> =>
+    createMonitor: <T = unknown>(input: RuntimeTokenInput & JsonObject): Promise<QoniResponse<T>> =>
       transport.webAgentJson("POST", "/track/monitors", input.token, {
         body: omit(input, "token"),
         requiredScopes: ["webagent.track:manage"],
@@ -184,7 +184,7 @@ export function createTrackNamespace(transport: EAKTransport) {
 
     getMonitor: <T = unknown>(
       input: RuntimeTokenInput & { monitorId: string },
-    ): Promise<EAKResponse<T>> =>
+    ): Promise<QoniResponse<T>> =>
       transport.webAgentJson(
         "GET",
         `/track/monitors/${encodeURIComponent(input.monitorId)}`,
@@ -196,7 +196,7 @@ export function createTrackNamespace(transport: EAKTransport) {
 
     runNow: <T = unknown>(
       input: RuntimeTokenInput & { monitorId: string },
-    ): Promise<EAKResponse<T>> =>
+    ): Promise<QoniResponse<T>> =>
       transport.webAgentJson(
         "POST",
         `/track/monitors/${encodeURIComponent(input.monitorId)}/run_now`,
@@ -209,7 +209,7 @@ export function createTrackNamespace(transport: EAKTransport) {
 
     events: <T = unknown>(
       input: RuntimeTokenInput & { monitorId: string; lastEventId?: string; signal?: AbortSignal },
-    ): AsyncIterable<EAKEvent<T>> =>
+    ): AsyncIterable<QoniEvent<T>> =>
       transport.webAgentSSE(
         `/track/monitors/${encodeURIComponent(input.monitorId)}/events`,
         input.token,
@@ -222,7 +222,7 @@ export function createTrackNamespace(transport: EAKTransport) {
 
     intervene: <T = unknown>(
       input: RuntimeTokenInput & { monitorId: string } & JsonObject,
-    ): Promise<EAKResponse<T>> =>
+    ): Promise<QoniResponse<T>> =>
       transport.webAgentJson(
         "POST",
         `/track/monitors/${encodeURIComponent(input.monitorId)}/intervene`,
@@ -235,7 +235,7 @@ export function createTrackNamespace(transport: EAKTransport) {
 
     listRuns: <T = unknown>(
       input: RuntimeTokenInput & { monitorId: string; limit?: number; offset?: number },
-    ): Promise<EAKResponse<T>> =>
+    ): Promise<QoniResponse<T>> =>
       transport.webAgentJson(
         "GET",
         `/track/monitors/${encodeURIComponent(input.monitorId)}/runs`,
@@ -248,7 +248,7 @@ export function createTrackNamespace(transport: EAKTransport) {
 
     getRun: <T = unknown>(
       input: RuntimeTokenInput & { monitorId: string; runId: string },
-    ): Promise<EAKResponse<T>> =>
+    ): Promise<QoniResponse<T>> =>
       transport.webAgentJson(
         "GET",
         `/track/monitors/${encodeURIComponent(input.monitorId)}/runs/${encodeURIComponent(input.runId)}`,
@@ -260,7 +260,7 @@ export function createTrackNamespace(transport: EAKTransport) {
 
     updateMonitor: <T = unknown>(
       input: RuntimeTokenInput & { monitorId: string } & JsonObject,
-    ): Promise<EAKResponse<T>> =>
+    ): Promise<QoniResponse<T>> =>
       transport.webAgentJson(
         "PATCH",
         `/track/monitors/${encodeURIComponent(input.monitorId)}`,
@@ -273,7 +273,7 @@ export function createTrackNamespace(transport: EAKTransport) {
 
     deleteMonitor: <T = unknown>(
       input: RuntimeTokenInput & { monitorId: string },
-    ): Promise<EAKResponse<T>> =>
+    ): Promise<QoniResponse<T>> =>
       transport.webAgentJson(
         "DELETE",
         `/track/monitors/${encodeURIComponent(input.monitorId)}`,
@@ -296,7 +296,7 @@ export function createTrackNamespace(transport: EAKTransport) {
         api.events({ token, monitorId, lastEventId: opts.lastEventId, signal: opts.signal }),
       postAction: async (action, body) => {
         await transport.webAgentJson(
-          (action.method || "POST") as EAKHttpMethod,
+          (action.method || "POST") as QoniHttpMethod,
           action.endpoint,
           token,
           {
@@ -320,7 +320,7 @@ export function createTrackNamespace(transport: EAKTransport) {
     create: async (input: TrackCreateOptions): Promise<MonitorHandle> => {
       const { token, prompt, ...rest } = input;
       if (!prompt || typeof prompt !== "string") {
-        throw new EAKValidationError("track.create requires a prompt string");
+        throw new QoniValidationError("track.create requires a prompt string");
       }
       const created = await api.createMonitor<{ id?: string; monitor_id?: string }>({
         token,
@@ -329,7 +329,7 @@ export function createTrackNamespace(transport: EAKTransport) {
       });
       const monitorId = created.data.id || created.data.monitor_id;
       if (!monitorId) {
-        throw new EAKValidationError("track monitor create did not return a monitor id");
+        throw new QoniValidationError("track monitor create did not return a monitor id");
       }
       return new MonitorHandle(buildOps(token, monitorId), monitorId);
     },
