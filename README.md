@@ -19,7 +19,7 @@ Agents that perform real work need more than a backend API key. They need a user
 
 Qoni keeps that model small:
 
-- One SDK entry: `new QoniAgentKit({ accessKey, secretKey })`.
+- One SDK entry: `new Qoni({ accessKey, secretKey })`.
 - One discovery path: `host` can override the Qoni Console/SDK gateway for private or local deployments, and the SDK reads downstream runtime URLs from `/api/v3/eak/runtime-config`.
 - One delegation entry: call `delegateToken`; silent mode returns `data.token`, while interactive mode returns an authorization URL and later completes on your server.
 - One management path: call `genauth.users.*`, and the SDK exchanges AK/SK for a GenAuth management token before calling GenAuth v3 users APIs.
@@ -59,8 +59,8 @@ The package ships both ESM and CommonJS builds with TypeScript types, so either
 import style works:
 
 ```ts
-import { QoniAgentKit } from "@qoniai/qoni";        // ESM / TypeScript
-const { QoniAgentKit } = require("@qoniai/qoni");    // CommonJS
+import { Qoni } from "@qoniai/qoni";        // ESM / TypeScript
+const { Qoni } = require("@qoniai/qoni");    // CommonJS
 ```
 
 ## AI Skill
@@ -87,9 +87,9 @@ Start with a server-side SDK instance. AK/SK stays on your trusted server for bo
 
 ```ts
 import fs from "node:fs";
-import { QoniAgentKit } from "@qoniai/qoni";
+import { Qoni } from "@qoniai/qoni";
 
-const qoni = new QoniAgentKit({
+const qoni = new Qoni({
   accessKey: process.env.QONI_ACCESS_KEY!,
   secretKey: process.env.QONI_SECRET_KEY!,
 });
@@ -472,7 +472,7 @@ const sameMonitor = await qoni.track.attach(monitor.id, { token });
 ### GenAuth User Context and Management
 
 ```ts
-const client = new QoniAgentKit({
+const client = new Qoni({
   accessKey: process.env.QONI_ACCESS_KEY!,
   secretKey: process.env.QONI_SECRET_KEY!,
 });
@@ -499,7 +499,7 @@ const created = await client.genauth.users.create({
 ### Client
 
 ```ts
-const qoni = new QoniAgentKit({
+const qoni = new Qoni({
   accessKey: process.env.QONI_ACCESS_KEY!,
   secretKey: process.env.QONI_SECRET_KEY!,
   timeoutMs: 30_000,
@@ -523,12 +523,6 @@ const qoni = new QoniAgentKit({
 > with no value, `wait()` runs until the run reaches a terminal state. A
 > `wait()` timeout does not stop the run; it keeps executing server-side and
 > you can `attach()` to it again.
-
-`Qoni` is also exported as a short alias:
-
-```ts
-import { Qoni, QoniAgentKit } from "@qoniai/qoni";
-```
 
 ### Namespaces
 

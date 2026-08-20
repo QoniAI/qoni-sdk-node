@@ -20,8 +20,7 @@ The package requires Node.js 18 or later and uses pnpm.
 
 - Keep Qoni AK/SK and delegation tokens out of browser, mobile, and public CLI
   runtimes.
-- Preserve `QoniAgentKit` as the primary constructor.
-- Keep `Qoni` compatible as the short constructor alias.
+- Preserve `Qoni` as the public constructor.
 - Prefer `delegateToken` in new examples and docs.
 - Treat `delegateAgent` and `completeDelegateAgent` as compatibility APIs.
 - Keep `host` as the Qoni Console or SDK gateway address; product services are

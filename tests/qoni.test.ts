@@ -4,7 +4,6 @@ import {
   QoniPermissionDeniedError,
   QoniScopes,
   QoniScopeBundles,
-  QoniAgentKit,
   buildStringToSign,
 } from "../src";
 // Raw wire-type catalog is internal (not a public export) — import via the
@@ -34,7 +33,9 @@ function sseResponse(body: string): Response {
   });
 }
 
-describe("QoniAgentKit", () => {
+const removedConstructorExport = ["Qoni", "Agent", "Kit"].join("");
+
+describe("Qoni", () => {
   it("generates unique signatures for identical requests in the same millisecond", () => {
     const now = vi.spyOn(Date, "now").mockReturnValue(1_700_000_000_000);
     try {
@@ -51,15 +52,14 @@ describe("QoniAgentKit", () => {
     }
   });
 
-  it("keeps QoniAgentKit as the public constructor and Qoni as its alias", () => {
-    expect(QoniAgentKit.name).toBe("QoniAgentKit");
-    expect(Qoni).toBe(QoniAgentKit);
-    expect("QnoiAgentKit" in sdk).toBe(false);
+  it("exports Qoni as the only public constructor", () => {
+    expect(Qoni.name).toBe("Qoni");
+    expect(sdk).not.toHaveProperty(removedConstructorExport);
   });
 
   it("signs delegateToken requests with accessKey/secretKey and returns token", async () => {
     const seen: { url?: string; init?: RequestInit; body?: unknown } = {};
-    const client = new QoniAgentKit({
+    const client = new Qoni({
       accessKey: "ak_test",
       secretKey: "sk_test",
       host: "https://qoni.example.com",
@@ -104,7 +104,7 @@ describe("QoniAgentKit", () => {
 
   it("can initialize with only Qoni AK/SK and exposes currentUser at the top level", async () => {
     const seen: { url?: string; init?: RequestInit } = {};
-    const client = new QoniAgentKit({
+    const client = new Qoni({
       accessKey: "ak_test",
       secretKey: "sk_test",
       fetch: (async (url: URL | RequestInfo, init?: RequestInit) => {
@@ -131,7 +131,7 @@ describe("QoniAgentKit", () => {
 
   it("uses the dashboard base path for default runtime discovery", async () => {
     const calls: string[] = [];
-    const client = new QoniAgentKit({
+    const client = new Qoni({
       accessKey: "ak_test",
       secretKey: "sk_test",
       fetch: (async (url: URL | RequestInfo) => {
@@ -170,7 +170,7 @@ describe("QoniAgentKit", () => {
 
   it("preserves the configured base path for signed JSON requests", async () => {
     const calls: string[] = [];
-    const client = new QoniAgentKit({
+    const client = new Qoni({
       accessKey: "ak_test",
       secretKey: "sk_test",
       host: "https://qoni.example.com/dashboard",
@@ -209,7 +209,7 @@ describe("QoniAgentKit", () => {
   });
 
   it("exposes delegateToken through the Qoni namespace", async () => {
-    const client = new QoniAgentKit({
+    const client = new Qoni({
       accessKey: "ak_test",
       secretKey: "sk_test",
       host: "https://qoni.example.com",
@@ -240,7 +240,7 @@ describe("QoniAgentKit", () => {
 
   it("creates interactive delegateToken grants without user or userId", async () => {
     const seen: { url?: string; init?: RequestInit; body?: unknown } = {};
-    const client = new QoniAgentKit({
+    const client = new Qoni({
       accessKey: "ak_test",
       secretKey: "sk_test",
       host: "https://qoni.example.com",
@@ -291,7 +291,7 @@ describe("QoniAgentKit", () => {
 
   it("rejects a silent delegateToken with no user locally, before any request", async () => {
     let fetched = false;
-    const client = new QoniAgentKit({
+    const client = new Qoni({
       accessKey: "ak_test",
       secretKey: "sk_test",
       fetch: (async () => {
@@ -313,7 +313,7 @@ describe("QoniAgentKit", () => {
   });
 
   it("normalizes interactive delegateToken state into grantState and state", async () => {
-    const client = new QoniAgentKit({
+    const client = new Qoni({
       accessKey: "ak_test",
       secretKey: "sk_test",
       host: "https://qoni.example.com",
@@ -346,7 +346,7 @@ describe("QoniAgentKit", () => {
   });
 
   it("falls back interactive delegateToken state fields to grantId when upstream omits state", async () => {
-    const client = new QoniAgentKit({
+    const client = new Qoni({
       accessKey: "ak_test",
       secretKey: "sk_test",
       host: "https://qoni.example.com",
@@ -377,7 +377,7 @@ describe("QoniAgentKit", () => {
   });
 
   it("returns mode-specific delegateToken result types", async () => {
-    const client = new QoniAgentKit({
+    const client = new Qoni({
       accessKey: "ak_test",
       secretKey: "sk_test",
       host: "https://qoni.example.com",
@@ -445,7 +445,7 @@ describe("QoniAgentKit", () => {
   });
 
   it("treats GenAuth statusCode error envelopes as SDK errors", async () => {
-    const client = new QoniAgentKit({
+    const client = new Qoni({
       accessKey: "ak_test",
       secretKey: "sk_test",
       host: "https://qoni.example.com",
@@ -472,7 +472,7 @@ describe("QoniAgentKit", () => {
   });
 
   it("preserves GenAuth apiCode fields from statusCode error envelopes", async () => {
-    const client = new QoniAgentKit({
+    const client = new Qoni({
       accessKey: "ak_test",
       secretKey: "sk_test",
       host: "https://qoni.example.com",
@@ -512,7 +512,7 @@ describe("QoniAgentKit", () => {
 
   it("keeps delegateAgent and completeDelegateAgent as deprecated compatibility aliases", async () => {
     const seen: { bodies: unknown[] } = { bodies: [] };
-    const client = new QoniAgentKit({
+    const client = new Qoni({
       accessKey: "ak_test",
       secretKey: "sk_test",
       host: "https://qoni.example.com",
@@ -556,7 +556,7 @@ describe("QoniAgentKit", () => {
 
   it("exposes completeDelegateToken as the recommended callback helper", async () => {
     const calls: Array<{ url: string; body: unknown }> = [];
-    const client = new QoniAgentKit({
+    const client = new Qoni({
       accessKey: "ak_test",
       secretKey: "sk_test",
       host: "https://qoni.example.com",
@@ -613,7 +613,7 @@ describe("QoniAgentKit", () => {
 
   it("exposes GenAuth helpers through the Qoni gateway host", async () => {
     const calls: Array<{ url: string; init?: RequestInit }> = [];
-    const client = new QoniAgentKit({
+    const client = new Qoni({
       accessKey: "ak_test",
       secretKey: "sk_test",
       host: "https://qoni.example.com",
@@ -643,7 +643,7 @@ describe("QoniAgentKit", () => {
 
   it("exchanges AK/SK for a GenAuth admin token before listing users", async () => {
     const calls: Array<{ url: string; init?: RequestInit; body?: unknown }> = [];
-    const client = new QoniAgentKit({
+    const client = new Qoni({
       accessKey: "ak_test",
       secretKey: "sk_test",
       host: "https://qoni.example.com",
@@ -688,7 +688,7 @@ describe("QoniAgentKit", () => {
 
   it("maps GenAuth user CRUD helpers to v3 management endpoints", async () => {
     const calls: Array<{ url: string; init?: RequestInit; body?: unknown }> = [];
-    const client = new QoniAgentKit({
+    const client = new Qoni({
       accessKey: "ak_test",
       secretKey: "sk_test",
       host: "https://qoni.example.com",
@@ -736,7 +736,7 @@ describe("QoniAgentKit", () => {
 
   it("caches one GenAuth management token for all user management helpers", async () => {
     const calls: string[] = [];
-    const client = new QoniAgentKit({
+    const client = new Qoni({
       accessKey: "ak_test",
       secretKey: "sk_test",
       host: "https://qoni.example.com",
@@ -769,7 +769,7 @@ describe("QoniAgentKit", () => {
   it("discovers runtime service URLs from the configured host and routes calls to returned services", async () => {
     const token = jwt({ webagent_tenant_id: "tenant_1" });
     const calls: Array<{ url: string; init?: RequestInit }> = [];
-    const client = new QoniAgentKit({
+    const client = new Qoni({
       accessKey: "ak_test",
       secretKey: "sk_test",
       host: "https://console.example.com",
@@ -826,7 +826,7 @@ describe("QoniAgentKit", () => {
 
   it("signs tokenless raw Qoni requests on the configured host after discovery", async () => {
     const calls: Array<{ url: string; init?: RequestInit }> = [];
-    const client = new QoniAgentKit({
+    const client = new Qoni({
       accessKey: "ak_test",
       secretKey: "sk_test",
       host: "https://console.example.com/dashboard",
@@ -866,7 +866,7 @@ describe("QoniAgentKit", () => {
   it("uses configured service hosts instead of runtime-config service URLs", async () => {
     const token = jwt({ webagent_tenant_id: "tenant_1" });
     const calls: Array<{ url: string; init?: RequestInit }> = [];
-    const client = new QoniAgentKit({
+    const client = new Qoni({
       accessKey: "ak_test",
       secretKey: "sk_test",
       host: "https://console.example.com",
@@ -954,7 +954,7 @@ describe("QoniAgentKit", () => {
       product_resource: { type: "gumem_project", id: "proj_1" },
     });
     const calls: Array<{ url: string; init?: RequestInit; body?: unknown }> = [];
-    const client = new QoniAgentKit({
+    const client = new Qoni({
       accessKey: "ak_test",
       secretKey: "sk_test",
       host: "https://qoni.example.com",
@@ -1008,7 +1008,7 @@ describe("QoniAgentKit", () => {
       aud: "genauth:token-exchange",
       eak_tenant_id: "tenant_1",
     });
-    const client = new QoniAgentKit({
+    const client = new Qoni({
       accessKey: "ak_test",
       secretKey: "sk_test",
       host: "https://qoni.example.com",
@@ -1045,7 +1045,7 @@ describe("QoniAgentKit", () => {
   it("sends product access tokens directly to Gumem", async () => {
     const token = jwt({ aud: "gumem" });
     const calls: Array<{ url: string; init?: RequestInit }> = [];
-    const client = new QoniAgentKit({
+    const client = new Qoni({
       accessKey: "ak_test",
       secretKey: "sk_test",
       host: "https://qoni.example.com",
@@ -1068,7 +1068,7 @@ describe("QoniAgentKit", () => {
     const delegationToken = jwt({ token_type: "eak_delegation_token" });
     const productToken = jwt({ aud: "gumem" });
     const calls: Array<{ url: string; init?: RequestInit; body?: unknown }> = [];
-    const client = new QoniAgentKit({
+    const client = new Qoni({
       accessKey: "ak_test",
       secretKey: "sk_test",
       host: "http://core.genauth.localhost:3000",
@@ -1098,7 +1098,7 @@ describe("QoniAgentKit", () => {
   });
 
   it("requires product capability calls to receive an explicit token", async () => {
-    const client = new QoniAgentKit({
+    const client = new Qoni({
       accessKey: "ak_test",
       secretKey: "sk_test",
       gumemBaseUrl: "https://gumem.example.com/api",
@@ -1120,7 +1120,7 @@ describe("QoniAgentKit", () => {
       resource_bindings: { webagent: { tenant_id: "web_tnt_1" } },
     });
     const calls: Array<{ url: string; init?: RequestInit; body?: unknown }> = [];
-    const client = new QoniAgentKit({
+    const client = new Qoni({
       accessKey: "ak_test",
       secretKey: "sk_test",
       host: "https://qoni.example.com",
@@ -1223,7 +1223,7 @@ describe("QoniAgentKit", () => {
       product_resource: { type: "webagent_tenant", id: "web_tnt_1" },
     });
     const exchanges: unknown[] = [];
-    const client = new QoniAgentKit({
+    const client = new Qoni({
       accessKey: "ak_test",
       secretKey: "sk_test",
       host: "https://qoni.example.com",
@@ -1276,7 +1276,7 @@ describe("QoniAgentKit", () => {
   it("uses webagent_tenant_id from token for WebAgent calls", async () => {
     const token = jwt({ webagent_tenant_id: "tenant_1" });
     const seen: { url?: string; init?: RequestInit } = {};
-    const client = new QoniAgentKit({
+    const client = new Qoni({
       accessKey: "ak_test",
       secretKey: "sk_test",
       host: "https://qoni.example.com",
@@ -1303,7 +1303,7 @@ describe("QoniAgentKit", () => {
   it("posts doAnything.intervene to the backend /intervene route", async () => {
     const token = jwt({ webagent_tenant_id: "tenant_1" });
     const seen: { url?: string; init?: RequestInit } = {};
-    const client = new QoniAgentKit({
+    const client = new Qoni({
       accessKey: "ak_test",
       secretKey: "sk_test",
       host: "https://qoni.example.com",
@@ -1336,7 +1336,7 @@ describe("QoniAgentKit", () => {
   it("reads doAnything artifacts from the session-scoped /sessions/{id}/artifacts/{id} route", async () => {
     const token = jwt({ webagent_tenant_id: "tenant_1" });
     const seen: { url?: string; init?: RequestInit } = {};
-    const client = new QoniAgentKit({
+    const client = new Qoni({
       accessKey: "ak_test",
       secretKey: "sk_test",
       host: "https://qoni.example.com",
@@ -1360,7 +1360,7 @@ describe("QoniAgentKit", () => {
     const token = jwt({ webagent_tenant_id: "tenant_1" });
     const urls: string[] = [];
     const bodies: unknown[] = [];
-    const client = new QoniAgentKit({
+    const client = new Qoni({
       accessKey: "ak_test",
       secretKey: "sk_test",
       host: "https://qoni.example.com",
@@ -1390,7 +1390,7 @@ describe("QoniAgentKit", () => {
   it("passes webSearch queries through to the backend contract", async () => {
     const token = jwt({ webagent_tenant_id: "tenant_1" });
     const seen: { body?: unknown } = {};
-    const client = new QoniAgentKit({
+    const client = new Qoni({
       accessKey: "ak_test",
       secretKey: "sk_test",
       host: "https://qoni.example.com",
@@ -1418,7 +1418,7 @@ describe("QoniAgentKit", () => {
   it("parses SSE events including JSON, text, and last-event-id", async () => {
     const token = jwt({ webagent_tenant_id: "tenant_1" });
     const seen: { headers?: Record<string, string>; url?: string } = {};
-    const client = new QoniAgentKit({
+    const client = new Qoni({
       accessKey: "ak_test",
       secretKey: "sk_test",
       host: "https://qoni.example.com",
@@ -1455,7 +1455,7 @@ describe("QoniAgentKit", () => {
     // Real backend frames carry no SSE `event:` line — the type is in the
     // envelope's `type` field. The SDK surfaces it as event.event.
     const token = jwt({ webagent_tenant_id: "tenant_1" });
-    const client = new QoniAgentKit({
+    const client = new Qoni({
       accessKey: "ak_test",
       secretKey: "sk_test",
       host: "https://qoni.example.com",
@@ -1488,7 +1488,7 @@ describe("QoniAgentKit", () => {
     const token = jwt({ webagent_tenant_id: "tenant_1" });
     const lastEventIds: (string | undefined)[] = [];
     let call = 0;
-    const client = new QoniAgentKit({
+    const client = new Qoni({
       accessKey: "ak_test",
       secretKey: "sk_test",
       host: "https://qoni.example.com",
@@ -1547,7 +1547,7 @@ describe("QoniAgentKit", () => {
 
   it("events({ onlyTopLevel: true }) drops sub-run events", async () => {
     const token = jwt({ webagent_tenant_id: "tenant_1" });
-    const client = new QoniAgentKit({
+    const client = new Qoni({
       accessKey: "ak_test",
       secretKey: "sk_test",
       host: "https://qoni.example.com",
@@ -1576,7 +1576,7 @@ describe("QoniAgentKit", () => {
   it("reconnect recovers from a 401 by retrying with a refreshed token", async () => {
     const token = jwt({ webagent_tenant_id: "tenant_1" });
     let call = 0;
-    const client = new QoniAgentKit({
+    const client = new Qoni({
       accessKey: "ak_test",
       secretKey: "sk_test",
       host: "https://qoni.example.com",
@@ -1626,7 +1626,7 @@ describe("QoniAgentKit", () => {
   it("run().wait() drives a run to terminal and settles from the run-detail envelope", async () => {
     const token = jwt({ webagent_tenant_id: "tenant_1" });
     const actions: unknown[] = [];
-    const client = new QoniAgentKit({
+    const client = new Qoni({
       accessKey: "ak_test",
       secretKey: "sk_test",
       host: "https://qoni.example.com",
@@ -1690,7 +1690,7 @@ describe("QoniAgentKit", () => {
   });
 
   it("resolveAnyBoundUser returns the first user from the bound userpool", async () => {
-    const client = new QoniAgentKit({
+    const client = new Qoni({
       accessKey: "ak_test",
       secretKey: "sk_test",
       host: "https://qoni.example.com",
@@ -1708,7 +1708,7 @@ describe("QoniAgentKit", () => {
   });
 
   it("maps permission errors to typed SDK errors", async () => {
-    const client = new QoniAgentKit({
+    const client = new Qoni({
       accessKey: "ak_test",
       secretKey: "sk_test",
       host: "https://qoni.example.com",
@@ -1740,7 +1740,7 @@ describe("QoniAgentKit", () => {
   });
 
   it("surfaces denied scopes inline in the error message", async () => {
-    const client = new QoniAgentKit({
+    const client = new Qoni({
       accessKey: "ak_test",
       secretKey: "sk_test",
       host: "https://qoni.example.com",
@@ -1765,7 +1765,7 @@ describe("QoniAgentKit", () => {
 
   it("supports unstable raw requests through Qoni host without exposing service selection", async () => {
     const seen: { url?: string; init?: RequestInit } = {};
-    const client = new QoniAgentKit({
+    const client = new Qoni({
       accessKey: "ak_test",
       secretKey: "sk_test",
       host: "https://qoni.example.com",
@@ -1792,7 +1792,7 @@ describe("QoniAgentKit", () => {
 
   it("accepts camelCase GUMem input while sending the existing backend field names", async () => {
     const seen: { body?: unknown } = {};
-    const client = new QoniAgentKit({
+    const client = new Qoni({
       accessKey: "ak_test",
       secretKey: "sk_test",
       host: "https://qoni.example.com",
@@ -1815,7 +1815,7 @@ describe("QoniAgentKit", () => {
   it("snakeifies camelCase fields on the DoAnything escape-hatch create", async () => {
     const token = jwt({ webagent_tenant_id: "tenant_1" });
     const seen: { body?: unknown } = {};
-    const client = new QoniAgentKit({
+    const client = new Qoni({
       accessKey: "ak_test",
       secretKey: "sk_test",
       host: "https://qoni.example.com",
@@ -1843,7 +1843,7 @@ describe("QoniAgentKit", () => {
   it("routes webSearch read/cancel to the project-scoped run endpoints", async () => {
     const token = jwt({ webagent_tenant_id: "tenant_1" });
     const calls: Array<{ url: string; method?: string; body?: unknown }> = [];
-    const client = new QoniAgentKit({
+    const client = new Qoni({
       accessKey: "ak_test",
       secretKey: "sk_test",
       host: "https://qoni.example.com",
@@ -1871,7 +1871,7 @@ describe("QoniAgentKit", () => {
   it("streams webSearch run events over SSE from the project-scoped endpoint", async () => {
     const token = jwt({ webagent_tenant_id: "tenant_1" });
     const seen: { url?: string; headers?: Record<string, string> } = {};
-    const client = new QoniAgentKit({
+    const client = new Qoni({
       accessKey: "ak_test",
       secretKey: "sk_test",
       host: "https://qoni.example.com",
@@ -1911,7 +1911,7 @@ describe("QoniAgentKit", () => {
   it("maps the full Track monitor lifecycle to the backend monitors contract", async () => {
     const token = jwt({ webagent_tenant_id: "tenant_1" });
     const calls: Array<{ url: string; method?: string; body?: unknown }> = [];
-    const client = new QoniAgentKit({
+    const client = new Qoni({
       accessKey: "ak_test",
       secretKey: "sk_test",
       host: "https://qoni.example.com",
@@ -1956,7 +1956,7 @@ describe("QoniAgentKit", () => {
   it("streams Track monitor events over SSE", async () => {
     const token = jwt({ webagent_tenant_id: "tenant_1" });
     const seen: { url?: string; headers?: Record<string, string> } = {};
-    const client = new QoniAgentKit({
+    const client = new Qoni({
       accessKey: "ak_test",
       secretKey: "sk_test",
       host: "https://qoni.example.com",
@@ -1991,7 +1991,7 @@ describe("QoniAgentKit", () => {
   it("creates a DeepResearch run and maps camelCase sugar to the backend contract", async () => {
     const token = jwt({ webagent_tenant_id: "tenant_1" });
     const seen: { url?: string; method?: string; body?: unknown } = {};
-    const client = new QoniAgentKit({
+    const client = new Qoni({
       accessKey: "ak_test",
       secretKey: "sk_test",
       host: "https://qoni.example.com",
@@ -2034,7 +2034,7 @@ describe("QoniAgentKit", () => {
   it("routes DeepResearch run read/followUp/cancel/feedback to backend endpoints", async () => {
     const token = jwt({ webagent_tenant_id: "tenant_1" });
     const calls: Array<{ url: string; method?: string; body?: unknown }> = [];
-    const client = new QoniAgentKit({
+    const client = new Qoni({
       accessKey: "ak_test",
       secretKey: "sk_test",
       host: "https://qoni.example.com",
@@ -2084,7 +2084,7 @@ describe("QoniAgentKit", () => {
   it("reads DeepResearch artifacts from the project-scoped artifact endpoints", async () => {
     const token = jwt({ webagent_tenant_id: "tenant_1" });
     const calls: Array<{ url: string; method?: string }> = [];
-    const client = new QoniAgentKit({
+    const client = new Qoni({
       accessKey: "ak_test",
       secretKey: "sk_test",
       host: "https://qoni.example.com",
@@ -2112,7 +2112,7 @@ describe("QoniAgentKit", () => {
   it("streams DeepResearch run events over SSE", async () => {
     const token = jwt({ webagent_tenant_id: "tenant_1" });
     const seen: { url?: string; headers?: Record<string, string> } = {};
-    const client = new QoniAgentKit({
+    const client = new Qoni({
       accessKey: "ak_test",
       secretKey: "sk_test",
       host: "https://qoni.example.com",

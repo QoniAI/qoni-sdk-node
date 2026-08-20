@@ -8,6 +8,11 @@ compatible fixes.
 
 ## Unreleased
 
+### Breaking
+
+- Rename the public SDK constructor from its previous longer name to `Qoni`.
+  The previous constructor export has been removed.
+
 ### Added
 
 - `RunHandle.events()` and `wait()` accept `onWireEvent` and `onReconnect`
@@ -23,8 +28,8 @@ compatible fixes.
 ### Breaking
 
 - Rename the package from its previous product name to `@qoniai/qoni`.
-- Rename the primary constructor and all branded exports to `QoniAgentKit`,
-  `Qoni`, and the corresponding `Qoni*` types, constants, and error classes.
+- Rename the primary constructor and all branded exports to `Qoni` and the
+  corresponding `Qoni*` types, constants, and error classes.
 - Rename the product namespace to `client.qoni` and environment variables to
   `QONI_*`. The current server wire contract remains unchanged: SDK gateway
   routes stay under `/api/v3/eak/*`, delegation tokens retain
@@ -207,7 +212,7 @@ Initial public release of `@qoniai/qoni`.
 
 ### What ships
 
-- Server-side `QoniAgentKit` constructor for Qoni Agent delegation and product
+- Server-side `Qoni` constructor for Qoni Agent delegation and product
   runtime calls.
 - Runtime service discovery from the Qoni Console gateway through
   `GET /api/v3/eak/runtime-config`.
@@ -226,7 +231,7 @@ Initial public release of `@qoniai/qoni`.
 
 ### Compatibility
 
-- `Qoni` remains available as a short constructor alias.
+- `Qoni` is the public SDK constructor.
 - `delegateAgent` and `completeDelegateAgent` remain available as deprecated
   aliases for older integrations, but new integrations should use
   `delegateToken`.

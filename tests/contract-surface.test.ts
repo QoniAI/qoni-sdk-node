@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { QoniAgentKit, MonitorHandle, RunHandle } from "../src";
+import { Qoni, MonitorHandle, RunHandle } from "../src";
 
 // Anti-drift guard for the frozen public contract
 // (wa/docs/qoni-sdk-public-surface.md §2-§9). The sets below are asserted with
@@ -8,7 +8,7 @@ import { QoniAgentKit, MonitorHandle, RunHandle } from "../src";
 // the change is a contract violation, or the contract document was amended
 // first and this pin must be updated in the same commit.
 
-const client = new QoniAgentKit({
+const client = new Qoni({
   accessKey: "ak_test",
   secretKey: "sk_test",
   host: "https://qoni.example.com",

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { QoniTimeoutError, QoniAgentKit } from "../src";
+import { QoniTimeoutError, Qoni } from "../src";
 
 // Regression: aborting the caller-supplied AbortSignal must terminate an SSE
 // iteration even AFTER the connection is established. The transport used to
@@ -35,7 +35,7 @@ function makeStreamingClient(opts?: { jsonDetail?: unknown }) {
   // when (and only when) the REQUEST's own signal aborts. If the SDK severs
   // the user signal → request signal chain after connect, a user abort never
   // reaches this stream.
-  const client = new QoniAgentKit({
+  const client = new Qoni({
     accessKey: "ak_test",
     secretKey: "sk_test",
     host: "https://qoni.example.com",

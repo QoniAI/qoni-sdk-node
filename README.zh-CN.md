@@ -14,7 +14,7 @@ AK/SK 必须只保存在可信服务端，不能下发到浏览器、移动端�
 
 Qoni 把 Agent 授权模型收敛成几个稳定边界：
 
-- 一个 SDK 入口：`new QoniAgentKit({ accessKey, secretKey })`。
+- 一个 SDK 入口：`new Qoni({ accessKey, secretKey })`。
 - 一条发现路径：`host` 可在私有化或本地部署中覆盖 Qoni Console/SDK 网关，SDK 通过 `/api/v3/eak/runtime-config` 获取 GenAuth、GUMem、WebAgent 等运行时地址。
 - 一个授权入口：调用 `delegateToken`；silent 模式直接返回 `data.token`，interactive 模式返回授权 URL，之后由业务服务端完成兑换。
 - 一条管理面路径：调用 `genauth.users.*`，SDK 会先用 AK/SK 换取 GenAuth management token，再调用 GenAuth v3 users API。
@@ -52,8 +52,8 @@ yarn add @qoniai/qoni
 包同时发布 ESM 和 CommonJS 两套构建（都带 TypeScript 类型），两种引入方式都可用：
 
 ```ts
-import { QoniAgentKit } from "@qoniai/qoni";        // ESM / TypeScript
-const { QoniAgentKit } = require("@qoniai/qoni");    // CommonJS
+import { Qoni } from "@qoniai/qoni";        // ESM / TypeScript
+const { Qoni } = require("@qoniai/qoni");    // CommonJS
 ```
 
 ## AI Skill
@@ -80,9 +80,9 @@ npm 包中包含 `skills/` 目录，但推荐仍使用上面的 GitHub 仓库安
 
 ```ts
 import fs from "node:fs";
-import { QoniAgentKit } from "@qoniai/qoni";
+import { Qoni } from "@qoniai/qoni";
 
-const qoni = new QoniAgentKit({
+const qoni = new Qoni({
   accessKey: process.env.QONI_ACCESS_KEY!,
   secretKey: process.env.QONI_SECRET_KEY!,
 });
@@ -442,7 +442,7 @@ const sameMonitor = await qoni.track.attach(monitor.id, { token });
 ### GenAuth 用户上下文与用户管理
 
 ```ts
-const client = new QoniAgentKit({
+const client = new Qoni({
   accessKey: process.env.QONI_ACCESS_KEY!,
   secretKey: process.env.QONI_SECRET_KEY!,
 });
@@ -469,7 +469,7 @@ const created = await client.genauth.users.create({
 ### Client
 
 ```ts
-const qoni = new QoniAgentKit({
+const qoni = new Qoni({
   accessKey: process.env.QONI_ACCESS_KEY!,
   secretKey: process.env.QONI_SECRET_KEY!,
   timeoutMs: 30_000,
@@ -485,12 +485,6 @@ const qoni = new QoniAgentKit({
 | `timeoutMs` | `number` | 否 | 单次请求超时（连接 + 响应头），默认 `30000`。 |
 
 > **`timeoutMs` 不会限制长任务。** 它只作用于单次一次性 HTTP 请求（委托、`status()`、单个 POST）。事件流（`events()` / `wait()`）**不受它约束**——流的响应头一到，这个单次计时器就被清掉了,所以一个跑一小时的 Deep Research 在默认 30s 客户端超时下也能正常流式。要限制等待时长用 `wait({ timeoutMs })`；不传则 `wait()` 一直等到终态。`wait()` 超时**不会停止 run**——它在服务端继续跑，可以再 `attach()` 回去。
-
-兼容导出：
-
-```ts
-import { Qoni, QoniAgentKit } from "@qoniai/qoni";
-```
 
 ### 命名空间
 

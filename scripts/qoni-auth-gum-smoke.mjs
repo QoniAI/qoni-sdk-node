@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { once } from "node:events";
 import http from "node:http";
-import { QoniScopes, QoniAgentKit } from "@qoniai/qoni";
+import { QoniScopes, Qoni } from "@qoniai/qoni";
 
 const mode = process.argv.includes("--live") || process.env.QONI_SMOKE_MODE === "live"
   ? "live"
@@ -43,7 +43,7 @@ async function runMockSmoke() {
   const host = `http://127.0.0.1:${address.port}`;
 
   try {
-    const qoni = new QoniAgentKit({
+    const qoni = new Qoni({
       accessKey: "ak_smoke",
       secretKey: "sk_smoke",
       host,
@@ -195,7 +195,7 @@ async function runLiveSmoke() {
   const agent = process.env.QONI_AGENT_ID || "memory-agent";
   const sessionId = process.env.QONI_GUM_SESSION_ID || `qoni-auth-gum-${Date.now()}`;
 
-  const qoni = new QoniAgentKit({
+  const qoni = new Qoni({
     accessKey,
     secretKey,
     host,

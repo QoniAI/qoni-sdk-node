@@ -3,7 +3,6 @@ import { describe, expect, it } from "vitest";
 
 const publicExports = [
   "Qoni",
-  "QoniAgentKit",
   "QoniScopes",
   "QoniScopeBundles",
   "QoniEventTypes",
@@ -24,6 +23,7 @@ const publicExports = [
   "buildSignature",
   "buildStringToSign",
 ] as const;
+const removedConstructorExport = ["Qoni", "Agent", "Kit"].join("");
 
 describe("built package surface", () => {
   it("exports the public API from the ESM build", async () => {
@@ -32,7 +32,8 @@ describe("built package surface", () => {
     for (const key of publicExports) {
       expect(esm, `missing ESM export ${key}`).toHaveProperty(key);
     }
-    expect(esm.Qoni).toBe(esm.QoniAgentKit);
+    expect(esm.Qoni.name).toBe("Qoni");
+    expect(esm).not.toHaveProperty(removedConstructorExport);
   });
 
   it("exports the public API from the CommonJS build", () => {
@@ -42,7 +43,8 @@ describe("built package surface", () => {
     for (const key of publicExports) {
       expect(cjs, `missing CJS export ${key}`).toHaveProperty(key);
     }
-    expect(cjs.Qoni).toBe(cjs.QoniAgentKit);
+    expect((cjs.Qoni as { name?: string }).name).toBe("Qoni");
+    expect(cjs).not.toHaveProperty(removedConstructorExport);
   });
 
   it("does NOT export the raw internal wire-type catalog (developers use QoniEventTypes / event.type)", async () => {

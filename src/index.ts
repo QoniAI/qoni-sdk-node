@@ -1,5 +1,5 @@
 export { buildAuthorization, buildSignature, buildStringToSign } from "./signature";
-export { Qoni, QoniAgentKit } from "./client";
+export { Qoni } from "./client";
 export {
   QoniAuthError,
   QoniDelegationRequiredError,

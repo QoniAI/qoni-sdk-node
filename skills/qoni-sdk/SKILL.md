@@ -1,6 +1,6 @@
 ---
 name: qoni-sdk
-description: Use when building, testing, debugging, or documenting Node.js integrations with @qoniai/qoni, QoniAgentKit/Qoni, AK/SK credentials, delegateToken, GenAuth currentUser/userInfo/introspection/user management, Qoni runtime-config discovery, GUMem, WebAgent, Web Search, Do Anything, Deep Research, Track, OBO product token exchange, or local .genauth.localhost SDK flows.
+description: Use when building, testing, debugging, or documenting Node.js integrations with @qoniai/qoni, the Qoni constructor, AK/SK credentials, delegateToken, GenAuth currentUser/userInfo/introspection/user management, Qoni runtime-config discovery, GUMem, WebAgent, Web Search, Do Anything, Deep Research, Track, OBO product token exchange, or local .genauth.localhost SDK flows.
 ---
 
 # Qoni SDK
@@ -15,12 +15,12 @@ description: Use when building, testing, debugging, or documenting Node.js integ
 
 ## Core Contract
 
-Use `@qoniai/qoni` from trusted server-side Node.js code. Keep AK/SK on the server and create one reusable `QoniAgentKit`. For silent runtime product calls, resolve a real GenAuth user id from the credential-bound userpool, call `delegateToken`, then pass `delegation.data.token` explicitly to every product capability call. For interactive runtime authorization, call `delegateToken({ mode: "interactive", redirectUri, state, agent, scopes })` from the server without exposing AK/SK; redirect the user to `authorizationUrl`, then handle the business callback server-side with `completeDelegateToken({ grantId, code, state })` to receive the token. For GenAuth user management, call `qoni.genauth.users.*`; the SDK exchanges AK/SK for a standard GenAuth management token internally and does not require `QONI_USER_ID`.
+Use `@qoniai/qoni` from trusted server-side Node.js code. Keep AK/SK on the server and create one reusable `Qoni`. For silent runtime product calls, resolve a real GenAuth user id from the credential-bound userpool, call `delegateToken`, then pass `delegation.data.token` explicitly to every product capability call. For interactive runtime authorization, call `delegateToken({ mode: "interactive", redirectUri, state, agent, scopes })` from the server without exposing AK/SK; redirect the user to `authorizationUrl`, then handle the business callback server-side with `completeDelegateToken({ grantId, code, state })` to receive the token. For GenAuth user management, call `qoni.genauth.users.*`; the SDK exchanges AK/SK for a standard GenAuth management token internally and does not require `QONI_USER_ID`.
 
 ```ts
-import { QoniAgentKit, QoniScopes } from "@qoniai/qoni";
+import { Qoni, QoniScopes } from "@qoniai/qoni";
 
-const qoni = new QoniAgentKit({
+const qoni = new Qoni({
   accessKey: process.env.QONI_ACCESS_KEY!,
   secretKey: process.env.QONI_SECRET_KEY!,
   host: process.env.QONI_HOST, // Qoni Console/SDK gateway; optional in hosted Qoni.
@@ -91,7 +91,7 @@ const completed = await qoni.completeDelegateToken({
 });
 ```
 
-`Qoni` is a short alias for `QoniAgentKit`. `delegateAgent` and `completeDelegateAgent` remain deprecated compatibility names. Use `completeDelegateToken` for interactive callbacks; the current callback contract is `{ grantId, code, state }`, not the old `{ code, state }` shape.
+`delegateAgent` and `completeDelegateAgent` remain deprecated compatibility names. Use `completeDelegateToken` for interactive callbacks; the current callback contract is `{ grantId, code, state }`, not the old `{ code, state }` shape.
 
 ## Runtime Discovery
 
@@ -318,7 +318,7 @@ For skill or docs changes that teach integration, also validate from a fresh con
 1. Pack the current SDK into a temporary directory with `pnpm pack --pack-destination <tmp-dir>`.
 2. Create a clean Node.js 18+ TypeScript project outside the SDK repo.
 3. Install the packed tarball.
-4. Add a small mocked integration that imports from `@qoniai/qoni`, constructs `QoniAgentKit`, returns runtime-config from `host`, calls `delegateToken`, passes `delegation.data.token` to GUMem/WebAgent calls, and asserts product token exchange plus WebAgent tenant routing. Also cover `genauth.users.list()` by mocking `POST /api/v3/eak/genauth/admin-token` with body `{}` and a returned `userPoolId`.
+4. Add a small mocked integration that imports from `@qoniai/qoni`, constructs `Qoni`, returns runtime-config from `host`, calls `delegateToken`, passes `delegation.data.token` to GUMem/WebAgent calls, and asserts product token exchange plus WebAgent tenant routing. Also cover `genauth.users.list()` by mocking `POST /api/v3/eak/genauth/admin-token` with body `{}` and a returned `userPoolId`.
 5. Run the consumer project's typecheck and test command.
 
 Prefer mocked fetch-based tests for normal verification. Use real GenAuth/GUMem/WebAgent services only for explicit smoke tests, and never hard-code real secrets in repository files.

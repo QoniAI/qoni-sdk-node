@@ -110,8 +110,7 @@ describe("open-source readiness", () => {
     expect(skill).toContain("/api/v3/eak/genauth/admin-token");
 
     [readme, zhReadme, skill].forEach((text) => {
-      expect(text).toContain("QoniAgentKit");
-      expect(text).not.toContain("QnoiAgentKit");
+      expect(text).toContain("new Qoni(");
     });
   });
 

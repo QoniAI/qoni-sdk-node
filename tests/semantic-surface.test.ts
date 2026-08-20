@@ -3,7 +3,7 @@ import {
   QoniError,
   QoniPermissionDeniedError,
   QoniValidationError,
-  QoniAgentKit,
+  Qoni,
 } from "../src";
 import type { RunEvent } from "../src";
 
@@ -59,7 +59,7 @@ interface Captured {
 
 function makeClient(routes: (call: Captured) => Response | Promise<Response>) {
   const calls: Captured[] = [];
-  const client = new QoniAgentKit({
+  const client = new Qoni({
     accessKey: "ak_test",
     secretKey: "sk_test",
     host: "https://qoni.example.com",

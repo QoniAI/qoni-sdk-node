@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import type { QoniAgentKit } from "../../src";
+import type { Qoni } from "../../src";
 import {
   DEFAULT_QUERY_MATRIX_FILE,
   loadQueryMatrix,
@@ -28,7 +28,7 @@ const batchId = `query-matrix-${new Date().toISOString().replace(/[:.]/g, "-")}`
 const evidenceDir = path.join(process.cwd(), ".secrets", "query-matrix", "runs", batchId);
 
 describeMatrix("live e2e: local public Query matrix", () => {
-  let client: QoniAgentKit;
+  let client: Qoni;
   const tokenByFunction = new Map<QueryMatrixFunction, Promise<string>>();
   const results: QueryMatrixCaseResult[] = [];
 

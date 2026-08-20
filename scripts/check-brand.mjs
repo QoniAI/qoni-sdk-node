@@ -13,6 +13,7 @@ const ignoredDirectories = new Set([
 const legacyUpper = ["E", "A", "K"].join("");
 const legacyTitle = `${legacyUpper[0]}${legacyUpper.slice(1).toLowerCase()}`;
 const legacyLower = legacyUpper.toLowerCase();
+const removedConstructor = ["Qoni", "Agent", "Kit"].join("");
 const contentPattern = new RegExp(
   `${legacyUpper}(?![a-z])|${legacyTitle}(?=[A-Z]|[^A-Za-z]|$)|(?<![A-Za-z])${legacyLower}(?![a-z])`,
 );
@@ -67,7 +68,7 @@ async function walk(directory) {
       : text.split(/\r?\n/);
     for (let index = 0; index < lines.length; index += 1) {
       const checkedLine = withoutAllowedWireIdentifiers(lines[index], relativePath);
-      if (contentPattern.test(checkedLine)) {
+      if (contentPattern.test(checkedLine) || checkedLine.includes(removedConstructor)) {
         violations.push(`${relativePath}:${index + 1}`);
       }
     }

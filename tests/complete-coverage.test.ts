@@ -12,7 +12,7 @@ import {
   QoniTimeoutError,
   QoniTokenExpiredError,
   QoniUpstreamError,
-  QoniAgentKit,
+  Qoni,
 } from "../src";
 
 type CapturedCall = {
@@ -175,7 +175,7 @@ function createHarness() {
     return jsonResponse({ data: { ok: true, id: "id_matrix", path: url.pathname } });
   }) as typeof fetch;
 
-  const client = new QoniAgentKit({
+  const client = new Qoni({
     accessKey: "ak_matrix",
     secretKey: "sk_matrix",
     host: "https://qoni.example.com/dashboard",
@@ -787,7 +787,7 @@ describe("complete public method coverage matrix", () => {
       ] as const;
 
       for (const item of cases) {
-        const client = new QoniAgentKit({
+        const client = new Qoni({
           accessKey: "ak_matrix",
           secretKey: "sk_matrix",
           host: "https://qoni.example.com",
@@ -806,7 +806,7 @@ describe("complete public method coverage matrix", () => {
     });
 
     it("wraps request timeouts in QoniTimeoutError", async () => {
-      const client = new QoniAgentKit({
+      const client = new Qoni({
         accessKey: "ak_matrix",
         secretKey: "sk_matrix",
         host: "https://qoni.example.com",
@@ -836,7 +836,7 @@ describe("complete public method coverage matrix", () => {
         name: "ConnectTimeoutError",
         code: "UND_ERR_CONNECT_TIMEOUT",
       };
-      const client = new QoniAgentKit({
+      const client = new Qoni({
         accessKey: "ak_matrix",
         secretKey: "sk_matrix",
         host: "https://qoni.example.com",
@@ -855,7 +855,7 @@ describe("complete public method coverage matrix", () => {
     });
 
     it("wraps fetch network failures in retryable QoniUpstreamError", async () => {
-      const client = new QoniAgentKit({
+      const client = new Qoni({
         accessKey: "ak_matrix",
         secretKey: "sk_matrix",
         host: "https://qoni.example.com",

@@ -42,7 +42,7 @@ import { createWebSearchNamespace } from "./web-search";
 
 const DEFAULT_QONI_HOST = "https://anima.eazo.ai/dashboard";
 
-export class QoniAgentKit {
+export class Qoni {
   private readonly fetchImpl: typeof fetch;
   private readonly timeoutMs: number;
   private readonly sseMaxRetries: number;
@@ -708,8 +708,6 @@ export class QoniAgentKit {
     return { accessToken, userPoolId };
   }
 }
-
-export { QoniAgentKit as Qoni };
 
 interface ResolvedRuntimeConfig {
   eakBaseUrl?: string;

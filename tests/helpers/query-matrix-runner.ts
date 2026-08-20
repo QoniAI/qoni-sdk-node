@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import type {
   QoniEvent,
-  QoniAgentKit,
+  Qoni,
   JsonObject,
   MonitorHandle,
   RunEvent,
@@ -30,7 +30,7 @@ export interface QueryMatrixCaseResult {
 }
 
 export async function runQueryMatrixCase(input: {
-  client: QoniAgentKit;
+  client: Qoni;
   token: string;
   item: QueryMatrixCase;
   evidenceDir: string;
@@ -163,7 +163,7 @@ export function assertSuccessfulRun(item: QueryMatrixCase, result: RunResult): v
 }
 
 async function executeCase(
-  client: QoniAgentKit,
+  client: Qoni,
   token: string,
   item: QueryMatrixCase,
   caseDir: string,
@@ -182,7 +182,7 @@ async function executeCase(
 }
 
 async function executeDoAnything(
-  client: QoniAgentKit,
+  client: Qoni,
   token: string,
   item: QueryMatrixCase,
   caseDir: string,
@@ -239,7 +239,7 @@ async function executeDoAnything(
 }
 
 async function executeWebSearch(
-  client: QoniAgentKit,
+  client: Qoni,
   token: string,
   item: QueryMatrixCase,
   caseDir: string,
@@ -260,7 +260,7 @@ async function executeWebSearch(
 }
 
 async function executeDeepResearch(
-  client: QoniAgentKit,
+  client: Qoni,
   token: string,
   item: QueryMatrixCase,
   caseDir: string,
@@ -333,7 +333,7 @@ async function settleGenericRun(input: {
 }
 
 async function executeTrack(
-  client: QoniAgentKit,
+  client: Qoni,
   token: string,
   item: QueryMatrixCase,
   caseDir: string,

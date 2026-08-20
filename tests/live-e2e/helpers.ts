@@ -6,7 +6,7 @@ import {
   QoniRateLimitError,
   QoniScopes,
   QoniValidationError,
-  QoniAgentKit,
+  Qoni,
 } from "../../src";
 import type { JsonObject, RunEvent } from "../../src";
 import { loadDotEnvLocal, requiredEnv } from "../helpers/env";
@@ -24,7 +24,7 @@ export function liveClient(overrides: {
   host?: string;
   webAgentBaseUrl?: string;
   timeoutMs?: number;
-} = {}): QoniAgentKit {
+} = {}): Qoni {
   if (liveRequireAll) requiredEnv("QONI_USER_ACCESS_TOKEN");
   const host = overrides.host || liveRuntime?.qoniHost;
   const webAgentBaseUrl = overrides.webAgentBaseUrl || liveRuntime?.webAgentBaseUrl;
@@ -34,7 +34,7 @@ export function liveClient(overrides: {
   const recorder = evidenceRecorder();
   recorder?.registerHost(host, "qoni");
   recorder?.registerHost(webAgentBaseUrl, "webagent");
-  return new QoniAgentKit({
+  return new Qoni({
     accessKey: requiredEnv("QONI_ACCESS_KEY"),
     secretKey: requiredEnv("QONI_SECRET_KEY"),
     ...(host ? { host } : {}),
@@ -44,7 +44,7 @@ export function liveClient(overrides: {
   });
 }
 
-export async function resolveLiveUserId(client: QoniAgentKit): Promise<string> {
+export async function resolveLiveUserId(client: Qoni): Promise<string> {
   const listed = await client.genauth.users.list({ page: 1, limit: 1 });
   const userId = firstUserId(listed.data);
   if (userId) return userId;
@@ -52,7 +52,7 @@ export async function resolveLiveUserId(client: QoniAgentKit): Promise<string> {
 }
 
 export async function delegateLiveToken(
-  client: QoniAgentKit,
+  client: Qoni,
   scopes: readonly string[],
 ): Promise<{ token: string; userId: string }> {
   const userId = await resolveLiveUserId(client);
