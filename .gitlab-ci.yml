@@ -2,12 +2,11 @@ image: node:20
 
 default:
   tags:
-    - eak-us
+    - qoni-runner
 
 stages:
   - verify
   - release
-  - sync
 
 variables:
   GITHUB_REPOSITORY: "QONIAI/qoni-sdk-node"
@@ -95,65 +94,3 @@ publish_npm:
   after_script:
     - rm -f .npmrc
 
-.sync_main_or_master:
-  stage: sync
-  image:
-    name: alpine/git:2.45.2
-    entrypoint: [""]
-  tags: []
-  needs: []
-  variables:
-    GIT_STRATEGY: fetch
-    GIT_DEPTH: "0"
-  script:
-    - |
-      set -eu
-
-      test -n "${SYNC_SSH_PRIVATE_KEY_FILE:-}"
-      test -f "$SYNC_SSH_PRIVATE_KEY_FILE"
-
-      mkdir -p ~/.ssh
-      chmod 700 ~/.ssh
-      awk '{ sub(/\r$/, ""); print }' "$SYNC_SSH_PRIVATE_KEY_FILE" > ~/.ssh/repository_sync_key
-      chmod 600 ~/.ssh/repository_sync_key
-      printf '%s\n' "$SYNC_TARGET_HOST_KEY" > ~/.ssh/known_hosts
-      chmod 600 ~/.ssh/known_hosts
-
-      export GIT_SSH_COMMAND="ssh -i ~/.ssh/repository_sync_key -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile=~/.ssh/known_hosts"
-      git remote remove sync_target 2>/dev/null || true
-      git remote add sync_target "$SYNC_TARGET_REPOSITORY"
-
-      target_sha="$(git ls-remote sync_target "refs/heads/${CI_COMMIT_BRANCH}" | awk '{print $1}')"
-      if [ -n "$target_sha" ]; then
-        git fetch --no-tags sync_target "refs/heads/${CI_COMMIT_BRANCH}:refs/remotes/sync_target/${CI_COMMIT_BRANCH}"
-        if ! git merge-base --is-ancestor "$target_sha" "$CI_COMMIT_SHA"; then
-          echo "ERROR: Target ${CI_COMMIT_BRANCH} has diverged; refusing to overwrite it."
-          exit 1
-        fi
-      fi
-
-      git push --no-thin -o ci.skip sync_target "${CI_COMMIT_SHA}:refs/heads/${CI_COMMIT_BRANCH}"
-
-sync_main_or_master_to_fellou:
-  extends: .sync_main_or_master
-  tags:
-    - eak-us
-  variables:
-    SYNC_SSH_PRIVATE_KEY_FILE: "$FELLOU_SYNC_SSH_PRIVATE_KEY"
-    SYNC_TARGET_REPOSITORY: "ssh://git@gitlab.asix.inc:6022/sak/qoni-sdk-node.git"
-    SYNC_TARGET_HOST_KEY: "[gitlab.asix.inc]:6022 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJPT8mi8hCLKAg7gMVOzOsFFiQAsU/sEmWSykPsdyWGV"
-  rules:
-    - if: '$CI_SERVER_HOST == "gitlab.authing-inc.co" && $CI_PIPELINE_SOURCE == "push" && ($CI_COMMIT_BRANCH == "main" || $CI_COMMIT_BRANCH == "master")'
-      when: manual
-      allow_failure: true
-    - when: never
-
-sync_main_or_master_to_authing:
-  extends: .sync_main_or_master
-  variables:
-    SYNC_SSH_PRIVATE_KEY_FILE: "$AUTHING_SYNC_SSH_PRIVATE_KEY"
-    SYNC_TARGET_REPOSITORY: "ssh://git@gitlab.authing-inc.co:22/sak-steamory-agent-kit/qoni-sdk-node.git"
-    SYNC_TARGET_HOST_KEY: "gitlab.authing-inc.co ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIKmQ1URQCIBWHjkS6Q2TK+aTeFm/gvot3Vgsxj0iI5dQ"
-  rules:
-    - if: '$CI_SERVER_HOST == "gitlab.asix.inc" && $CI_PIPELINE_SOURCE == "push" && ($CI_COMMIT_BRANCH == "main" || $CI_COMMIT_BRANCH == "master")'
-    - when: never
