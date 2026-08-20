@@ -132,16 +132,14 @@ describe("open-source readiness", () => {
     expect(smoke).toContain("eak_tenant_id");
   });
 
-  it("allows manual branch release jobs while keeping branch sync optional", () => {
+  it("allows manual releases without repository sync jobs", () => {
     const ci = readText(".gitlab-ci.yml");
 
-    expect(ci).toContain('GITHUB_REPOSITORY: "QONIAI/qoni-sdk-node"');
-    expect(ci).toContain("if: '$CI_COMMIT_TAG'");
-    expect(ci).toContain("if: '$CI_COMMIT_BRANCH'");
     expect(ci).toContain('if: \'$CI_COMMIT_BRANCH == "main"\'');
     expect(ci).toContain("if: '$CI_COMMIT_TAG =~ /^v/'");
-    expect(ci).toContain('git push --no-thin github "${CI_COMMIT_SHA}:refs/heads/${CI_COMMIT_REF_NAME}"');
-    expect(ci).toMatch(/- if: '\$CI_COMMIT_BRANCH'\n\s+when: manual\n\s+allow_failure: true/);
+    expect(ci).not.toContain("GITHUB_REPOSITORY");
+    expect(ci).not.toContain("git push");
+    expect(ci).not.toMatch(/^sync(?:_\w+)?:/m);
     expect(ci).toContain("npm whoami");
     expect(ci).toContain('test -n "$QONI_NPM_TOKEN"');
     expect(ci).toContain('"$QONI_NPM_TOKEN" > .npmrc');
