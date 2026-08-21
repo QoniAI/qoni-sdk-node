@@ -602,8 +602,8 @@ export const FUNCTION_TEST_MAP: readonly FunctionMapEntry[] = [
       {
         "file": "wire-api.test.ts",
         "name": "live e2e: wire escape hatch — doAnything.api > api.createSession() creates a do_anything session shell",
-        "line": 523,
-        "endLine": 542
+        "line": 526,
+        "endLine": 545
       }
     ]
   },
@@ -615,8 +615,8 @@ export const FUNCTION_TEST_MAP: readonly FunctionMapEntry[] = [
       {
         "file": "wire-api.test.ts",
         "name": "live e2e: wire escape hatch — doAnything.api > api.createRun() creates the run and its session in one call",
-        "line": 544,
-        "endLine": 566
+        "line": 547,
+        "endLine": 569
       }
     ]
   },
@@ -634,8 +634,8 @@ export const FUNCTION_TEST_MAP: readonly FunctionMapEntry[] = [
       {
         "file": "wire-api.test.ts",
         "name": "live e2e: wire escape hatch — doAnything.api > api.getRun() addresses the run by run_id alone",
-        "line": 568,
-        "endLine": 583
+        "line": 571,
+        "endLine": 586
       }
     ]
   },
@@ -647,8 +647,8 @@ export const FUNCTION_TEST_MAP: readonly FunctionMapEntry[] = [
       {
         "file": "wire-api.test.ts",
         "name": "live e2e: wire escape hatch — doAnything.api > api.events() streams the raw browser-harness envelopes to run.completed",
-        "line": 602,
-        "endLine": 663
+        "line": 605,
+        "endLine": 666
       }
     ]
   },
@@ -666,8 +666,8 @@ export const FUNCTION_TEST_MAP: readonly FunctionMapEntry[] = [
       {
         "file": "wire-api.test.ts",
         "name": "live e2e: wire escape hatch — doAnything.api > api.intervene() posts an answer through the run's intervene route",
-        "line": 585,
-        "endLine": 600
+        "line": 588,
+        "endLine": 603
       }
     ]
   },
@@ -679,8 +679,8 @@ export const FUNCTION_TEST_MAP: readonly FunctionMapEntry[] = [
       {
         "file": "wire-api.test.ts",
         "name": "live e2e: wire escape hatch — doAnything.api > api.cancel() on a settled run returns its terminal wire state",
-        "line": 706,
-        "endLine": 714
+        "line": 709,
+        "endLine": 717
       }
     ]
   },
@@ -692,8 +692,8 @@ export const FUNCTION_TEST_MAP: readonly FunctionMapEntry[] = [
       {
         "file": "wire-api.test.ts",
         "name": "live e2e: wire escape hatch — doAnything.api > api.readArtifacts() reaches the session artifact route and 404s an unknown id",
-        "line": 674,
-        "endLine": 704
+        "line": 677,
+        "endLine": 707
       }
     ]
   },
@@ -725,14 +725,14 @@ export const FUNCTION_TEST_MAP: readonly FunctionMapEntry[] = [
       {
         "file": "wire-api.test.ts",
         "name": "live e2e: wire escape hatch — doAnything.api > api.createSession() creates a do_anything session shell",
-        "line": 523,
-        "endLine": 542
+        "line": 526,
+        "endLine": 545
       },
       {
         "file": "wire-api.test.ts",
         "name": "live e2e: wire escape hatch — doAnything.api > api.readRecording() reads the session recording envelope",
-        "line": 665,
-        "endLine": 672
+        "line": 668,
+        "endLine": 675
       }
     ]
   },
@@ -932,8 +932,8 @@ export const FUNCTION_TEST_MAP: readonly FunctionMapEntry[] = [
       {
         "file": "wire-api.test.ts",
         "name": "live e2e: wire escape hatch — deepResearch.api > api.run() posts the wire create body and returns the run envelope",
-        "line": 740,
-        "endLine": 758
+        "line": 743,
+        "endLine": 761
       }
     ]
   },
@@ -951,8 +951,8 @@ export const FUNCTION_TEST_MAP: readonly FunctionMapEntry[] = [
       {
         "file": "wire-api.test.ts",
         "name": "live e2e: wire escape hatch — deepResearch.api > api.get() addresses the run by id",
-        "line": 760,
-        "endLine": 765
+        "line": 763,
+        "endLine": 768
       }
     ]
   },
@@ -964,8 +964,8 @@ export const FUNCTION_TEST_MAP: readonly FunctionMapEntry[] = [
       {
         "file": "wire-api.test.ts",
         "name": "live e2e: wire escape hatch — deepResearch.api > api.events() streams the research pipeline to run.completed",
-        "line": 778,
-        "endLine": 806
+        "line": 781,
+        "endLine": 809
       }
     ]
   },
@@ -977,14 +977,14 @@ export const FUNCTION_TEST_MAP: readonly FunctionMapEntry[] = [
       {
         "file": "wire-api.test.ts",
         "name": "live e2e: wire escape hatch — deepResearch.api > api.followUp() is refused with task_in_progress while the run is live",
-        "line": 767,
-        "endLine": 776
+        "line": 770,
+        "endLine": 779
       },
       {
         "file": "wire-api.test.ts",
         "name": "live e2e: wire escape hatch — deepResearch.api > api.followUp() is accepted once the run is terminal",
-        "line": 845,
-        "endLine": 853
+        "line": 848,
+        "endLine": 856
       }
     ]
   },
@@ -996,8 +996,8 @@ export const FUNCTION_TEST_MAP: readonly FunctionMapEntry[] = [
       {
         "file": "wire-api.test.ts",
         "name": "live e2e: wire escape hatch — deepResearch.api > api.cancel() on a settled run returns its terminal wire state",
-        "line": 855,
-        "endLine": 859
+        "line": 858,
+        "endLine": 862
       }
     ]
   },
@@ -1022,8 +1022,8 @@ export const FUNCTION_TEST_MAP: readonly FunctionMapEntry[] = [
       {
         "file": "wire-api.test.ts",
         "name": "live e2e: wire escape hatch — deepResearch.api > api.listArtifacts() lists the report deliverables",
-        "line": 808,
-        "endLine": 823
+        "line": 811,
+        "endLine": 826
       }
     ]
   },
@@ -1035,8 +1035,8 @@ export const FUNCTION_TEST_MAP: readonly FunctionMapEntry[] = [
       {
         "file": "wire-api.test.ts",
         "name": "live e2e: wire escape hatch — deepResearch.api > api.getArtifact() reads a single artifact by id",
-        "line": 825,
-        "endLine": 843
+        "line": 828,
+        "endLine": 846
       }
     ]
   },
@@ -1150,8 +1150,8 @@ export const FUNCTION_TEST_MAP: readonly FunctionMapEntry[] = [
       {
         "file": "wire-api.test.ts",
         "name": "live e2e: wire escape hatch — track.api > api.intervene() answers a real alignment question and drives the monitor to active",
-        "line": 355,
-        "endLine": 470
+        "line": 358,
+        "endLine": 473
       }
     ]
   },
@@ -1175,14 +1175,14 @@ export const FUNCTION_TEST_MAP: readonly FunctionMapEntry[] = [
       {
         "file": "wire-api.test.ts",
         "name": "live e2e: wire escape hatch — track.api > api.intervene() answers a real alignment question and drives the monitor to active",
-        "line": 355,
-        "endLine": 470
+        "line": 358,
+        "endLine": 473
       },
       {
         "file": "wire-api.test.ts",
         "name": "live e2e: wire escape hatch — track.api > api.deleteMonitor() retires the monitor",
-        "line": 472,
-        "endLine": 491
+        "line": 475,
+        "endLine": 494
       }
     ]
   },
@@ -1194,14 +1194,14 @@ export const FUNCTION_TEST_MAP: readonly FunctionMapEntry[] = [
       {
         "file": "wire-api.test.ts",
         "name": "live e2e: wire escape hatch — track.api > api.runNow() fires an immediate tick and returns the tick record",
-        "line": 280,
-        "endLine": 288
+        "line": 265,
+        "endLine": 273
       },
       {
         "file": "wire-api.test.ts",
         "name": "live e2e: wire escape hatch — track.api > api.deleteMonitor() retires the monitor",
-        "line": 472,
-        "endLine": 491
+        "line": 475,
+        "endLine": 494
       }
     ]
   },
@@ -1219,14 +1219,14 @@ export const FUNCTION_TEST_MAP: readonly FunctionMapEntry[] = [
       {
         "file": "wire-api.test.ts",
         "name": "live e2e: wire escape hatch — track.api > api.events() streams the monitor's raw lifecycle envelopes",
-        "line": 314,
-        "endLine": 333
+        "line": 317,
+        "endLine": 336
       },
       {
         "file": "wire-api.test.ts",
         "name": "live e2e: wire escape hatch — track.api > api.intervene() answers a real alignment question and drives the monitor to active",
-        "line": 355,
-        "endLine": 470
+        "line": 358,
+        "endLine": 473
       }
     ]
   },
@@ -1238,14 +1238,14 @@ export const FUNCTION_TEST_MAP: readonly FunctionMapEntry[] = [
       {
         "file": "wire-api.test.ts",
         "name": "live e2e: wire escape hatch — track.api > api.intervene() is refused with monitor_not_in_alignment on an active monitor",
-        "line": 335,
-        "endLine": 353
+        "line": 338,
+        "endLine": 356
       },
       {
         "file": "wire-api.test.ts",
         "name": "live e2e: wire escape hatch — track.api > api.intervene() answers a real alignment question and drives the monitor to active",
-        "line": 355,
-        "endLine": 470
+        "line": 358,
+        "endLine": 473
       }
     ]
   },
@@ -1257,8 +1257,8 @@ export const FUNCTION_TEST_MAP: readonly FunctionMapEntry[] = [
       {
         "file": "wire-api.test.ts",
         "name": "live e2e: wire escape hatch — track.api > api.listRuns() / api.getRun() expose the tick runs at wire level",
-        "line": 290,
-        "endLine": 312
+        "line": 293,
+        "endLine": 315
       }
     ]
   },
@@ -1270,8 +1270,8 @@ export const FUNCTION_TEST_MAP: readonly FunctionMapEntry[] = [
       {
         "file": "wire-api.test.ts",
         "name": "live e2e: wire escape hatch — track.api > api.listRuns() / api.getRun() expose the tick runs at wire level",
-        "line": 290,
-        "endLine": 312
+        "line": 293,
+        "endLine": 315
       }
     ]
   },
@@ -1283,14 +1283,14 @@ export const FUNCTION_TEST_MAP: readonly FunctionMapEntry[] = [
       {
         "file": "wire-api.test.ts",
         "name": "live e2e: wire escape hatch — track.api > api.updateMonitor() applies pause/resume through the PATCH route",
-        "line": 262,
-        "endLine": 278
+        "line": 275,
+        "endLine": 291
       },
       {
         "file": "wire-api.test.ts",
         "name": "live e2e: wire escape hatch — track.api > api.events() streams the monitor's raw lifecycle envelopes",
-        "line": 314,
-        "endLine": 333
+        "line": 317,
+        "endLine": 336
       }
     ]
   },
@@ -1302,14 +1302,14 @@ export const FUNCTION_TEST_MAP: readonly FunctionMapEntry[] = [
       {
         "file": "wire-api.test.ts",
         "name": "live e2e: wire escape hatch — track.api > api.intervene() answers a real alignment question and drives the monitor to active",
-        "line": 355,
-        "endLine": 470
+        "line": 358,
+        "endLine": 473
       },
       {
         "file": "wire-api.test.ts",
         "name": "live e2e: wire escape hatch — track.api > api.deleteMonitor() retires the monitor",
-        "line": 472,
-        "endLine": 491
+        "line": 475,
+        "endLine": 494
       }
     ]
   },
@@ -1420,26 +1420,26 @@ export const FUNCTION_TEST_MAP: readonly FunctionMapEntry[] = [
       {
         "file": "wire-api.test.ts",
         "name": "live e2e: wire escape hatch — track.api > api.events() streams the monitor's raw lifecycle envelopes",
-        "line": 314,
-        "endLine": 333
+        "line": 317,
+        "endLine": 336
       },
       {
         "file": "wire-api.test.ts",
         "name": "live e2e: wire escape hatch — track.api > api.intervene() answers a real alignment question and drives the monitor to active",
-        "line": 355,
-        "endLine": 470
+        "line": 358,
+        "endLine": 473
       },
       {
         "file": "wire-api.test.ts",
         "name": "live e2e: wire escape hatch — doAnything.api > api.events() streams the raw browser-harness envelopes to run.completed",
-        "line": 602,
-        "endLine": 663
+        "line": 605,
+        "endLine": 666
       },
       {
         "file": "wire-api.test.ts",
         "name": "live e2e: wire escape hatch — deepResearch.api > api.events() streams the research pipeline to run.completed",
-        "line": 778,
-        "endLine": 806
+        "line": 781,
+        "endLine": 809
       }
     ]
   },
@@ -1580,14 +1580,14 @@ export const FUNCTION_TEST_MAP: readonly FunctionMapEntry[] = [
       {
         "file": "wire-api.test.ts",
         "name": "live e2e: wire escape hatch — doAnything.api > api.cancel() on a settled run returns its terminal wire state",
-        "line": 706,
-        "endLine": 714
+        "line": 709,
+        "endLine": 717
       },
       {
         "file": "wire-api.test.ts",
         "name": "live e2e: wire escape hatch — deepResearch.api > api.cancel() on a settled run returns its terminal wire state",
-        "line": 855,
-        "endLine": 859
+        "line": 858,
+        "endLine": 862
       }
     ]
   },
@@ -1637,8 +1637,8 @@ export const FUNCTION_TEST_MAP: readonly FunctionMapEntry[] = [
       {
         "file": "wire-api.test.ts",
         "name": "live e2e: wire escape hatch — deepResearch.api > api.get() addresses the run by id",
-        "line": 760,
-        "endLine": 765
+        "line": 763,
+        "endLine": 768
       }
     ]
   },
@@ -1701,14 +1701,14 @@ export const FUNCTION_TEST_MAP: readonly FunctionMapEntry[] = [
       {
         "file": "wire-api.test.ts",
         "name": "live e2e: wire escape hatch — track.api > api.runNow() fires an immediate tick and returns the tick record",
-        "line": 280,
-        "endLine": 288
+        "line": 265,
+        "endLine": 273
       },
       {
         "file": "wire-api.test.ts",
         "name": "live e2e: wire escape hatch — track.api > api.deleteMonitor() retires the monitor",
-        "line": 472,
-        "endLine": 491
+        "line": 475,
+        "endLine": 494
       }
     ]
   },
@@ -1738,26 +1738,26 @@ export const FUNCTION_TEST_MAP: readonly FunctionMapEntry[] = [
       {
         "file": "wire-api.test.ts",
         "name": "live e2e: wire escape hatch — track.api > api.events() streams the monitor's raw lifecycle envelopes",
-        "line": 314,
-        "endLine": 333
+        "line": 317,
+        "endLine": 336
       },
       {
         "file": "wire-api.test.ts",
         "name": "live e2e: wire escape hatch — track.api > api.intervene() answers a real alignment question and drives the monitor to active",
-        "line": 355,
-        "endLine": 470
+        "line": 358,
+        "endLine": 473
       },
       {
         "file": "wire-api.test.ts",
         "name": "live e2e: wire escape hatch — doAnything.api > api.events() streams the raw browser-harness envelopes to run.completed",
-        "line": 602,
-        "endLine": 663
+        "line": 605,
+        "endLine": 666
       },
       {
         "file": "wire-api.test.ts",
         "name": "live e2e: wire escape hatch — deepResearch.api > api.events() streams the research pipeline to run.completed",
-        "line": 778,
-        "endLine": 806
+        "line": 781,
+        "endLine": 809
       }
     ]
   },
@@ -1801,8 +1801,8 @@ export const FUNCTION_TEST_MAP: readonly FunctionMapEntry[] = [
       {
         "file": "wire-api.test.ts",
         "name": "live e2e: wire escape hatch — deepResearch.api > api.run() posts the wire create body and returns the run envelope",
-        "line": 740,
-        "endLine": 758
+        "line": 743,
+        "endLine": 761
       }
     ]
   },
