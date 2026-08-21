@@ -511,7 +511,17 @@ export class Qoni {
       const finalEvent = parseSSEEvent<T>(buffer);
       if (finalEvent) yield finalEvent;
     } finally {
-      reader.releaseLock();
+      // `break`ing out of `for await` runs this block without ever aborting the
+      // signal, so the abort path above never fires. Releasing the lock alone
+      // leaves the response body open and its socket checked out of the pool —
+      // enough leaked SSE streams and every later request to the same origin
+      // queues until it times out. Cancel the body first; the lock goes with it.
+      await reader.cancel().catch(() => undefined);
+      try {
+        reader.releaseLock();
+      } catch {
+        // Already released by cancel() — nothing to do.
+      }
     }
   }
 
