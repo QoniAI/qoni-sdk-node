@@ -8,9 +8,6 @@ stages:
   - verify
   - release
 
-variables:
-  GITHUB_REPOSITORY: "QONIAI/qoni-sdk-node"
-
 cache:
   key:
     files:
@@ -33,40 +30,6 @@ verify:
     - pnpm typecheck
     - pnpm test:ci
     - pnpm pack --dry-run
-
-sync_github:
-  stage: release
-  needs:
-    - verify
-  variables:
-    # Mirror pushes must send complete objects. The default shallow clone
-    # (GIT_DEPTH 20) makes git build a thin pack whose delta base can fall
-    # outside the shallow boundary, which GitHub then rejects with
-    # "did not receive expected object ... / index-pack failed". A full
-    # clone gives git every object it needs to assemble the pack.
-    GIT_DEPTH: 0
-  rules:
-    - if: '$CI_COMMIT_TAG'
-      when: manual
-    - if: '$CI_COMMIT_BRANCH'
-      when: manual
-      allow_failure: true
-    - when: never
-  before_script:
-    - git --version
-  script:
-    - test -n "$GITHUB_TOKEN"
-    - git remote remove github 2>/dev/null || true
-    - git remote add github "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
-    - |
-      if [ -n "$CI_COMMIT_TAG" ]; then
-        git fetch origin "refs/tags/${CI_COMMIT_TAG}:refs/tags/${CI_COMMIT_TAG}" || true
-        git push --no-thin github "refs/tags/${CI_COMMIT_TAG}:refs/tags/${CI_COMMIT_TAG}"
-      else
-        git push --no-thin github "${CI_COMMIT_SHA}:refs/heads/${CI_COMMIT_REF_NAME}"
-      fi
-  after_script:
-    - git remote remove github 2>/dev/null || true
 
 publish_npm:
   stage: release
@@ -93,4 +56,3 @@ publish_npm:
     - npm publish --access public --registry https://registry.npmjs.org/
   after_script:
     - rm -f .npmrc
-
