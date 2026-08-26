@@ -40,7 +40,7 @@ import {
 import type { GenAuthAccessTokenInput } from "./genauth";
 import { createWebSearchNamespace } from "./web-search";
 
-const DEFAULT_QONI_HOST = "https://anima.eazo.ai/dashboard";
+const DEFAULT_QONI_HOST = "https://dashboard.qoni.ai";
 
 export class Qoni {
   private readonly fetchImpl: typeof fetch;

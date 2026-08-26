@@ -122,21 +122,21 @@ describe("Qoni", () => {
 
     const user = await client.currentUser({ accessToken: "genauth-access-token" });
 
-    expect(seen.url).toBe("https://anima.eazo.ai/oidc/me");
+    expect(seen.url).toBe("https://dashboard.qoni.ai/oidc/me");
     expect((seen.init?.headers as Record<string, string>).authorization).toBe(
       "Bearer genauth-access-token",
     );
     expect(user.data).toMatchObject({ id: "user_1", subject: "user_1" });
   });
 
-  it("uses the dashboard base path for default runtime discovery", async () => {
+  it("starts interactive delegation through the production Qoni Console by default", async () => {
     const calls: string[] = [];
     const client = new Qoni({
       accessKey: "ak_test",
       secretKey: "sk_test",
       fetch: (async (url: URL | RequestInfo) => {
         calls.push(String(url));
-        if (String(url) === "https://anima.eazo.ai/dashboard/api/v3/eak/runtime-config") {
+        if (String(url) === "https://dashboard.qoni.ai/api/v3/eak/runtime-config") {
           return jsonResponse({
             data: {
               eakBaseUrl: "https://qoni-runtime.example.com",
@@ -145,26 +145,29 @@ describe("Qoni", () => {
         }
         return jsonResponse({
           data: {
-            token: "token",
-            tokenType: "Bearer",
-            expiresIn: 3600,
+            mode: "interactive",
+            authorizationUrl: "https://dashboard.qoni.ai/delegations/grant/authorize",
             grantId: "grant",
-            auditId: "audit",
+            grantState: "grant_state",
           },
         });
       }) as typeof fetch,
     });
 
-    await client.delegateToken({
-      userId: "user_1",
+    const result = await client.delegateToken({
+      mode: "interactive",
+      redirectUri: "https://client.example.com/qoni/callback",
+      state: "business_state",
       agent: "support-assistant",
       scopes: ["gumem.memory:read"],
-      mode: "silent",
     });
 
+    expect(result.data.authorizationUrl).toBe(
+      "https://dashboard.qoni.ai/delegations/grant/authorize",
+    );
     expect(calls).toEqual([
-      "https://anima.eazo.ai/dashboard/api/v3/eak/runtime-config",
-      "https://anima.eazo.ai/dashboard/api/v3/eak/delegations",
+      "https://dashboard.qoni.ai/api/v3/eak/runtime-config",
+      "https://dashboard.qoni.ai/api/v3/eak/delegations",
     ]);
   });
 
