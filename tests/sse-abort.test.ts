@@ -30,7 +30,7 @@ function heartbeatChunk(id: number): Uint8Array {
   return encoder.encode(`id: ${id}\ndata: ${JSON.stringify(envelope)}\n\n`);
 }
 
-function makeStreamingClient(opts?: { jsonDetail?: unknown }) {
+function makeStreamingClient(opts?: { jsonDetail?: unknown; onCancel?: () => void }) {
   // Mimics real fetch semantics: the response body errors with AbortError
   // when (and only when) the REQUEST's own signal aborts. If the SDK severs
   // the user signal → request signal chain after connect, a user abort never
@@ -64,6 +64,9 @@ function makeStreamingClient(opts?: { jsonDetail?: unknown }) {
             { once: true },
           );
         },
+        cancel() {
+          opts?.onCancel?.();
+        },
       });
       return new Response(body, {
         status: 200,
@@ -75,6 +78,29 @@ function makeStreamingClient(opts?: { jsonDetail?: unknown }) {
 }
 
 describe("SSE abort propagation", () => {
+  // Regression: leaving the iterator early via `break` — the natural way to
+  // read "the first N events" — runs the generator's finally block without
+  // ever aborting a signal. Releasing the reader lock alone leaves the body
+  // open and its socket checked out, so enough abandoned streams stall every
+  // later request to the same origin until it times out. Observed live as
+  // 120s timeouts on cancel()/attach() after an events() call that broke out.
+  it("breaking out of an event stream cancels the response body", async () => {
+    let canceled = false;
+    const client = makeStreamingClient({ onCancel: () => { canceled = true; } });
+
+    for await (const _ev of client.deepResearch.api.events({
+      token: TOKEN,
+      runId: "run_1",
+    })) {
+      break; // no abort — just stop consuming
+    }
+
+    expect(
+      canceled,
+      "abandoning the iterator must cancel the SSE body, not just release the reader",
+    ).toBe(true);
+  });
+
   it("aborting the caller signal terminates an in-flight wire event stream", async () => {
     const client = makeStreamingClient();
     const controller = new AbortController();
