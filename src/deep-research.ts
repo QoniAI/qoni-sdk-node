@@ -1,4 +1,5 @@
 import { QoniValidationError } from "./errors";
+import { interactionScopes } from "./interactions";
 import {
   RunHandle,
   type Artifact,
@@ -171,15 +172,16 @@ export function createDeepResearchNamespace(transport: QoniTransport) {
           onReconnect: opts.onReconnect,
         }),
       postAction: async (action, body) => {
-        await transport.webAgentJson(
+        const response = await transport.webAgentJson(
           (action.method || "POST") as QoniHttpMethod,
           action.endpoint,
           token,
           {
             ...(body !== undefined ? { body } : {}),
-            requiredScopes: ["webagent.deep_research:manage"],
+            requiredScopes: interactionScopes(action, "webagent.deep_research:manage"),
           },
         );
+        return response.data;
       },
       cancel: async () => asRecord((await api.cancel<unknown>({ token, runId })).data),
       listArtifacts: async (signal) => {

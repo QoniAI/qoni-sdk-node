@@ -13,6 +13,8 @@ AK/SK credentials must stay on a trusted server. Do not ship them to browsers, m
 
 English | [中文](./README.zh-CN.md)
 
+[Browser handoff and embedded login (unreleased)](./docs/browser-handoff.md)
+
 ## Why Qoni
 
 Agents that perform real work need more than a backend API key. They need a user boundary, explicit scopes, expiry, observable execution, and audit metadata that explains what happened later.

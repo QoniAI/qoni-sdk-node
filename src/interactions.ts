@@ -1,4 +1,5 @@
 import { QoniValidationError } from "./errors";
+import { QoniScopes } from "./scopes";
 import { camelizeRecord } from "./run-events";
 import {
   ActionKinds,
@@ -72,6 +73,24 @@ export interface TakeControlPayload {
   liveUrl: string;
   surface?: string;
   reason?: string;
+}
+
+export interface OpenLoginOptions {
+  siteId?: string;
+  profileId?: string;
+}
+
+export interface LoginSession {
+  profileId: string;
+  siteId: string;
+  sessionId: string;
+  liveUrl: string;
+}
+
+export interface BrowserControl {
+  standaloneControlUrl: string;
+  controlTokenExpiresAt: string;
+  status: string;
 }
 
 export type WaitKind = "rate_limit" | "external" | "sleep";
@@ -241,7 +260,15 @@ export function normalizeInteraction(payload: unknown): Interaction | null {
 export type InteractionActionPoster = (
   action: Action,
   body: JsonObject | undefined,
-) => Promise<void>;
+) => Promise<unknown>;
+
+export function interactionScopes(action: Action, productScope: string): string[] {
+  if (action.kind === ActionKinds.openLogin) return [productScope, QoniScopes.WORKSPACE_WRITE];
+  if (action.kind === ActionKinds.connectControl || action.kind === ActionKinds.refreshControl) {
+    return [productScope, QoniScopes.BROWSER_CONTROL];
+  }
+  return [productScope];
+}
 
 /**
  * Typed wrapper over an {@link Interaction} that exposes one method per
@@ -279,48 +306,68 @@ export class InteractionHandle<T extends InteractionType = InteractionType> {
   }
 
   /** Answer a clarification ask. */
-  answer(text: string): Promise<void> {
-    return this.invoke(ActionKinds.answer, { response: text });
+  async answer(text: string): Promise<void> {
+    await this.invoke(ActionKinds.answer, { response: text });
   }
   /** Skip / dismiss the interaction (proceed without acting on it). */
-  skip(): Promise<void> {
-    return this.invoke(ActionKinds.skip);
+  async skip(): Promise<void> {
+    await this.invoke(ActionKinds.skip);
   }
   /** Confirm a pending confirmation (approve the plan / destructive op). */
-  confirm(): Promise<void> {
-    return this.invoke(ActionKinds.confirm);
+  async confirm(): Promise<void> {
+    await this.invoke(ActionKinds.confirm);
   }
   /** Reject a pending confirmation. */
-  reject(): Promise<void> {
-    return this.invoke(ActionKinds.reject);
+  async reject(): Promise<void> {
+    await this.invoke(ActionKinds.reject);
   }
   /** Open the login surface for a site_login interaction. */
-  openLogin(): Promise<void> {
-    return this.invoke(ActionKinds.openLogin);
+  async openLogin(options: OpenLoginOptions = {}): Promise<LoginSession> {
+    if (!this.can(ActionKinds.openLogin)) await this.invoke(ActionKinds.openLogin);
+    const sites = this.type === "site_login"
+      ? (this.interaction.payload as SiteLoginPayload).sites : [];
+    const siteId = options.siteId ?? (sites.length === 1 ? sites[0].siteId : undefined);
+    if (!siteId || !sites.some((site) => site.siteId === siteId)) {
+      throw new QoniValidationError("openLogin requires a siteId offered by this interaction");
+    }
+    const result = camelizeRecord(await this.invoke(ActionKinds.openLogin, {
+      site_id: siteId,
+      ...(options.profileId === undefined ? {} : { profile_id: options.profileId }),
+    }));
+    const session = {
+      profileId: requiredResultString(result, "profileId"),
+      siteId: requiredResultString(result, "siteId"),
+      sessionId: requiredResultString(result, "sessionId"),
+      liveUrl: requiredResultString(result, "liveUrl"),
+    };
+    if (session.siteId !== siteId || (options.profileId !== undefined && session.profileId !== options.profileId)) {
+      throw new QoniValidationError("login response does not match the requested site/Profile; do not retry automatically");
+    }
+    return session;
   }
   /** Tell the agent the user has finished signing in. */
-  confirmSignedIn(): Promise<void> {
-    return this.invoke(ActionKinds.confirmSignedIn);
+  async confirmSignedIn(): Promise<void> {
+    await this.invoke(ActionKinds.confirmSignedIn);
   }
   /** Connect to the live browser for a take_control interaction. */
-  connectControl(): Promise<void> {
-    return this.invoke(ActionKinds.connectControl);
+  async connectControl(): Promise<BrowserControl> {
+    return controlResult(await this.invoke(ActionKinds.connectControl));
   }
   /** Refresh the live control surface / live url. */
-  refreshControl(): Promise<void> {
-    return this.invoke(ActionKinds.refreshControl);
+  async refreshControl(): Promise<BrowserControl> {
+    return controlResult(await this.invoke(ActionKinds.refreshControl));
   }
   /** Hand control back to the agent. */
-  releaseControl(): Promise<void> {
-    return this.invoke(ActionKinds.releaseControl);
+  async releaseControl(): Promise<void> {
+    await this.invoke(ActionKinds.releaseControl);
   }
   /** Retry a wait interaction now. */
-  retry(): Promise<void> {
-    return this.invoke(ActionKinds.retry);
+  async retry(): Promise<void> {
+    await this.invoke(ActionKinds.retry);
   }
   /** Switch the profile a wait/login interaction is bound to. */
-  switchProfile(): Promise<void> {
-    return this.invoke(ActionKinds.switchProfile);
+  async switchProfile(): Promise<void> {
+    await this.invoke(ActionKinds.switchProfile);
   }
 
   /**
@@ -328,7 +375,7 @@ export class InteractionHandle<T extends InteractionType = InteractionType> {
    * error surfaces as a rejected promise (not a synchronous throw), keeping the
    * method contract uniformly promise-based.
    */
-  private async invoke(kind: ActionKind, body?: JsonObject): Promise<void> {
+  private async invoke(kind: ActionKind, body?: JsonObject): Promise<unknown> {
     const action = this.interaction.actions.find((a) => a.kind === kind);
     if (!action) {
       const offered = this.interaction.actions.map((a) => a.kind).join(", ") || "none";
@@ -338,6 +385,21 @@ export class InteractionHandle<T extends InteractionType = InteractionType> {
           "Only call methods whose action the interaction currently offers.",
       );
     }
-    await this.post(action, body);
+    return this.post(action, body);
   }
+}
+
+function requiredResultString(result: JsonObject, key: string): string {
+  const value = asString(result[key]);
+  if (!value) throw new QoniValidationError(`interaction response is missing ${key}; do not retry a state-changing action automatically`);
+  return value;
+}
+
+function controlResult(value: unknown): BrowserControl {
+  const result = camelizeRecord(value);
+  return {
+    standaloneControlUrl: requiredResultString(result, "standaloneControlUrl"),
+    controlTokenExpiresAt: requiredResultString(result, "controlTokenExpiresAt"),
+    status: requiredResultString(result, "status"),
+  };
 }

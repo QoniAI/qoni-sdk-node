@@ -6,6 +6,16 @@ This project follows semantic versioning. Before `1.0.0`, minor versions may
 include SDK API changes, while patch versions are reserved for backward
 compatible fixes.
 
+## Unreleased
+
+- Return typed login and control tickets instead of discarding action responses.
+- Send an explicitly selected site and optional existing Profile when opening login.
+- Exchange the additional login/control scopes only for the actions that need them;
+  ordinary product delegation bundles remain unchanged.
+- Document server-side controllers, embedded Live View, and the separate persistent
+  Profile lifecycle. Existing `Promise<void>` wrappers around login/control methods
+  must accept the new result type. This requires a minor-version release.
+
 ## 0.4.3 - 2026-09-09
 
 ### Fixed

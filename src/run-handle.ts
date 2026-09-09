@@ -111,7 +111,7 @@ export interface RunWireOps {
    * Interaction model's `actions[]` carry the endpoint + method, so the SDK
    * never hard-codes a HITL route — it forwards what the backend declared.
    */
-  postAction(action: Action, body: JsonObject | undefined): Promise<void>;
+  postAction(action: Action, body: JsonObject | undefined): Promise<unknown>;
   cancel(reason?: string): Promise<JsonObject>;
   /** Products without artifacts leave this undefined → `result.artifacts` is []. */
   listArtifacts?(signal?: AbortSignal): Promise<Artifact[]>;

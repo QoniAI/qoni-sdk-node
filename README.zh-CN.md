@@ -1,5 +1,7 @@
 # @qoniai/qoni
 
+[浏览器接管与嵌入式登录（未发布）](./docs/browser-handoff.md)
+
 [English](./README.md) | 中文
 
 `@qoniai/qoni` 是面向 Node.js 服务端的统一 Qoni SDK，用一条清晰的调用链串起 Agent 委托授权、GenAuth 用户管理、GUMem 长期记忆、WebAgent 网页行动、Do Anything、Web Search 和 Track 监控能力。

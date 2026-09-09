@@ -1,5 +1,5 @@
 import { QoniValidationError } from "./errors";
-import { InteractionHandle, type Interaction } from "./interactions";
+import { InteractionHandle, interactionScopes, type Interaction } from "./interactions";
 import { camelizeRecord, normalizeRunEvent, type MonitorEvent } from "./run-events";
 import {
   isJsonObject,
@@ -61,7 +61,7 @@ interface MonitorWireOps {
   update(input: JsonObject): Promise<JsonObject>;
   runNow(): Promise<JsonObject>;
   streamEvents(opts: MonitorEventsOptions): AsyncIterable<QoniEvent<unknown>>;
-  postAction(action: Action, body: JsonObject | undefined): Promise<void>;
+  postAction(action: Action, body: JsonObject | undefined): Promise<unknown>;
   listRuns(opts: MonitorRunsOptions): Promise<JsonObject>;
   getRun(runId: string): Promise<JsonObject>;
   delete(): Promise<void>;
@@ -295,15 +295,16 @@ export function createTrackNamespace(transport: QoniTransport) {
       streamEvents: (opts) =>
         api.events({ token, monitorId, lastEventId: opts.lastEventId, signal: opts.signal }),
       postAction: async (action, body) => {
-        await transport.webAgentJson(
+        const response = await transport.webAgentJson(
           (action.method || "POST") as QoniHttpMethod,
           action.endpoint,
           token,
           {
             ...(body !== undefined ? { body } : {}),
-            requiredScopes: ["webagent.track:manage"],
+            requiredScopes: interactionScopes(action, "webagent.track:manage"),
           },
         );
+        return response.data;
       },
       listRuns: async (opts) =>
         asRecord((await api.listRuns<unknown>({ token, monitorId, ...opts })).data),

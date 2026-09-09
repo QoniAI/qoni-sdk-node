@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { QoniValidationError } from "../src";
-import { InteractionHandle, normalizeInteraction } from "../src/interactions";
+import { Qoni, QoniValidationError } from "../src";
+import { InteractionHandle, interactionScopes, normalizeInteraction } from "../src/interactions";
 import type { Action, Interaction } from "../src/interactions";
 import { normalizeRunEvent } from "../src/run-events";
 import type { QoniEvent } from "../src/types";
@@ -129,6 +129,106 @@ describe("normalizeInteraction", () => {
   it("returns null for a payload without a recognized type", () => {
     expect(normalizeInteraction({ id: "x", status: "pending" })).toBeNull();
     expect(normalizeInteraction("nonsense")).toBeNull();
+  });
+});
+
+describe("browser handoff results", () => {
+  it.each([
+    ["open_login", "webagent.workspace:write"],
+    ["connect_control", "webagent.browser:control"],
+    ["refresh_control", "webagent.browser:control"],
+    ["release_control", undefined],
+    ["answer", undefined],
+  ])("requests only the additional grant required by %s", (kind, extra) => {
+    const action = { kind, endpoint: "/interaction", method: "POST", label: "" } as Action;
+    expect(interactionScopes(action, "webagent.do_anything:manage")).toEqual(
+      extra ? ["webagent.do_anything:manage", extra] : ["webagent.do_anything:manage"],
+    );
+  });
+
+  const login = {
+    profile_id: "profile-1", site_id: "example", session_id: "login-1",
+    live_url: "https://www.browserbase.com/live?token=synthetic",
+  };
+  const control = {
+    standalone_control_url: "https://www.browserbase.com/live?token=synthetic",
+    control_token_expires_at: "2026-09-10T00:00:00Z", status: "active",
+  };
+
+  function make(sites = ["example"], result: unknown = login) {
+    const posted: unknown[] = [];
+    const interaction = normalizeInteraction({
+      id: "login-request", type: "site_login",
+      sites: sites.map((site_id) => ({ site_id })),
+      actions: [{ kind: "open_login", endpoint: "/profiles/login" }],
+    })!;
+    return {
+      posted,
+      handle: new InteractionHandle(interaction, async (action, body) => {
+        posted.push({ endpoint: action.endpoint, body });
+        return result;
+      }),
+    };
+  }
+
+  it("sends the offered site and existing Profile and returns the Viewer", async () => {
+    const { handle, posted } = make();
+    const result = await handle.openLogin({ profileId: "profile-1" });
+    expect(result).toEqual({ profileId: "profile-1", siteId: "example", sessionId: "login-1", liveUrl: login.live_url });
+    expect(posted).toEqual([{ endpoint: "/profiles/login", body: { site_id: "example", profile_id: "profile-1" } }]);
+  });
+
+  it("requires selection for multiple sites and rejects unoffered sites without posting", async () => {
+    const { handle, posted } = make(["example", "second"]);
+    await expect(handle.openLogin()).rejects.toThrow("siteId");
+    await expect(handle.openLogin({ siteId: "third" })).rejects.toThrow("siteId");
+    expect(posted).toEqual([]);
+    await expect(handle.openLogin({ siteId: "example" })).resolves.toMatchObject({ siteId: "example" });
+  });
+
+  it.each([undefined, {}, { ...login, live_url: "" }, { ...login, profile_id: "other" }, { ...login, site_id: "other" }])("rejects incomplete or mismatched responses without retrying", async (response) => {
+    const { handle, posted } = make(["example"], response ?? {});
+    await expect(handle.openLogin({ profileId: "profile-1" })).rejects.toBeInstanceOf(QoniValidationError);
+    expect(posted).toHaveLength(1);
+  });
+
+  it.each(["connect_control", "refresh_control"])("preserves %s responses", async (kind) => {
+    const interaction = normalizeInteraction({ id: "control-1", type: "take_control", actions: [{ kind, endpoint: `/control/${kind}` }] })!;
+    const handle = new InteractionHandle(interaction, async () => control);
+    const result = kind === "connect_control" ? await handle.connectControl() : await handle.refreshControl();
+    expect(result).toEqual({ standaloneControlUrl: control.standalone_control_url, controlTokenExpiresAt: control.control_token_expires_at, status: "active" });
+  });
+
+  it("does not discard the response inside the Do Anything transport", async () => {
+    const token = `${Buffer.from('{}').toString('base64url')}.${Buffer.from(JSON.stringify({ webagent_tenant_id: "tenant-1" })).toString('base64url')}.`;
+    const bodies: unknown[] = [];
+    const client = new Qoni({ accessKey: "ak_test", secretKey: "sk_test", webAgentBaseUrl: "https://api.example", fetch: async (_url, init) => {
+      if (init?.method === "POST") bodies.push(JSON.parse(String(init.body)));
+      return new Response(JSON.stringify(init?.method === "POST" ? login : { id: "run-1", session_id: "session-1", status: "waiting" }), { headers: { "content-type": "application/json" } });
+    } });
+    const run = await client.doAnything.attach("run-1", { token });
+    const interaction = make().handle.interaction;
+    await expect(run.interactionHandle(interaction).openLogin({ profileId: "profile-1" })).resolves.toMatchObject({ liveUrl: login.live_url });
+    expect(bodies).toEqual([{ site_id: "example", profile_id: "profile-1" }]);
+  });
+
+  it.each(["take_control", "refresh_control_url", "release_control"])("exchanges the correct grant for %s", async (kind) => {
+    const jwt = (claims: unknown) => `${Buffer.from('{}').toString('base64url')}.${Buffer.from(JSON.stringify(claims)).toString('base64url')}.`;
+    const token = jwt({ token_type: "eak_delegation_token" });
+    const product = jwt({ webagent_tenant_id: "tenant-1" });
+    const scopes: unknown[] = [];
+    const client = new Qoni({ accessKey: "ak_test", secretKey: "sk_test", webAgentBaseUrl: "https://api.example", fetch: async (url, init) => {
+      if (String(url).endsWith("/token-exchange")) {
+        scopes.push(JSON.parse(String(init?.body)).scopes);
+        return new Response(JSON.stringify({ data: { accessToken: product, expiresIn: 300 } }));
+      }
+      return new Response(JSON.stringify(control));
+    } });
+    const result = await client.doAnything.api.intervene({ token, runId: "run-1", kind });
+    expect(result.data).toEqual(control);
+    expect(scopes).toEqual([kind === "release_control"
+      ? ["webagent.do_anything:manage"]
+      : ["webagent.browser:control", "webagent.do_anything:manage"]]);
   });
 });
 

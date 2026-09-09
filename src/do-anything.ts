@@ -1,4 +1,5 @@
 import { QoniValidationError } from "./errors";
+import { interactionScopes } from "./interactions";
 import {
   RunHandle,
   type CaptureOptions,
@@ -195,7 +196,9 @@ export function createDoAnythingNamespace(transport: QoniTransport) {
         input.token,
         {
           body: normalizeDoAnythingInterveneInput(omit(input, "token", "runId")),
-          requiredScopes: ["webagent.do_anything:manage"],
+          requiredScopes: input.kind === "take_control" || input.kind === "refresh_control_url"
+            ? ["webagent.do_anything:manage", "webagent.browser:control"]
+            : ["webagent.do_anything:manage"],
         },
       ),
 
@@ -255,15 +258,16 @@ export function createDoAnythingNamespace(transport: QoniTransport) {
           includeScreenshots: capture?.screenshots ? undefined : false,
         }),
       postAction: async (action, body) => {
-        await transport.webAgentJson(
+        const response = await transport.webAgentJson(
           (action.method || "POST") as QoniHttpMethod,
           action.endpoint,
           token,
           {
             ...(body !== undefined ? { body } : {}),
-            requiredScopes: ["webagent.do_anything:manage"],
+            requiredScopes: interactionScopes(action, "webagent.do_anything:manage"),
           },
         );
+        return response.data;
       },
       cancel: async (reason) =>
         asRecord(

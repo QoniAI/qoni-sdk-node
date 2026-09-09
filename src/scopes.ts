@@ -22,6 +22,8 @@ export const QoniScopes = {
   DEEP_RESEARCH_MANAGE: "webagent.deep_research:manage",
   TRACK_READ: "webagent.track:read",
   TRACK_MANAGE: "webagent.track:manage",
+  WORKSPACE_WRITE: "webagent.workspace:write",
+  BROWSER_CONTROL: "webagent.browser:control",
 } as const;
 
 export type QoniScope = (typeof QoniScopes)[keyof typeof QoniScopes];
