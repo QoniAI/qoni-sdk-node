@@ -6,6 +6,16 @@ This project follows semantic versioning. Before `1.0.0`, minor versions may
 include SDK API changes, while patch versions are reserved for backward
 compatible fixes.
 
+## 0.4.3 - 2026-09-09
+
+### Fixed
+
+- Treat malformed or empty screenshot data URIs as undecodable instead of
+  emitting invalid screenshot bytes or interrupting `wait()`. Preserve the
+  existing progress/raw fallback with screenshot capture enabled or disabled.
+- Keep valid padded, unpadded, whitespace-containing and URL-safe base64
+  screenshots compatible.
+
 ## 0.4.2 - 2026-09-09
 
 ### Fixed
