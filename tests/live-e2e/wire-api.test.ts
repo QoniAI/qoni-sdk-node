@@ -259,6 +259,19 @@ describeLiveE2E("live e2e: wire escape hatch — track.api", () => {
     expect(wire.data.intent_text).toBe(intent);
   });
 
+  // Must precede pause/resume: resuming a monitor fires a tick of its own, so
+  // running this afterwards would assert the baseline contract against what is
+  // by then the monitor's second tick.
+  it("api.runNow() fires an immediate tick and returns the tick record", async () => {
+    const tick = await client.track.api.runNow<JsonObject>({ token, monitorId });
+    expect(tick.data.monitor_id).toBe(monitorId);
+    expect(tick.data.run_id).toBeTruthy();
+    expect(typeof tick.data.tick_n).toBe("number");
+    // The first tick establishes the baseline snapshot, by contract.
+    expect(tick.data.is_first_tick).toBe(true);
+    expect(tick.data.outcome).toBe("baseline");
+  });
+
   it("api.updateMonitor() applies pause/resume through the PATCH route", async () => {
     const paused = await client.track.api.updateMonitor<JsonObject>({
       token,
@@ -275,16 +288,6 @@ describeLiveE2E("live e2e: wire escape hatch — track.api", () => {
       action: "resume",
     });
     expect(resumed.data.status).toBe("active");
-  });
-
-  it("api.runNow() fires an immediate tick and returns the tick record", async () => {
-    const tick = await client.track.api.runNow<JsonObject>({ token, monitorId });
-    expect(tick.data.monitor_id).toBe(monitorId);
-    expect(tick.data.run_id).toBeTruthy();
-    expect(typeof tick.data.tick_n).toBe("number");
-    // The first tick establishes the baseline snapshot, by contract.
-    expect(tick.data.is_first_tick).toBe(true);
-    expect(tick.data.outcome).toBe("baseline");
   });
 
   it("api.listRuns() / api.getRun() expose the tick runs at wire level", async () => {

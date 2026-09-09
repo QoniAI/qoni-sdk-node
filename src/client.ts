@@ -40,7 +40,7 @@ import {
 import type { GenAuthAccessTokenInput } from "./genauth";
 import { createWebSearchNamespace } from "./web-search";
 
-const DEFAULT_QONI_HOST = "https://anima.eazo.ai/dashboard";
+const DEFAULT_QONI_HOST = "https://dashboard.qoni.ai";
 
 export class Qoni {
   private readonly fetchImpl: typeof fetch;
@@ -511,7 +511,17 @@ export class Qoni {
       const finalEvent = parseSSEEvent<T>(buffer);
       if (finalEvent) yield finalEvent;
     } finally {
-      reader.releaseLock();
+      // `break`ing out of `for await` runs this block without ever aborting the
+      // signal, so the abort path above never fires. Releasing the lock alone
+      // leaves the response body open and its socket checked out of the pool —
+      // enough leaked SSE streams and every later request to the same origin
+      // queues until it times out. Cancel the body first; the lock goes with it.
+      await reader.cancel().catch(() => undefined);
+      try {
+        reader.releaseLock();
+      } catch {
+        // Already released by cancel() — nothing to do.
+      }
     }
   }
 
@@ -559,11 +569,14 @@ export class Qoni {
   private async baseUrlFor(service: QoniService): Promise<string> {
     const explicit = this.explicitBaseUrlFor(service);
     if (explicit) return explicit;
-    const runtime = await this.runtimeConfig();
     // AK/SK signatures are scoped to the configured control-plane endpoint.
     // Keep signed Qoni calls on that trusted boundary: following a cross-origin
     // runtime URL can strip Authorization on redirect or disclose credentials.
+    // Resolved before the discovery fetch below, so a Qoni call never depends
+    // on a document it does not read — otherwise an unavailable runtime-config
+    // takes down every Qoni request with it.
     if (service === "qoni") return this.host;
+    const runtime = await this.runtimeConfig();
     const hostOrigin = originBaseUrl(this.host);
     if (service === "genauth") return runtime.genauthBaseUrl ?? hostOrigin;
     if (service === "gumem") return runtime.gumemBaseUrl ?? hostOrigin;

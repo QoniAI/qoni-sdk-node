@@ -13,6 +13,37 @@ compatible fixes.
 - Rename the public SDK constructor from its previous longer name to `Qoni`.
   The previous constructor export has been removed.
 
+### Changed
+
+- The default Qoni host is now `https://dashboard.qoni.ai` (was
+  `https://anima.eazo.ai/dashboard`). Callers that never passed an explicit `host`
+  reach a different control plane after upgrading. Note that the new default has
+  no `/dashboard` path segment — pass `host` explicitly for private or local
+  deployments.
+- Service resolution no longer fetches the runtime-config document to answer a
+  Qoni base URL. It never read the result for that service, but it did require
+  the fetch to succeed, so an unavailable discovery endpoint failed every Qoni
+  call. Discovery is still fetched lazily for `genauth` / `gumem` / `webagent`,
+  which do read it.
+- Signed Qoni requests always stay on the configured control-plane host. Service
+  resolution no longer follows `eakBaseUrl` from the runtime config for the
+  Qoni service, because AK/SK signatures are scoped to that endpoint and a
+  cross-origin runtime URL can strip `Authorization` on redirect or disclose
+  credentials to an unintended origin.
+- `unstableRequest()` without a `token` now signs the call with AK/SK instead of
+  sending it unauthenticated. Caller-supplied `authorization`, `content-type`,
+  `date` and `x-authing-*` headers are dropped so they cannot corrupt the
+  signature.
+
+### Fixed
+
+- The previous default host was unreachable for SDK API calls. A client created
+  as `new Qoni({ accessKey, secretKey })` now reaches the live control plane.
+- Abandoning an event iterator no longer leaks its connection. Leaving
+  `for await (const event of run.events())` through a `break` now cancels the
+  response body before releasing the reader lock, returning the socket to the
+  connection pool.
+
 ### Added
 
 - `RunHandle.events()` and `wait()` accept `onWireEvent` and `onReconnect`

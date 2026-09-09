@@ -122,21 +122,24 @@ describe("Qoni", () => {
 
     const user = await client.currentUser({ accessToken: "genauth-access-token" });
 
-    expect(seen.url).toBe("https://anima.eazo.ai/oidc/me");
+    expect(seen.url).toBe("https://dashboard.qoni.ai/oidc/me");
     expect((seen.init?.headers as Record<string, string>).authorization).toBe(
       "Bearer genauth-access-token",
     );
     expect(user.data).toMatchObject({ id: "user_1", subject: "user_1" });
   });
 
-  it("uses the dashboard base path for default runtime discovery", async () => {
+  it("starts interactive delegation on the production host without runtime discovery", async () => {
     const calls: string[] = [];
     const client = new Qoni({
       accessKey: "ak_test",
       secretKey: "sk_test",
       fetch: (async (url: URL | RequestInfo) => {
         calls.push(String(url));
-        if (String(url) === "https://anima.eazo.ai/dashboard/api/v3/eak/runtime-config") {
+        // Discovery advertises a different control-plane URL. Signed Qoni calls must
+        // neither follow it nor depend on this document being reachable, so
+        // this branch must stay unreached — the call assertion below proves it.
+        if (String(url).endsWith("/api/v3/eak/runtime-config")) {
           return jsonResponse({
             data: {
               eakBaseUrl: "https://qoni-runtime.example.com",
@@ -145,27 +148,27 @@ describe("Qoni", () => {
         }
         return jsonResponse({
           data: {
-            token: "token",
-            tokenType: "Bearer",
-            expiresIn: 3600,
+            mode: "interactive",
+            authorizationUrl: "https://dashboard.qoni.ai/delegations/grant/authorize",
             grantId: "grant",
-            auditId: "audit",
+            grantState: "grant_state",
           },
         });
       }) as typeof fetch,
     });
 
-    await client.delegateToken({
-      userId: "user_1",
+    const result = await client.delegateToken({
+      mode: "interactive",
+      redirectUri: "https://client.example.com/qoni/callback",
+      state: "business_state",
       agent: "support-assistant",
       scopes: ["gumem.memory:read"],
-      mode: "silent",
     });
 
-    expect(calls).toEqual([
-      "https://anima.eazo.ai/dashboard/api/v3/eak/runtime-config",
-      "https://anima.eazo.ai/dashboard/api/v3/eak/delegations",
-    ]);
+    expect(result.data.authorizationUrl).toBe(
+      "https://dashboard.qoni.ai/delegations/grant/authorize",
+    );
+    expect(calls).toEqual(["https://dashboard.qoni.ai/api/v3/eak/delegations"]);
   });
 
   it("preserves the configured base path for signed JSON requests", async () => {
@@ -203,7 +206,6 @@ describe("Qoni", () => {
     });
 
     expect(calls).toEqual([
-      "https://qoni.example.com/dashboard/api/v3/eak/runtime-config",
       "https://qoni.example.com/dashboard/api/v3/eak/delegations",
     ]);
   });
@@ -810,21 +812,24 @@ describe("Qoni", () => {
     await client.gumem.recall({ token, sessionId: "default", query: "memory" });
     await client.doAnything.api.createSession({ token });
 
+    // The delegation is a Qoni call, so it goes straight to the configured
+    // host. Discovery is fetched later, on the first call that actually reads
+    // it — here the GUMem recall.
     expect(calls.map((call) => call.url)).toEqual([
-      "https://console.example.com/api/v3/eak/runtime-config",
       "https://console.example.com/api/v3/eak/delegations",
+      "https://console.example.com/api/v3/eak/runtime-config",
       "https://gumem.example.com/api/sessions/default/context?query=memory&details=false",
       "https://webagent.example.com/api/v1/projects/tenant_1/do_anything/sessions",
     ]);
-    expect((calls[1].init?.headers as Record<string, string>).authorization).toMatch(
+    expect((calls[0].init?.headers as Record<string, string>).authorization).toMatch(
       /^authing ak_test:/,
     );
-    expect((calls[1].init?.headers as Record<string, string>)["x-authing-date"]).toEqual(
+    expect((calls[0].init?.headers as Record<string, string>)["x-authing-date"]).toEqual(
       expect.any(String),
     );
   });
 
-  it("signs tokenless raw Qoni requests on the configured host after discovery", async () => {
+  it("signs tokenless raw Qoni requests on the configured host without discovery", async () => {
     const calls: Array<{ url: string; init?: RequestInit }> = [];
     const client = new Qoni({
       accessKey: "ak_test",
@@ -852,11 +857,12 @@ describe("Qoni", () => {
       headers: { "x-custom": "kept" },
     });
 
+    // One request, not two: the caller's own. Resolving the Qoni base URL no
+    // longer triggers a separate discovery fetch of the very same path.
     expect(calls.map((call) => call.url)).toEqual([
       "https://console.example.com/dashboard/api/v3/eak/runtime-config",
-      "https://console.example.com/dashboard/api/v3/eak/runtime-config",
     ]);
-    const headers = calls[1].init?.headers as Record<string, string>;
+    const headers = calls[0].init?.headers as Record<string, string>;
     expect(headers.authorization).toMatch(/^authing ak_test:/);
     expect(headers["x-authing-date"]).toEqual(expect.any(String));
     expect(headers["x-authing-signature-method"]).toBe("HMAC-SHA1");
@@ -915,8 +921,9 @@ describe("Qoni", () => {
     });
     await client.doAnything.api.createSession({ token });
 
+    // Every service host is configured explicitly, so discovery is never
+    // needed — and is therefore never fetched.
     expect(calls.map((call) => call.url)).toEqual([
-      "https://console.example.com/api/v3/eak/runtime-config",
       "https://console.example.com/api/v3/eak/delegations",
       "https://configured.genauth.example.com/oidc/me",
       "https://configured.gumem.example.com/api/sessions/default/context?query=memory&details=false",

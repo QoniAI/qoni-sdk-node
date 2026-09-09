@@ -46,7 +46,7 @@ if (violations.length > 0) {
 async function walk(directory) {
   const entries = await readdir(directory, { withFileTypes: true });
   for (const entry of entries) {
-    if (entry.isDirectory() && ignoredDirectories.has(entry.name)) continue;
+    if (ignoredDirectories.has(entry.name)) continue;
 
     const absolutePath = path.join(directory, entry.name);
     const relativePath = path.relative(root, absolutePath);
