@@ -170,10 +170,20 @@ export function decodeDataUri(uri: string): { bytes: Uint8Array; mime: string } 
   const match = /^data:([^;,]*)?(;base64)?,(.*)$/s.exec(uri);
   if (!match) return undefined;
   const [, mime, isBase64, body] = match;
-  const bytes = isBase64
-    ? new Uint8Array(Buffer.from(body, "base64"))
-    : new TextEncoder().encode(decodeURIComponent(body));
-  return { bytes, mime: mime || "application/octet-stream" };
+  const encoded = isBase64 ? body.replace(/\s/g, "") : body;
+  if (isBase64 && (
+    !/^[A-Za-z0-9+/_-]+={0,2}$/.test(encoded) ||
+    encoded.length % 4 === 1 ||
+    (encoded.includes("=") && encoded.length % 4 !== 0)
+  )) return undefined;
+  try {
+    const bytes = isBase64
+      ? new Uint8Array(Buffer.from(encoded, "base64"))
+      : new TextEncoder().encode(decodeURIComponent(encoded));
+    return bytes.length ? { bytes, mime: mime || "application/octet-stream" } : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 function asString(value: unknown): string | undefined {

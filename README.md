@@ -161,6 +161,8 @@ console.log(result.output);
 
 `run()` returns a `RunHandle` typed to the product: `qoni.deepResearch.run()` is a `RunHandle<DeepResearchEvent>`, so its events are narrowed to what Deep Research actually emits. `capture: { screenshots: true }` opts into per-step screenshots, decoded to bytes for you. `wait()` drives the run to its terminal state and settles the result (`result.raw` carries cost, step counts, token usage).
 
+Undecodable or empty screenshot data URIs never interrupt `wait()` or invoke `onScreenshot`, regardless of capture settings. They follow the existing progress fallback when a human-readable message is available; `onWireEvent` always retains the original payload, including frames with no progress text.
+
 > **Best practice — match `event.type` against the `QoniEventTypes` constants.**
 > Each product handle is typed to its own event set, so in TypeScript a case
 > for another product's event is a compile error and autocomplete shows only

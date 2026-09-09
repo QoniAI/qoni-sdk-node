@@ -10,6 +10,7 @@ import {
 } from "../src";
 import type { RunEvent } from "../src";
 import type { RunWireOps } from "../src/run-handle";
+import { decodeDataUri } from "../src/run-events";
 
 // ---------------------------------------------------------------------------
 // Harness: realistic wire-shaped fixtures (double envelope, snake_case),
@@ -93,6 +94,84 @@ function makeClient(routes: (call: Captured) => Response | Promise<Response>, op
 
 const IMAGE_BYTES = Buffer.from("fake-jpeg-bytes");
 const SCREENSHOT_DATA_URI = `data:image/jpeg;base64,${IMAGE_BYTES.toString("base64")}`;
+
+describe("screenshot data URI decoding", () => {
+  it.each([
+    ["data:image/jpeg;base64,aGk=", "hi"],
+    ["data:image/jpeg;base64,aGk", "hi"],
+    ["data:image/jpeg;base64,YQ==", "a"],
+    ["data:image/jpeg;base64,YQ", "a"],
+    ["data:image/jpeg;base64, aG\nk=\r\n", "hi"],
+    ["data:image/jpeg;base64,SGVsbG8_", "Hello?"],
+    ["data:image/jpeg;base64,SGVsbG8-", "Hello>"],
+    ["data:text/plain,hello%20world", "hello world"],
+  ])("preserves supported nonempty decoding for %s", (uri, expected) => {
+    expect(Buffer.from(decodeDataUri(uri)!.bytes).toString()).toBe(expected);
+  });
+
+  describe.each([false, true])("capture.screenshots=%s", (screenshots) => {
+    it.each([
+      "data:image/jpeg;base64,!!!!",
+      "data:image/jpeg;base64,aGk=!!",
+      "data:image/jpeg;base64,",
+      "data:image/jpeg;base64, \n",
+      "data:image/jpeg;base64,A",
+      "data:image/jpeg;base64,aGk===",
+      "data:image/jpeg;base64,a=Gk",
+      "data:image/jpeg,%",
+      "data:image/jpeg,%GG",
+      "data:image/jpeg,%E0%A4%A",
+      "data:image/jpeg,%FF",
+      "data:image/jpeg,",
+    ])("degrades malformed screenshot %s to progress and still settles wait", async (screenshotUrl) => {
+      const payload = { screenshot_url: screenshotUrl, note: "Screenshot unavailable" };
+      const { client, calls } = makeClient((call) => {
+        if (call.pathname.endsWith("/events")) {
+          return sseResponse(
+            frame(1, "run.screenshot", payload) +
+            frame(2, "run.completed", { terminal_reason: "done", output: "lean" }),
+          );
+        }
+        return jsonResponse({ data: { run_id: "run_1", status: "succeeded", output: "canonical" } });
+      });
+      const run = await client.doAnything.attach("run_1", { token: TOKEN, capture: { screenshots } });
+      const events: RunEvent[] = [];
+      const wireEvents: RunEvent["raw"][] = [];
+      const onScreenshot = vi.fn();
+      await expect(run.wait({
+        onEvent: (event) => { events.push(event); },
+        onWireEvent: (wire) => { wireEvents.push(wire); },
+        onScreenshot,
+      })).resolves.toMatchObject({ status: "succeeded", output: "canonical" });
+      expect(events.map((event) => event.type)).toEqual(["progress", "done"]);
+      expect(events[0].data).toBe("Screenshot unavailable");
+      expect(events[0].raw).toBe(wireEvents[0]);
+      expect(wireEvents[0].data).toMatchObject({ data: payload });
+      expect(onScreenshot).not.toHaveBeenCalled();
+      expect(calls.map((call) => call.method)).toEqual(["GET", "GET", "GET"]);
+    });
+
+    it("retains undecodable screenshots without progress text in the raw stream", async () => {
+      const payload = { screenshot_url: "data:image/jpeg,%" };
+      const { client } = makeClient((call) => call.pathname.endsWith("/events")
+        ? sseResponse(frame(1, "run.screenshot", payload) + frame(2, "run.completed", { terminal_reason: "done" }))
+        : jsonResponse({ data: { run_id: "run_1", status: "succeeded", output: "canonical" } }));
+      const run = await client.doAnything.attach("run_1", { token: TOKEN, capture: { screenshots } });
+      const events: RunEvent[] = [];
+      const wireEvents: RunEvent["raw"][] = [];
+      const onScreenshot = vi.fn();
+      await expect(run.wait({
+        onEvent: (event) => { events.push(event); },
+        onWireEvent: (wire) => { wireEvents.push(wire); },
+        onScreenshot,
+      })).resolves.toMatchObject({ status: "succeeded", output: "canonical" });
+      expect(events.map((event) => event.type)).toEqual(["done"]);
+      expect(wireEvents.map((wire) => wire.event)).toEqual(["run.screenshot", "run.completed"]);
+      expect(wireEvents[0].data).toMatchObject({ data: payload });
+      expect(onScreenshot).not.toHaveBeenCalled();
+    });
+  });
+});
 
 describe("run wait failure boundaries", () => {
   function makeRun(overrides: Partial<RunWireOps> = {}) {
