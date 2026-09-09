@@ -104,7 +104,7 @@ export interface RunWaitOptions {
  * with the token + run addressing already bound.
  */
 export interface RunWireOps {
-  getDetail(): Promise<JsonObject>;
+  getDetail(signal?: AbortSignal): Promise<JsonObject>;
   streamEvents(opts: RunEventsOptions): AsyncIterable<QoniEvent<unknown>>;
   /**
    * Invoke an interaction action by posting to its declared endpoint. The
@@ -114,7 +114,7 @@ export interface RunWireOps {
   postAction(action: Action, body: JsonObject | undefined): Promise<void>;
   cancel(reason?: string): Promise<JsonObject>;
   /** Products without artifacts leave this undefined → `result.artifacts` is []. */
-  listArtifacts?(): Promise<Artifact[]>;
+  listArtifacts?(signal?: AbortSignal): Promise<Artifact[]>;
 }
 
 // Wire statuses cancel() treats as "may already be terminal" — it then
@@ -171,11 +171,11 @@ export class RunHandle<E extends RunEvent = RunEvent> {
 
   /** Drive the run to a terminal state and return the settled result. */
   async wait(opts: RunWaitOptions = {}): Promise<RunResult> {
-    const { signal, timedOut } = withTimeout(opts.signal, opts.timeoutMs);
+    const { signal, timedOut, dispose } = withTimeout(opts.signal, opts.timeoutMs);
     let lastEventId: string | undefined;
     let eventIdAtLastClose: string | undefined;
     let sawCleanClose = false;
-    let terminalPayload: JsonObject | undefined;
+    let terminalDetail: JsonObject | undefined;
     let terminalDoneReason: string | undefined;
     let screenshotIndex = 0;
 
@@ -184,22 +184,19 @@ export class RunHandle<E extends RunEvent = RunEvent> {
         for await (const event of this.events({
           signal,
           lastEventId,
-          onWireEvent: opts.onWireEvent,
+          onWireEvent: (wire) => waitWithSignal(() => {
+            if (wire.id !== undefined) lastEventId = wire.id;
+            return opts.onWireEvent?.(wire);
+          }, signal),
           onReconnect: opts.onReconnect,
         })) {
-          if (event.raw.id) lastEventId = event.raw.id;
-          await opts.onEvent?.(event);
+          await waitWithSignal(() => opts.onEvent?.(event), signal);
           if (event.type === "screenshot") {
-            await opts.onScreenshot?.(event.image, screenshotIndex++);
+            await waitWithSignal(() => opts.onScreenshot?.(event.image, screenshotIndex++), signal);
           } else if (event.type === "interaction") {
-            await opts.onInteraction?.(this.interactionHandle(event.data), event);
+            await waitWithSignal(() => opts.onInteraction?.(this.interactionHandle(event.data), event), signal);
           }
           if (event.isTerminal) {
-            // Fallback only (used if the canonical getDetail() read below
-            // fails): the raw wire envelope, not the trimmed `done` data.
-            terminalPayload = isJsonObject(event.raw.data)
-              ? (event.raw.data as JsonObject)
-              : undefined;
             // The `done` event carries terminalReason even when the detail
             // envelope omits it — keep it as a fallback so RunResult isn't
             // missing a reason the stream already delivered.
@@ -212,8 +209,11 @@ export class RunHandle<E extends RunEvent = RunEvent> {
         // the last seen event id — but only if the stream made progress since
         // the previous clean close, so a server that keeps closing an idle
         // stream cannot spin us in a tight reconnect loop.
-        const detail = await this.ops.getDetail();
-        if (isTerminalRunStatus(detail.status)) break;
+        const detail = await waitWithSignal(() => this.ops.getDetail(signal), signal);
+        if (isTerminalRunStatus(normalizeRunStatus(this.id, detail).status)) {
+          terminalDetail = detail;
+          break;
+        }
         if (sawCleanClose && lastEventId === eventIdAtLastClose) {
           throw new QoniError(
             "run event stream ended before a terminal event while the run is " +
@@ -224,6 +224,14 @@ export class RunHandle<E extends RunEvent = RunEvent> {
         sawCleanClose = true;
         eventIdAtLastClose = lastEventId;
       }
+
+      const detail = terminalDetail ?? await waitWithSignal(() => this.ops.getDetail(signal), signal);
+      this.#adoptSessionRef(detail);
+      const result = settleRunResult(this.id, detail, [], terminalDoneReason);
+      result.artifacts = this.ops.listArtifacts
+        ? await waitWithSignal(() => this.ops.listArtifacts!(signal), signal)
+        : [];
+      return result;
     } catch (err) {
       if (timedOut() && !opts.signal?.aborted) {
         throw new QoniTimeoutError(
@@ -233,21 +241,9 @@ export class RunHandle<E extends RunEvent = RunEvent> {
         );
       }
       throw err;
+    } finally {
+      dispose();
     }
-
-    // Settle from the run-detail envelope (canonical shape: costs, tokens,
-    // step counts) — the terminal event payload is leaner and only used as
-    // a fallback if the detail read fails right after completion.
-    let detail: JsonObject;
-    try {
-      detail = await this.ops.getDetail();
-    } catch (err) {
-      if (!terminalPayload) throw err;
-      detail = terminalPayload;
-    }
-    this.#adoptSessionRef(detail);
-    const artifacts = this.ops.listArtifacts ? await this.ops.listArtifacts() : [];
-    return settleRunResult(this.id, detail, artifacts, terminalDoneReason);
   }
 
   /**
@@ -312,23 +308,16 @@ function settleRunResult(
     fallbackTerminalReason;
   const isTaskSuccessful =
     typeof detail.is_task_successful === "boolean" ? detail.is_task_successful : undefined;
-  let status: RunResult["status"];
-  if (isTerminalRunStatus(detail.status)) {
-    status = detail.status as RunResult["status"];
-  } else if (terminalReason === "canceled") {
-    status = "canceled";
-  } else if (
-    terminalReason === "failed" ||
-    terminalReason === "expired" ||
-    isTaskSuccessful === false
-  ) {
-    status = "failed";
-  } else {
-    status = "succeeded";
+  const status = normalizeRunStatus(runId, detail).status;
+  if (!isTerminalRunStatus(status)) {
+    throw new QoniError(
+      "run detail did not confirm a terminal state — re-attach or poll status()",
+      { code: "upstream.failed", retryable: true, body: detail },
+    );
   }
   return {
     runId,
-    status,
+    status: status as RunResult["status"],
     output: runOutput(detail),
     artifacts,
     terminalReason,
@@ -362,18 +351,39 @@ function isVideoFrame(wire: QoniEvent<unknown>): boolean {
 export function withTimeout(
   signal: AbortSignal | undefined,
   timeoutMs: number | undefined,
-): { signal?: AbortSignal; timedOut: () => boolean } {
-  if (!timeoutMs) return { signal, timedOut: () => false };
+): { signal?: AbortSignal; timedOut: () => boolean; dispose: () => void } {
+  if (!timeoutMs) return { signal, timedOut: () => false, dispose: () => {} };
   const controller = new AbortController();
   let fired = false;
   const timer = setTimeout(() => {
     fired = true;
     controller.abort();
   }, timeoutMs);
-  controller.signal.addEventListener("abort", () => clearTimeout(timer), { once: true });
+  const onAbort = () => controller.abort(signal?.reason);
+  const dispose = () => {
+    clearTimeout(timer);
+    signal?.removeEventListener("abort", onAbort);
+  };
+  controller.signal.addEventListener("abort", dispose, { once: true });
   if (signal) {
-    if (signal.aborted) controller.abort();
-    else signal.addEventListener("abort", () => controller.abort(), { once: true });
+    if (signal.aborted) onAbort();
+    else signal.addEventListener("abort", onAbort, { once: true });
   }
-  return { signal: controller.signal, timedOut: () => fired };
+  return { signal: controller.signal, timedOut: () => fired, dispose };
+}
+
+function waitWithSignal<T>(operation: () => T | PromiseLike<T>, signal?: AbortSignal): Promise<T> {
+  if (!signal) return Promise.resolve().then(operation);
+  return new Promise<T>((resolve, reject) => {
+    const onAbort = () => reject(signal.reason ?? new DOMException("Aborted", "AbortError"));
+    if (signal.aborted) {
+      onAbort();
+      return;
+    }
+    signal.addEventListener("abort", onAbort, { once: true });
+    Promise.resolve().then(() => {
+      signal.throwIfAborted();
+      return operation();
+    }).then(resolve, reject).finally(() => signal.removeEventListener("abort", onAbort));
+  });
 }

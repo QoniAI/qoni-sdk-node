@@ -271,7 +271,9 @@ export class Qoni {
     token?: string,
     payload: RequestPayload = {},
   ): Promise<QoniResponse<T>> {
+    payload.signal?.throwIfAborted();
     const runtimeToken = await this.productTokenFor("webagent", token, payload.requiredScopes);
+    payload.signal?.throwIfAborted();
     const baseUrl = await this.baseUrlFor("webagent");
     return this.jsonRequest<T>(
       baseUrl,
@@ -287,9 +289,11 @@ export class Qoni {
     token?: string,
     payload: RequestPayload = {},
   ): Promise<{ bytes: Uint8Array; mime: string }> {
+    payload.signal?.throwIfAborted();
     const runtimeToken = await this.productTokenFor("webagent", token, payload.requiredScopes);
+    payload.signal?.throwIfAborted();
     const baseUrl = await this.baseUrlFor("webagent");
-    const response = await this.fetchWithTimeout(
+    return this.fetchWithTimeout(
       urlWithBasePath(baseUrl, this.webAgentPath(runtimeToken, path), payload.query),
       {
         method: "GET",
@@ -299,19 +303,21 @@ export class Qoni {
           ...(payload.headers || {}),
         },
       },
+      async (response, signal) => {
+        if (!response.ok) {
+          throw errorFromPayload(
+            response.status,
+            await readJson(response, signal),
+            `Qoni request failed with HTTP ${response.status}`,
+          );
+        }
+        return {
+          bytes: await readBody(response, signal),
+          mime: response.headers.get("content-type") || "application/octet-stream",
+        };
+      },
+      payload.signal,
     );
-    if (!response.ok) {
-      throw errorFromPayload(
-        response.status,
-        await readJson(response),
-        `Qoni request failed with HTTP ${response.status}`,
-      );
-    }
-    const buffer = await response.arrayBuffer();
-    return {
-      bytes: new Uint8Array(buffer),
-      mime: response.headers.get("content-type") || "application/octet-stream",
-    };
   }
 
   private async *webAgentSSE<T>(
@@ -376,15 +382,16 @@ export class Qoni {
       signed?: boolean;
     },
   ): Promise<QoniResponse<T>> {
-    const response = await this.fetchWithTimeout(
+    const { response, payload } = await this.fetchWithTimeout(
       urlWithBasePath(baseUrl, pathname, options.query),
       {
         method: options.method,
         headers: requestHeaders(options),
         body: requestBody(options.body),
       },
+      async (response, signal) => ({ response, payload: await readJson(response, signal) }),
+      options.signal,
     );
-    const payload = await readJson(response);
     if (!response.ok) {
       throw errorFromPayload(
         response.status,
@@ -462,48 +469,54 @@ export class Qoni {
       signal?: AbortSignal;
     },
   ): AsyncIterable<QoniEvent<T>> {
-    const response = await this.fetchWithTimeout(
-      urlWithBasePath(baseUrl, pathname, options.query),
-      {
-        method: "GET",
-        headers: {
-          accept: "text/event-stream",
-          authorization: `Bearer ${options.token}`,
-          ...(options.headers || {}),
-          ...(options.lastEventId ? { "last-event-id": options.lastEventId } : {}),
-        },
-      },
-      options.signal,
-      { streamBody: true },
-    );
-    if (!response.ok) {
-      throw errorFromPayload(
-        response.status,
-        await readJson(response),
-        `Qoni stream failed with HTTP ${response.status}`,
-      );
-    }
-    if (!response.body) {
-      throw errorFromPayload(502, undefined, "Qoni stream response has no body");
-    }
-
-    const reader = response.body.getReader();
+    let cleanup: (() => void) | undefined;
+    let reader: ReadableStreamDefaultReader<Uint8Array> | undefined;
+    const onAbort = () => { void reader?.cancel(options.signal?.reason).catch(() => undefined); };
     const decoder = new TextDecoder();
     let buffer = "";
     try {
+      const response = await this.fetchWithTimeout(
+        urlWithBasePath(baseUrl, pathname, options.query),
+        {
+          method: "GET",
+          headers: {
+            accept: "text/event-stream",
+            authorization: `Bearer ${options.token}`,
+            ...(options.headers || {}),
+            ...(options.lastEventId ? { "last-event-id": options.lastEventId } : {}),
+          },
+        },
+        async (response, signal) => {
+          if (!response.ok) {
+            throw errorFromPayload(
+              response.status,
+              await readJson(response, signal),
+              `Qoni stream failed with HTTP ${response.status}`,
+            );
+          }
+          return response;
+        },
+        options.signal,
+        { streamCleanup: (dispose) => { cleanup = dispose; } },
+      );
+      if (!response.body) {
+        throw errorFromPayload(502, undefined, "Qoni stream response has no body");
+      }
+
+      reader = response.body.getReader();
+      options.signal?.addEventListener("abort", onAbort, { once: true });
       while (true) {
         // Belt and braces: even if abort → reader rejection plumbing fails,
         // notice the aborted signal at the next delivered chunk/heartbeat.
-        if (options.signal?.aborted) {
-          await reader.cancel().catch(() => undefined);
-          throw options.signal.reason || new DOMException("Aborted", "AbortError");
-        }
+        options.signal?.throwIfAborted();
         const { done, value } = await reader.read();
+        options.signal?.throwIfAborted();
         if (done) break;
         buffer += decoder.decode(value, { stream: true });
         const chunks = buffer.split(/\r?\n\r?\n/);
         buffer = chunks.pop() || "";
         for (const chunk of chunks) {
+          options.signal?.throwIfAborted();
           const event = parseSSEEvent<T>(chunk);
           if (event) yield event;
         }
@@ -511,26 +524,29 @@ export class Qoni {
       const finalEvent = parseSSEEvent<T>(buffer);
       if (finalEvent) yield finalEvent;
     } finally {
+      cleanup?.();
+      options.signal?.removeEventListener("abort", onAbort);
       // `break`ing out of `for await` runs this block without ever aborting the
       // signal, so the abort path above never fires. Releasing the lock alone
       // leaves the response body open and its socket checked out of the pool —
       // enough leaked SSE streams and every later request to the same origin
       // queues until it times out. Cancel the body first; the lock goes with it.
-      await reader.cancel().catch(() => undefined);
+      void reader?.cancel().catch(() => undefined);
       try {
-        reader.releaseLock();
+        reader?.releaseLock();
       } catch {
         // Already released by cancel() — nothing to do.
       }
     }
   }
 
-  private async fetchWithTimeout(
+  private async fetchWithTimeout<T>(
     input: URL,
     init: RequestInit,
+    consume: (response: Response, signal: AbortSignal) => Promise<T>,
     signal?: AbortSignal,
-    opts?: { streamBody?: boolean },
-  ): Promise<Response> {
+    opts?: { streamCleanup?: (dispose: () => void) => void },
+  ): Promise<T> {
     if (signal?.aborted) throw signal.reason || new DOMException("Aborted", "AbortError");
     const controller = new AbortController();
     const resolved = resolveLocalGenauthRequest(input);
@@ -547,22 +563,39 @@ export class Qoni {
       didTimeout = true;
       controller.abort();
     }, this.timeoutMs);
+    let response: Response | undefined;
     try {
-      return await this.fetchImpl(resolved.url, { ...requestInit, signal: controller.signal });
+      response = await new Promise<Response>((resolve, reject) => {
+        const onAbort = () => reject(controller.signal.reason);
+        controller.signal.addEventListener("abort", onAbort, { once: true });
+        Promise.resolve().then(() => {
+          controller.signal.throwIfAborted();
+          return this.fetchImpl(resolved.url, { ...requestInit, signal: controller.signal });
+        }).then((response) => {
+          if (controller.signal.aborted) {
+            void response.body?.cancel(controller.signal.reason).catch(() => undefined);
+            reject(controller.signal.reason);
+          } else {
+            resolve(response);
+          }
+        }, reject).finally(() => controller.signal.removeEventListener("abort", onAbort));
+      });
+      const result = await consume(response, controller.signal);
+      controller.signal.throwIfAborted();
+      return result;
     } catch (error) {
-      if ((isAbortError(error) && didTimeout) || isConnectTimeoutError(error)) {
+      void response?.body?.cancel().catch(() => undefined);
+      if (signal?.aborted) throw signal.reason;
+      if (didTimeout || isConnectTimeoutError(error)) {
         throw timeoutError(error);
       }
       if (isFetchNetworkError(error)) throw networkError(error);
       throw error;
     } finally {
       clearTimeout(timeout);
-      // For one-shot requests the body is consumed before we return, so the
-      // user-signal → request-controller link can be dropped here. For SSE the
-      // body outlives this call — keep the link so a later abort still kills
-      // the stream (the listener is once:true and the controller is per-call,
-      // so nothing accumulates beyond the connection's lifetime).
-      if (!opts?.streamBody) signal?.removeEventListener("abort", abortFromSignal);
+      const cleanup = () => signal?.removeEventListener("abort", abortFromSignal);
+      if (opts?.streamCleanup) opts.streamCleanup(cleanup);
+      else cleanup();
     }
   }
 
@@ -628,7 +661,7 @@ export class Qoni {
       pathname,
       {},
     );
-    const response = await this.fetchWithTimeout(
+    const { response, payload } = await this.fetchWithTimeout(
       urlWithBasePath(this.host, pathname),
       {
         method: "GET",
@@ -637,8 +670,8 @@ export class Qoni {
           ...headers,
         },
       },
+      async (response, signal) => ({ response, payload: await readJson(response, signal) }),
     );
-    const payload = await readJson(response);
     if (!response.ok) {
       throw errorFromPayload(
         response.status,
@@ -775,21 +808,54 @@ function isBodyInit(value: unknown): value is BodyInit {
   );
 }
 
-async function readJson(response: Response): Promise<unknown> {
+async function readBody(response: Response, signal: AbortSignal): Promise<Uint8Array> {
+  if (!response.body) {
+    signal.throwIfAborted();
+    return new Uint8Array();
+  }
+  const reader = response.body.getReader();
+  const onAbort = () => { void reader.cancel(signal.reason).catch(() => undefined); };
+  signal.addEventListener("abort", onAbort, { once: true });
+  try {
+    const chunks: Uint8Array[] = [];
+    let size = 0;
+    for (;;) {
+      signal.throwIfAborted();
+      const { done, value } = await reader.read();
+      signal.throwIfAborted();
+      if (done) break;
+      chunks.push(value);
+      size += value.byteLength;
+    }
+    const bytes = new Uint8Array(size);
+    let offset = 0;
+    for (const chunk of chunks) {
+      bytes.set(chunk, offset);
+      offset += chunk.byteLength;
+    }
+    return bytes;
+  } finally {
+    signal.removeEventListener("abort", onAbort);
+    void reader.cancel().catch(() => undefined);
+    reader.releaseLock();
+  }
+}
+
+async function readJson(response: Response, signal: AbortSignal): Promise<unknown> {
   const contentType = response.headers.get("content-type")?.toLowerCase() || "";
-  if (contentType.includes("ndjson") || contentType.includes("jsonl")) {
-    const body = await response.text();
-    if (!body.trim()) return [];
-    try {
+  const body = new TextDecoder().decode(await readBody(response, signal));
+  try {
+    if (contentType.includes("ndjson") || contentType.includes("jsonl")) {
+      if (!body.trim()) return [];
       return body
         .split(/\r?\n/)
         .filter((line) => line.trim().length > 0)
         .map((line) => JSON.parse(line));
-    } catch {
-      return undefined;
     }
+    return JSON.parse(body);
+  } catch {
+    return undefined;
   }
-  return response.json().catch(() => undefined);
 }
 
 function normalizeResponse<T>(payload: unknown, _service: QoniService): QoniResponse<T> {
@@ -1104,6 +1170,7 @@ function isRetryableStreamError(err: unknown): boolean {
   if (err && typeof err === "object") {
     const e = err as { name?: string; retryable?: boolean; status?: number };
     if (e.name === "AbortError") return false;
+    if (e.status === 408) return true;
     if (typeof e.retryable === "boolean") return e.retryable;
     if (typeof e.status === "number") {
       return e.status >= 500 || e.status === 408 || e.status === 429;
@@ -1233,10 +1300,6 @@ function normalizeDelegateAgentTokenResponse<T extends DelegateAgentResponse>(
       delegateAgentToken: token,
     } as T,
   };
-}
-
-function isAbortError(error: unknown): boolean {
-  return error instanceof DOMException && error.name === "AbortError";
 }
 
 function isConnectTimeoutError(error: unknown): boolean {

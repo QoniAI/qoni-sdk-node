@@ -136,13 +136,14 @@ export function createDoAnythingNamespace(transport: QoniTransport) {
       }),
 
     getRun: <T = unknown>(
-      input: RuntimeTokenInput & { runId: string },
+      input: RuntimeTokenInput & { runId: string; signal?: AbortSignal },
     ): Promise<QoniResponse<T>> =>
       transport.webAgentJson(
         "GET",
         `/do_anything/runs/${encodeURIComponent(input.runId)}`,
         input.token,
         {
+          signal: input.signal,
           requiredScopes: ["webagent.do_anything:read"],
         },
       ),
@@ -242,7 +243,7 @@ export function createDoAnythingNamespace(transport: QoniTransport) {
     capture: CaptureOptions | undefined,
   ): RunWireOps {
     return {
-      getDetail: async () => asRecord((await api.getRun<unknown>({ token, runId })).data),
+      getDetail: async (signal) => asRecord((await api.getRun<unknown>({ token, runId, signal })).data),
       streamEvents: (opts) =>
         api.events({
           token,

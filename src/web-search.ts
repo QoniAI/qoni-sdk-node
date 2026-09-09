@@ -51,12 +51,13 @@ export function createWebSearchNamespace(transport: QoniTransport) {
         requiredScopes: ["webagent.web_search:manage"],
       }),
 
-    get: <T = unknown>(input: RuntimeTokenInput & { runId: string }): Promise<QoniResponse<T>> =>
+    get: <T = unknown>(input: RuntimeTokenInput & { runId: string; signal?: AbortSignal }): Promise<QoniResponse<T>> =>
       transport.webAgentJson(
         "GET",
         `/web_search/runs/${encodeURIComponent(input.runId)}`,
         input.token,
         {
+          signal: input.signal,
           requiredScopes: ["webagent.web_search:read"],
         },
       ),
@@ -99,7 +100,7 @@ export function createWebSearchNamespace(transport: QoniTransport) {
     runId: string,
   ): RunWireOps {
     return {
-      getDetail: async () => asRecord((await api.get<unknown>({ token, runId })).data),
+      getDetail: async (signal) => asRecord((await api.get<unknown>({ token, runId, signal })).data),
       streamEvents: (opts) =>
         api.events({
           token,

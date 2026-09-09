@@ -64,12 +64,13 @@ export function createDeepResearchNamespace(transport: QoniTransport) {
         requiredScopes: ["webagent.deep_research:manage"],
       }),
 
-    get: <T = unknown>(input: RuntimeTokenInput & { runId: string }): Promise<QoniResponse<T>> =>
+    get: <T = unknown>(input: RuntimeTokenInput & { runId: string; signal?: AbortSignal }): Promise<QoniResponse<T>> =>
       transport.webAgentJson(
         "GET",
         `/deep_research/runs/${encodeURIComponent(input.runId)}`,
         input.token,
         {
+          signal: input.signal,
           requiredScopes: ["webagent.deep_research:read"],
         },
       ),
@@ -133,13 +134,14 @@ export function createDeepResearchNamespace(transport: QoniTransport) {
       ),
 
     listArtifacts: <T = unknown>(
-      input: RuntimeTokenInput & { runId: string },
+      input: RuntimeTokenInput & { runId: string; signal?: AbortSignal },
     ): Promise<QoniResponse<T>> =>
       transport.webAgentJson(
         "GET",
         `/deep_research/runs/${encodeURIComponent(input.runId)}/artifacts`,
         input.token,
         {
+          signal: input.signal,
           requiredScopes: ["webagent.deep_research:read"],
         },
       ),
@@ -159,7 +161,7 @@ export function createDeepResearchNamespace(transport: QoniTransport) {
 
   function buildOps(token: string | undefined, runId: string): RunWireOps {
     return {
-      getDetail: async () => asRecord((await api.get<unknown>({ token, runId })).data),
+      getDetail: async (signal) => asRecord((await api.get<unknown>({ token, runId, signal })).data),
       streamEvents: (opts) =>
         api.events({
           token,
@@ -180,8 +182,8 @@ export function createDeepResearchNamespace(transport: QoniTransport) {
         );
       },
       cancel: async () => asRecord((await api.cancel<unknown>({ token, runId })).data),
-      listArtifacts: async () => {
-        const res = await api.listArtifacts<{ items?: unknown }>({ token, runId });
+      listArtifacts: async (signal) => {
+        const res = await api.listArtifacts<{ items?: unknown }>({ token, runId, signal });
         const items = Array.isArray(res.data?.items) ? res.data.items : [];
         return items.filter(isJsonObject).map((item) => toArtifact(item, token, runId));
       },

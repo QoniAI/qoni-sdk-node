@@ -482,7 +482,7 @@ const qoni = new Qoni({
 | `secretKey` | `string` | 是 | Qoni Console 创建的 secret key。 |
 | `host` | `string` | 否 | 私有化或本地部署时可选的 Qoni Console/SDK 网关覆盖地址。 |
 | `fetch` | `typeof fetch` | 否 | 自定义传输实现。 |
-| `timeoutMs` | `number` | 否 | 单次请求超时（连接 + 响应头），默认 `30000`。 |
+| `timeoutMs` | `number` | 否 | 单次请求超时（一次性请求覆盖连接、响应头及响应体；成功建立的 SSE 仅覆盖到响应头），默认 `30000`。 |
 
 > **`timeoutMs` 不会限制长任务。** 它只作用于单次一次性 HTTP 请求（委托、`status()`、单个 POST）。事件流（`events()` / `wait()`）**不受它约束**——流的响应头一到，这个单次计时器就被清掉了,所以一个跑一小时的 Deep Research 在默认 30s 客户端超时下也能正常流式。要限制等待时长用 `wait({ timeoutMs })`；不传则 `wait()` 一直等到终态。`wait()` 超时**不会停止 run**——它在服务端继续跑，可以再 `attach()` 回去。
 
@@ -511,6 +511,19 @@ await run.cancel(reason?)               // 幂等
 ```
 
 `await run.wait(...)` 结算成一个 `RunResult`：
+
+必须由 run-detail 响应确认终态。详情读取错误原样抛出，`wait()` 不会用 SSE 完成事件替代权威结果。
+详情仍为非终态或缺少终态信息时，抛出可重试的 `upstream.failed`；可通过 `status()` 或重新 `attach()` 恢复。
+
+`timeoutMs` 与 `signal` 会结束详情、交付物读取及 `onEvent`、`onWireEvent`、`onInteraction`、
+`onScreenshot` 返回的 Promise 的等待，但不能抢占同步 JavaScript，也不能停止回调内部已启动的工作。
+`onReconnect` 是同步遥测通知：返回值不被等待，返回的 Promise 的 rejection 也不被处理，因此不要传 async
+回调；同步抛错会向上传播。重连退避等待仍可被 signal 或 wait 超时中断。
+
+详情/交付物列表 GET 会接收 wait signal：wait 中止或超时时会中止请求、取消并释放响应体 reader。
+客户端单次请求计时器也覆盖完整 JSON/NDJSON、二进制响应体及 HTTP 错误体读取。即使自定义 fetch 忽略
+abort，SDK 也会取消其迟到响应体，不恢复结算或启动后续 run 请求；自定义传输须遵守 `RequestInit.signal`
+才能停止其内部网络工作。停止 wait 既不会取消服务端 run，也不会创建替代任务；需要停止原 run 时须显式调用 `cancel()`。
 
 ```ts
 interface RunResult {

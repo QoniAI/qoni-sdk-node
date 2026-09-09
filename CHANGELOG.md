@@ -6,6 +6,27 @@ This project follows semantic versioning. Before `1.0.0`, minor versions may
 include SDK API changes, while patch versions are reserved for backward
 compatible fixes.
 
+## 0.4.2 - 2026-09-09
+
+### Fixed
+
+- Require authoritative run details when settling `wait()`: preserve detail
+  errors and reject unconfirmed terminal states instead of inventing success.
+- Reuse terminal details read after a clean stream close and resume from every
+  wire event cursor, including frames filtered from semantic events.
+- Propagate wait cancellation to detail and artifact-list GETs. Bound complete
+  JSON, NDJSON, binary, and HTTP error body reads by the request timeout, cancel
+  stalled readers, and discard late responses without starting replacement runs.
+- Clean up wait timers and SSE abort listeners. Cancel idle SSE readers directly
+  and release their locks without waiting indefinitely for source cancellation.
+- Retry HTTP 408 stream failures within the configured reconnect budget and stop
+  delivering buffered events after cancellation.
+
+### Added
+
+- Optional abort signals on product run-detail and artifact-list wire reads;
+  existing calls without a signal remain compatible.
+
 ## Unreleased
 
 ### Breaking

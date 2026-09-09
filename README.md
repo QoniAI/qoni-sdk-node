@@ -512,7 +512,7 @@ const qoni = new Qoni({
 | `secretKey` | `string` | Yes | Qoni secret key from Qoni Console. |
 | `host` | `string` | No | Optional Qoni Console/SDK gateway override for private or local deployments. |
 | `fetch` | `typeof fetch` | No | Custom transport implementation. |
-| `timeoutMs` | `number` | No | Per-request timeout (connect + response headers). Defaults to `30000`. |
+| `timeoutMs` | `number` | No | Per-request timeout (connect + headers + body for one-shot requests; headers only for successful SSE connections). Defaults to `30000`. |
 
 > **`timeoutMs` does not bound a long-running run.** It applies to individual
 > one-shot HTTP requests (delegation, `status()`, a single POST). The live
@@ -549,6 +549,26 @@ await run.cancel(reason?)               // idempotent
 ```
 
 `await run.wait(...)` settles to a `RunResult`:
+
+The run-detail response must confirm a terminal state. Detail read errors propagate
+unchanged; `wait()` never substitutes an SSE completion payload for the authoritative
+result. A nonterminal or incomplete detail rejects with a retryable `upstream.failed`
+error; use `status()` or re-attach to recover.
+
+`timeoutMs` and `signal` stop waiting for detail/artifact reads and promises returned
+by `onEvent`, `onWireEvent`, `onInteraction`, and `onScreenshot`. They cannot preempt
+synchronous JavaScript or stop work already started inside a callback. `onReconnect`
+is synchronous telemetry: its return value is not awaited and returned promise
+rejections are not handled. Do not pass an async callback there; synchronous throws
+propagate. Reconnect backoff remains abortable and subject to the wait deadline.
+
+Detail/artifact-list GETs receive the wait signal: aborting or timing out a wait aborts
+the request and cancels its body reader. The client's per-request timer also covers
+complete JSON/NDJSON and binary body reads, including HTTP error bodies. A late response
+from a custom fetch that ignores abort has its body canceled and cannot resume settlement
+or start subsequent run requests. Custom transports must honor `RequestInit.signal` to
+stop their own in-flight network work. Stopping a wait neither cancels the server-side
+run nor creates a replacement task; use `cancel()` explicitly to stop the existing run.
 
 ```ts
 interface RunResult {
