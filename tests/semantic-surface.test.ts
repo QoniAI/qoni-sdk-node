@@ -1,11 +1,15 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { getEventListeners } from "node:events";
 import {
   QoniError,
   QoniPermissionDeniedError,
   QoniValidationError,
+  QoniTimeoutError,
+  RunHandle,
   Qoni,
 } from "../src";
 import type { RunEvent } from "../src";
+import type { RunWireOps } from "../src/run-handle";
 
 // ---------------------------------------------------------------------------
 // Harness: realistic wire-shaped fixtures (double envelope, snake_case),
@@ -55,9 +59,10 @@ interface Captured {
   method: string;
   headers: Record<string, string>;
   body?: unknown;
+  signal?: AbortSignal | null;
 }
 
-function makeClient(routes: (call: Captured) => Response | Promise<Response>) {
+function makeClient(routes: (call: Captured) => Response | Promise<Response>, options: { timeoutMs?: number } = {}) {
   const calls: Captured[] = [];
   const client = new Qoni({
     accessKey: "ak_test",
@@ -65,6 +70,7 @@ function makeClient(routes: (call: Captured) => Response | Promise<Response>) {
     host: "https://qoni.example.com",
     genauthBaseUrl: "https://qoni.example.com",
     webAgentBaseUrl: "https://qoni.example.com",
+    ...options,
     fetch: (async (url: URL | RequestInfo, init?: RequestInit) => {
       const headers: Record<string, string> = {};
       new Headers(init?.headers).forEach((value, key) => {
@@ -76,6 +82,7 @@ function makeClient(routes: (call: Captured) => Response | Promise<Response>) {
         method: init?.method || "GET",
         headers,
         body: init?.body ? JSON.parse(String(init.body)) : undefined,
+        signal: init?.signal,
       };
       calls.push(call);
       return routes(call);
@@ -86,6 +93,415 @@ function makeClient(routes: (call: Captured) => Response | Promise<Response>) {
 
 const IMAGE_BYTES = Buffer.from("fake-jpeg-bytes");
 const SCREENSHOT_DATA_URI = `data:image/jpeg;base64,${IMAGE_BYTES.toString("base64")}`;
+
+describe("run wait failure boundaries", () => {
+  function makeRun(overrides: Partial<RunWireOps> = {}) {
+    const ops: RunWireOps = {
+      getDetail: vi.fn(async () => ({ status: "succeeded", output: "canonical" })),
+      streamEvents: async function* () {
+        yield {
+          id: "1",
+          event: "run.completed",
+          data: { task_id: "run_1", data: { terminal_reason: "done", output: "lean" } },
+        };
+      },
+      postAction: vi.fn(),
+      cancel: vi.fn(),
+      ...overrides,
+    };
+    return { run: new RunHandle(ops, { id: "run_1" }), ops };
+  }
+
+  afterEach(() => vi.useRealTimers());
+
+  it.each(["done", "failed", "canceled"])(
+    "preserves a detail read error after a %s terminal event",
+    async (reason) => {
+      const error = new QoniError("detail unavailable", { status: 503, retryable: true });
+      const { run } = makeRun({
+        getDetail: async () => { throw error; },
+        streamEvents: async function* () {
+          yield {
+            event: "run.completed",
+            data: { task_id: "run_1", data: { terminal_reason: reason, is_task_successful: false } },
+          };
+        },
+      });
+      await expect(run.wait()).rejects.toBe(error);
+    },
+  );
+
+  it.each([{}, { status: "running" }, { status: "awaiting_input" }, { status: "running", terminal_reason: "done" }])(
+    "does not invent success from a nonterminal detail %j",
+    async (detail) => {
+      const { run } = makeRun({ getDetail: async () => detail });
+      await expect(run.wait()).rejects.toMatchObject({ code: "upstream.failed", retryable: true });
+    },
+  );
+
+  it.each(["succeeded", "failed", "canceled"])("keeps canonical %s status and result fields", async (status) => {
+    const detail = {
+      status, output: "canonical", is_task_successful: false,
+      terminal_reason: "canonical reason", total_cost_usd: "0.12",
+    };
+    const { run } = makeRun({ getDetail: async () => detail });
+    await expect(run.wait()).resolves.toEqual({
+      runId: "run_1", status, output: "canonical", isTaskSuccessful: false,
+      terminalReason: "canonical reason", artifacts: [], raw: detail,
+    });
+  });
+
+  it.each([
+    ["done", "succeeded"], ["failed", "failed"], ["expired", "failed"], ["canceled", "canceled"],
+  ])("accepts a canonical legacy terminal reason %s without status", async (terminalReason, status) => {
+    const { run } = makeRun({ getDetail: async () => ({ terminal_reason: terminalReason }) });
+    await expect(run.wait()).resolves.toMatchObject({ status, terminalReason });
+  });
+
+  it("settles using the terminal detail already read after a clean close", async () => {
+    const detail = { status: "failed", output: "canonical", session_id: "sess_1" };
+    const getDetail = vi.fn().mockResolvedValueOnce(detail).mockRejectedValue(new Error("read twice"));
+    const { run } = makeRun({ getDetail, streamEvents: async function* () {} });
+    await expect(run.wait()).resolves.toMatchObject({ status: "failed", raw: detail });
+    expect(getDetail).toHaveBeenCalledTimes(1);
+    expect(run.sessionRef).toEqual({ sessionId: "sess_1" });
+  });
+
+  it.each(["stream.heartbeat", "run.cost_update", "run.screenshot"])(
+    "resumes cleanly closed streams after filtered %s frames",
+    async (type) => {
+      const cursors: Array<string | undefined> = [];
+      const wireIds: Array<string | undefined> = [];
+      const { run } = makeRun({
+        getDetail: async () => ({ status: cursors.length < 3 ? "running" : "succeeded" }),
+        streamEvents: async function* (opts) {
+          cursors.push(opts.lastEventId);
+          yield {
+            id: String(cursors.length),
+            event: cursors.length < 3 ? type : "run.completed",
+            data: { task_id: "run_1", data: { screenshot_url: SCREENSHOT_DATA_URI } },
+          };
+        },
+      });
+      await expect(run.wait({ onWireEvent: (wire) => { wireIds.push(wire.id); } }))
+        .resolves.toMatchObject({ status: "succeeded" });
+      expect(cursors).toEqual([undefined, "1", "2"]);
+      expect(wireIds).toEqual(["1", "2", "3"]);
+    },
+  );
+
+  it("stops clean-close retries when no wire cursor advances", async () => {
+    let streams = 0;
+    const { run } = makeRun({
+      getDetail: async () => ({ status: "running" }),
+      streamEvents: async function* () { streams++; },
+    });
+    await expect(run.wait()).rejects.toMatchObject({ code: "upstream.failed", retryable: true });
+    expect(streams).toBe(2);
+  });
+
+  it.each(["detail", "clean-close-detail", "artifacts", "callback", "wire-callback"])("bounds a pending %s by the wait deadline", async (stage) => {
+    vi.useFakeTimers();
+    const pending = () => new Promise<never>(() => {});
+    const { run } = makeRun({
+      ...(stage === "detail" || stage === "clean-close-detail" ? { getDetail: pending } : {}),
+      ...(stage === "clean-close-detail" ? { streamEvents: async function* () {} } : {}),
+      ...(stage === "artifacts" ? { listArtifacts: pending } : {}),
+    });
+    const outcome = run.wait({
+      timeoutMs: 50,
+      ...(stage === "callback" ? { onEvent: pending } : {}),
+      ...(stage === "wire-callback" ? { onWireEvent: pending } : {}),
+    })
+      .then(() => "settled", (error: unknown) => error);
+    await vi.advanceTimersByTimeAsync(51);
+    expect(await Promise.race([outcome, Promise.resolve("pending")])).toBeInstanceOf(QoniTimeoutError);
+  });
+
+  it("does not continue settlement after a timed-out detail read finishes", async () => {
+    vi.useFakeTimers();
+    let finishDetail!: (detail: { status: string }) => void;
+    const listArtifacts = vi.fn(async () => []);
+    const { run } = makeRun({
+      getDetail: () => new Promise((resolve) => { finishDetail = resolve; }),
+      listArtifacts,
+    });
+    const outcome = run.wait({ timeoutMs: 50 }).catch((error: unknown) => error);
+    await vi.advanceTimersByTimeAsync(51);
+    expect(await outcome).toBeInstanceOf(QoniTimeoutError);
+    finishDetail({ status: "succeeded" });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(listArtifacts).not.toHaveBeenCalled();
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it.each([false, true])("immediately removes abort listeners while detail never settles (timeout=%s)", async (timeout) => {
+    vi.useFakeTimers();
+    const controller = new AbortController();
+    let waitSignal: AbortSignal | undefined;
+    let detailStarted!: () => void;
+    const started = new Promise<void>((resolve) => { detailStarted = resolve; });
+    const { run, ops } = makeRun({
+      getDetail: () => {
+        detailStarted();
+        return new Promise<never>(() => {});
+      },
+      streamEvents: async function* (opts) {
+        waitSignal = opts.signal;
+        yield { event: "run.completed", data: { task_id: "run_1", data: {} } };
+      },
+    });
+    const outcome = run.wait({ signal: controller.signal, ...(timeout ? { timeoutMs: 50 } : {}) })
+      .catch((error: unknown) => error);
+    await started;
+    expect(getEventListeners(waitSignal!, "abort").length).toBeGreaterThan(0);
+    if (timeout) vi.advanceTimersByTime(51);
+    else controller.abort(new Error("stop waiting"));
+    expect(getEventListeners(waitSignal!, "abort")).toHaveLength(0);
+    expect(getEventListeners(controller.signal, "abort")).toHaveLength(0);
+    if (timeout) expect(await outcome).toBeInstanceOf(QoniTimeoutError);
+    else expect(await outcome).toBe(controller.signal.reason);
+    expect(ops.cancel).not.toHaveBeenCalled();
+  });
+
+  it.each((["doAnything", "webSearch", "deepResearch"] as const).flatMap((product) =>
+    (product === "deepResearch"
+      ? ["detail-headers", "detail-body", "artifact-headers", "artifact-body"]
+      : ["detail-headers", "detail-body"]
+    ).flatMap((stage) => [false, true].map((timeout) => ({ product, stage, timeout }))),
+  ))("aborts $product $stage resources without subsequent requests (timeout=$timeout)",
+    async ({ product, stage, timeout }) => {
+      vi.useFakeTimers();
+      const controller = new AbortController();
+      const reason = new Error("stop waiting");
+      let blockedCall: Captured | undefined;
+      let blockedResponse: Response | undefined;
+      let canceled = false;
+      let completeRead!: () => void;
+      let markStarted!: () => void;
+      const started = new Promise<void>((resolve) => { markStarted = resolve; });
+      let detailReads = 0;
+      const { client, calls } = makeClient((call) => {
+        if (call.pathname.endsWith("/events")) {
+          return sseResponse(frame(1, "run.completed", { terminal_reason: "done" }));
+        }
+        const isArtifactRead = call.pathname.endsWith("/artifacts");
+        if (!isArtifactRead) detailReads++;
+        if (detailReads === 1) return jsonResponse({ data: { status: "running" } });
+        const data = isArtifactRead ? { items: [] } : { status: "succeeded" };
+        if (isArtifactRead !== stage.startsWith("artifact")) return jsonResponse({ data });
+        blockedCall = call;
+        const response = new Response(new ReadableStream<Uint8Array>({
+          start(body) {
+            body.enqueue(new TextEncoder().encode('{"data":'));
+            completeRead = () => {
+              if (canceled) return;
+              body.enqueue(new TextEncoder().encode(JSON.stringify(data) + "}"));
+              body.close();
+            };
+          },
+          cancel() { canceled = true; },
+        }));
+        blockedResponse = response;
+        markStarted();
+        if (stage.endsWith("headers")) {
+          return new Promise<Response>((resolve) => { completeRead = () => resolve(response); });
+        }
+        return response;
+      });
+      const run = await client[product].attach("run_1", { token: TOKEN });
+      const outcome = run.wait({ signal: controller.signal, ...(timeout ? { timeoutMs: 50 } : {}) })
+        .catch((error: unknown) => error);
+      await started;
+      await vi.advanceTimersByTimeAsync(0);
+      const requestCount = calls.length;
+      if (timeout) await vi.advanceTimersByTimeAsync(51);
+      else controller.abort(reason);
+      if (timeout) expect(await outcome).toBeInstanceOf(QoniTimeoutError);
+      else expect(await outcome).toBe(reason);
+      expect(blockedCall?.signal?.aborted).toBe(true);
+      expect(calls).toHaveLength(requestCount);
+      completeRead();
+      await vi.advanceTimersByTimeAsync(0);
+      expect(canceled).toBe(true);
+      expect(blockedResponse?.body?.locked).toBe(false);
+      expect(vi.getTimerCount()).toBe(0);
+      expect(calls).toHaveLength(requestCount);
+      expect(calls.every((call) => call.method === "GET")).toBe(true);
+    },
+  );
+
+  it.each([200, 503].flatMap((status) => ["application/json", "application/x-ndjson"].map((contentType) => ({ status, contentType }))))(
+    "bounds stalled HTTP $status $contentType bodies by the request timeout",
+    async ({ status, contentType }) => {
+      vi.useFakeTimers();
+      let requestSignal: AbortSignal | null | undefined;
+      const cancel = vi.fn();
+      const response = new Response(new ReadableStream<Uint8Array>({
+        start(body) { body.enqueue(new TextEncoder().encode('{"data":')); },
+        cancel,
+      }), { status, headers: { "content-type": contentType } });
+      const { client, calls } = makeClient((call) => {
+        requestSignal = call.signal;
+        return response;
+      }, { timeoutMs: 50 });
+      const outcome = client.webSearch.attach("run_1", { token: TOKEN }).catch((error: unknown) => error);
+      await vi.advanceTimersByTimeAsync(51);
+      expect(await Promise.race([outcome, Promise.resolve("pending")])).toBeInstanceOf(QoniTimeoutError);
+      expect(requestSignal?.aborted).toBe(true);
+      expect(cancel).toHaveBeenCalledTimes(1);
+      expect(response.body?.locked).toBe(false);
+      expect(vi.getTimerCount()).toBe(0);
+      expect(calls).toHaveLength(1);
+    },
+  );
+
+  it("times out reconnect backoff even when a telemetry callback returns a pending promise", async () => {
+    vi.useFakeTimers();
+    const { client, calls } = makeClient((call) => call.pathname.endsWith("/events")
+      ? jsonResponse({}, { status: 503 })
+      : jsonResponse({ data: { status: "running" } }));
+    const run = await client.webSearch.attach("run_1", { token: TOKEN });
+    const onReconnect = vi.fn(() => new Promise<never>(() => {}));
+    const outcome = run.wait({ timeoutMs: 50, onReconnect }).catch((error: unknown) => error);
+    await vi.advanceTimersByTimeAsync(51);
+    expect(await outcome).toBeInstanceOf(QoniTimeoutError);
+    expect(onReconnect).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(calls).toHaveLength(2);
+    expect(calls.every((call) => call.method === "GET")).toBe(true);
+  });
+
+  it("times out and releases a stalled binary artifact download", async () => {
+    vi.useFakeTimers();
+    const cancel = vi.fn();
+    const response = new Response(new ReadableStream<Uint8Array>({
+      start(body) { body.enqueue(new Uint8Array([1, 2, 3])); },
+      cancel,
+    }));
+    const { client, calls } = makeClient((call) => {
+      if (call.pathname.endsWith("/events")) return sseResponse(frame(1, "run.completed", {}));
+      if (call.pathname.endsWith("/artifacts/art_1")) return response;
+      if (call.pathname.endsWith("/artifacts")) return jsonResponse({ data: { items: [{ id: "art_1" }] } });
+      return jsonResponse({ data: { status: "succeeded" } });
+    }, { timeoutMs: 50 });
+    const run = await client.deepResearch.attach("run_1", { token: TOKEN });
+    const result = await run.wait();
+    const outcome = result.artifacts[0].content().catch((error: unknown) => error);
+    await vi.advanceTimersByTimeAsync(51);
+    expect(await Promise.race([outcome, Promise.resolve("pending")])).toBeInstanceOf(QoniTimeoutError);
+    expect(cancel).toHaveBeenCalledTimes(1);
+    expect(response.body?.locked).toBe(false);
+    expect(vi.getTimerCount()).toBe(0);
+    expect(calls.every((call) => call.method === "GET")).toBe(true);
+  });
+
+  it("propagates body read failures rather than returning an empty detail", async () => {
+    const error = new Error("body disconnected");
+    const response = new Response(new ReadableStream<Uint8Array>({
+      start(body) { body.error(error); },
+    }));
+    const { client } = makeClient(() => response);
+    await expect(client.webSearch.attach("run_1", { token: TOKEN })).rejects.toBe(error);
+    expect(response.body?.locked).toBe(false);
+  });
+
+  it("times out fetching headers and cancels a late response without starting another GET", async () => {
+    vi.useFakeTimers();
+    let deliver!: (response: Response) => void;
+    const cancel = vi.fn();
+    const { client, calls } = makeClient(() => new Promise<Response>((resolve) => { deliver = resolve; }), { timeoutMs: 50 });
+    const outcome = client.webSearch.attach("run_1", { token: TOKEN }).catch((error: unknown) => error);
+    await vi.advanceTimersByTimeAsync(51);
+    expect(await Promise.race([outcome, Promise.resolve("pending")])).toBeInstanceOf(QoniTimeoutError);
+    expect(calls[0].signal?.aborted).toBe(true);
+    deliver(new Response(new ReadableStream<Uint8Array>({ cancel })));
+    await vi.advanceTimersByTimeAsync(0);
+    expect(cancel).toHaveBeenCalledTimes(1);
+    expect(calls).toHaveLength(1);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("times out a stalled discovery JSON body before issuing a run request", async () => {
+    vi.useFakeTimers();
+    const cancel = vi.fn();
+    const fetchMock = vi.fn(async () => new Response(new ReadableStream<Uint8Array>({ cancel })));
+    const client = new Qoni({
+      accessKey: "ak_test", secretKey: "sk_test", host: "https://qoni.example.com",
+      timeoutMs: 50, fetch: fetchMock as typeof fetch,
+    });
+    const outcome = client.webSearch.attach("run_1", { token: TOKEN }).catch((error: unknown) => error);
+    await vi.advanceTimersByTimeAsync(51);
+    expect(await Promise.race([outcome, Promise.resolve("pending")])).toBeInstanceOf(QoniTimeoutError);
+    expect(cancel).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("propagates a synchronous reconnect callback error without retrying or creating a task", async () => {
+    const error = new Error("telemetry failed");
+    const { client, calls } = makeClient((call) => call.pathname.endsWith("/events")
+      ? jsonResponse({}, { status: 503 })
+      : jsonResponse({ data: { status: "running" } }));
+    const run = await client.webSearch.attach("run_1", { token: TOKEN });
+    await expect(run.wait({ onReconnect: () => { throw error; } })).rejects.toBe(error);
+    expect(calls).toHaveLength(2);
+    expect(calls.every((call) => call.method === "GET")).toBe(true);
+  });
+
+  it.each([false, true])("releases wait timers and abort listeners on exit (failure=%s)", async (fails) => {
+    vi.useFakeTimers();
+    const controller = new AbortController();
+    const { run } = makeRun();
+    const error = new Error("callback failed");
+    const outcome = run.wait({
+      timeoutMs: 60_000,
+      signal: controller.signal,
+      onEvent: () => { if (fails) throw error; },
+    });
+    if (fails) await expect(outcome).rejects.toBe(error);
+    else await expect(outcome).resolves.toMatchObject({ status: "succeeded" });
+    expect(vi.getTimerCount()).toBe(0);
+    expect(getEventListeners(controller.signal, "abort")).toHaveLength(0);
+  });
+
+  it("preserves caller abort reasons while reading terminal detail", async () => {
+    const controller = new AbortController();
+    const reason = new Error("caller stopped waiting");
+    const { run } = makeRun({
+      getDetail: async () => {
+        controller.abort(reason);
+        return { status: "succeeded" };
+      },
+    });
+    await expect(run.wait({ signal: controller.signal })).rejects.toBe(reason);
+  });
+
+  it.each(["doAnything", "webSearch", "deepResearch"] as const)(
+    "%s attach propagates lookup errors without opening SSE",
+    async (product) => {
+      const { client, calls } = makeClient(() => jsonResponse({ detail: "not found" }, { status: 404 }));
+      await expect(client[product].attach("run_1", { token: TOKEN })).rejects.toMatchObject({ status: 404 });
+      expect(calls).toHaveLength(1);
+      expect(calls[0].method).toBe("GET");
+    },
+  );
+
+  it.each([401, 403, 404, 503])("attach then wait preserves terminal detail HTTP %s", async (status) => {
+    let detailReads = 0;
+    const { client } = makeClient((call) => {
+      if (call.pathname.endsWith("/events")) {
+        return sseResponse(frame(1, "run.completed", { terminal_reason: "done" }));
+      }
+      detailReads++;
+      return detailReads === 1
+        ? jsonResponse({ data: { status: "running" } })
+        : jsonResponse({ detail: { message: "detail unavailable", requestId: "req_test" } }, { status });
+    });
+    const run = await client.webSearch.attach("run_1", { token: TOKEN });
+    await expect(run.wait()).rejects.toMatchObject({ status, requestId: "req_test" });
+  });
+});
 
 // ---------------------------------------------------------------------------
 // delegateToken: products sugar, agent default, local scope pre-validation
@@ -371,6 +787,9 @@ describe("doAnything.run → RunHandle", () => {
             frame(3, "search.results_ready", { total_unique_results: 3 }) + // → resultsReady
             frame(4, "run.completed", { terminal_reason: "done", output: "ok" }),
         );
+      }
+      if (call.method === "GET" && call.pathname.endsWith("/runs/run_1")) {
+        return jsonResponse({ data: { run_id: "run_1", status: "succeeded", output: "ok" } });
       }
       return jsonResponse({ data: { run_id: "run_1" } });
     });

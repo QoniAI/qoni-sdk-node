@@ -187,6 +187,7 @@ export interface RawRequestInput extends TokenInput {
 }
 
 export interface RequestPayload {
+  signal?: AbortSignal;
   query?: JsonObject;
   body?: JsonObject | BodyInit;
   headers?: Record<string, string>;

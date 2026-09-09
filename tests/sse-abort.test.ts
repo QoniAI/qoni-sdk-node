@@ -1,4 +1,5 @@
-import { describe, expect, it } from "vitest";
+import { getEventListeners } from "node:events";
+import { describe, expect, it, vi } from "vitest";
 import { QoniTimeoutError, Qoni } from "../src";
 
 // Regression: aborting the caller-supplied AbortSignal must terminate an SSE
@@ -30,7 +31,13 @@ function heartbeatChunk(id: number): Uint8Array {
   return encoder.encode(`id: ${id}\ndata: ${JSON.stringify(envelope)}\n\n`);
 }
 
-function makeStreamingClient(opts?: { jsonDetail?: unknown; onCancel?: () => void }) {
+function makeStreamingClient(opts?: {
+  jsonDetail?: unknown;
+  onCancel?: () => void;
+  streamResponse?: () => Response;
+  sseMaxRetries?: number;
+  timeoutMs?: number;
+}) {
   // Mimics real fetch semantics: the response body errors with AbortError
   // when (and only when) the REQUEST's own signal aborts. If the SDK severs
   // the user signal → request signal chain after connect, a user abort never
@@ -41,6 +48,8 @@ function makeStreamingClient(opts?: { jsonDetail?: unknown; onCancel?: () => voi
     host: "https://qoni.example.com",
     genauthBaseUrl: "https://qoni.example.com",
     webAgentBaseUrl: "https://qoni.example.com",
+    sseMaxRetries: opts?.sseMaxRetries,
+    timeoutMs: opts?.timeoutMs,
     fetch: (async (_url: URL | RequestInfo, init?: RequestInit) => {
       const wantsStream = new Headers(init?.headers).get("accept") === "text/event-stream";
       if (!wantsStream) {
@@ -49,6 +58,7 @@ function makeStreamingClient(opts?: { jsonDetail?: unknown; onCancel?: () => voi
           { status: 200, headers: { "content-type": "application/json" } },
         );
       }
+      if (opts?.streamResponse) return opts.streamResponse();
       const body = new ReadableStream<Uint8Array>({
         start(controller) {
           controller.enqueue(heartbeatChunk(1));
@@ -78,6 +88,157 @@ function makeStreamingClient(opts?: { jsonDetail?: unknown; onCancel?: () => voi
 }
 
 describe("SSE abort propagation", () => {
+  it("aborts an idle SSE reader even when the custom fetch does not wire the request signal", async () => {
+    vi.useFakeTimers();
+    try {
+      const cancel = vi.fn();
+      const response = new Response(new ReadableStream<Uint8Array>({ cancel }));
+      const client = makeStreamingClient({ streamResponse: () => response });
+      const run = await client.webSearch.attach("run_1", { token: TOKEN });
+      const outcome = run.wait({ timeoutMs: 50 }).catch((error: unknown) => error);
+      await vi.advanceTimersByTimeAsync(51);
+      expect(await Promise.race([outcome, Promise.resolve("pending")])).toBeInstanceOf(QoniTimeoutError);
+      expect(cancel).toHaveBeenCalledTimes(1);
+      expect(response.body?.locked).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("does not hang on a pending source cancellation after the consumer breaks", async () => {
+    const cancel = vi.fn(() => new Promise<void>(() => {}));
+    const response = new Response(new ReadableStream<Uint8Array>({
+      start(body) { body.enqueue(heartbeatChunk(1)); },
+      cancel,
+    }));
+    const client = makeStreamingClient({ streamResponse: () => response });
+    const consume = (async () => {
+      for await (const event of client.deepResearch.api.events({ token: TOKEN, runId: "run_1" })) {
+        expect(event.id).toBe("1");
+        break;
+      }
+      return "closed";
+    })();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(await Promise.race([consume, Promise.resolve("pending")])).toBe("closed");
+    expect(cancel).toHaveBeenCalledTimes(1);
+    expect(response.body?.locked).toBe(false);
+  });
+
+  it("times out and releases a stalled SSE HTTP error body", async () => {
+    vi.useFakeTimers();
+    try {
+      const cancel = vi.fn();
+      const response = new Response(new ReadableStream<Uint8Array>({
+        start(body) { body.enqueue(encoder.encode('{"detail":')); },
+        cancel,
+      }), { status: 503 });
+      const client = makeStreamingClient({ streamResponse: () => response, timeoutMs: 50, sseMaxRetries: 0 });
+      const outcome = (async () => {
+        for await (const event of client.deepResearch.api.events({ token: TOKEN, runId: "run_1" })) {
+          throw new Error(`Unexpected event: ${event.id}`);
+        }
+      })().catch((error: unknown) => error);
+      await vi.advanceTimersByTimeAsync(51);
+      expect(await Promise.race([outcome, Promise.resolve("pending")])).toBeInstanceOf(QoniTimeoutError);
+      expect(cancel).toHaveBeenCalledTimes(1);
+      expect(response.body?.locked).toBe(false);
+      expect(vi.getTimerCount()).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("does not apply the request deadline to an established SSE body", async () => {
+    vi.useFakeTimers();
+    try {
+      const client = makeStreamingClient({ timeoutMs: 50 });
+      const controller = new AbortController();
+      const outcome = (async () => {
+        for await (const event of client.deepResearch.api.events({
+          token: TOKEN, runId: "run_1", signal: controller.signal,
+        })) expect(event.id).toBe("1");
+      })().catch((error: unknown) => error);
+      await vi.advanceTimersByTimeAsync(100);
+      expect(await Promise.race([outcome, Promise.resolve("pending")])).toBe("pending");
+      controller.abort();
+      await expect(outcome).resolves.toMatchObject({ name: "AbortError" });
+      expect(getEventListeners(controller.signal, "abort")).toHaveLength(0);
+      expect(vi.getTimerCount()).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it.each(["break", "close", "http-error"])("releases the caller abort listener after %s", async (exit) => {
+    const controller = new AbortController();
+    const client = makeStreamingClient({
+      sseMaxRetries: 0,
+      streamResponse: () => new Response(exit === "http-error" ? "{}" : new TextDecoder().decode(heartbeatChunk(1)), {
+        status: exit === "http-error" ? 403 : 200,
+      }),
+    });
+    const consume = async () => {
+      for await (const event of client.deepResearch.api.events({
+        token: TOKEN, runId: "run_1", signal: controller.signal,
+      })) {
+        expect(event.id).toBe("1");
+        if (exit === "break") break;
+      }
+    };
+    if (exit === "http-error") await expect(consume()).rejects.toMatchObject({ status: 403 });
+    else await consume();
+    expect(getEventListeners(controller.signal, "abort")).toHaveLength(0);
+  });
+
+  it("does not yield buffered frames after the caller aborts", async () => {
+    const controller = new AbortController();
+    const client = makeStreamingClient({
+      streamResponse: () => new Response(
+        new TextDecoder().decode(heartbeatChunk(1)) + new TextDecoder().decode(heartbeatChunk(2)),
+      ),
+    });
+    const ids: Array<string | undefined> = [];
+    const consume = async () => {
+      for await (const event of client.deepResearch.api.events({
+        token: TOKEN, runId: "run_1", signal: controller.signal,
+      })) {
+        ids.push(event.id);
+        controller.abort();
+      }
+    };
+    await expect(consume()).rejects.toMatchObject({ name: "AbortError" });
+    expect(ids).toEqual(["1"]);
+  });
+
+  it("retries HTTP 408 stream failures within the configured retry budget", async () => {
+    vi.useFakeTimers();
+    try {
+      let requests = 0;
+      const client = makeStreamingClient({
+        sseMaxRetries: 1,
+        streamResponse: () => {
+          requests++;
+          return requests === 1
+            ? new Response("{}", { status: 408 })
+            : new Response(new TextDecoder().decode(heartbeatChunk(1)));
+        },
+      });
+      const outcome = (async () => {
+        const ids = [];
+        for await (const event of client.deepResearch.api.events({ token: TOKEN, runId: "run_1" })) {
+          ids.push(event.id);
+        }
+        return ids;
+      })().catch((error: unknown) => error);
+      await vi.runAllTimersAsync();
+      expect(await outcome).toEqual(["1"]);
+      expect(requests).toBe(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   // Regression: leaving the iterator early via `break` — the natural way to
   // read "the first N events" — runs the generator's finally block without
   // ever aborting a signal. Releasing the reader lock alone leaves the body
