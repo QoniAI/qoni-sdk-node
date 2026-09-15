@@ -715,3 +715,19 @@ try {
 ## License
 
 MIT
+
+## Do Anything file artifacts
+
+After `wait()`, `result.artifacts` contains this run's persisted files, including when using `attach()` after reconnecting. Screenshots and recordings remain on their dedicated APIs. Temporary S3 URLs expire 900 seconds after signing; do not put them in public logs. Refreshing a link requires a valid delegation token with `webagent.do_anything:read`. Stored files remain subject to project retention.
+
+```ts
+const result = await run.wait();
+for (const artifact of result.artifacts) {
+  let url = artifact.downloadUrl;
+  url = await artifact.refreshDownloadUrl?.();
+  const data = await artifact.content(); // Uint8Array, authenticated download
+}
+const artifacts = await client.doAnything.artifacts({ token, runId: run.id });
+```
+
+Wire methods: `client.doAnything.api.listArtifacts(...)` and `artifactDownloadUrl(...)`.

@@ -60,6 +60,10 @@ export interface Artifact {
   mime?: string;
   sizeBytes?: number;
   createdAt?: string;
+  /** Temporary signed storage URL; refresh after expiry. */
+  downloadUrl?: string;
+  expiresIn?: number;
+  refreshDownloadUrl?(): Promise<string>;
   content(): Promise<Uint8Array>;
 }
 

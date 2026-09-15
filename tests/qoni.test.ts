@@ -1644,6 +1644,7 @@ describe("Qoni", () => {
           return jsonResponse({ data: { run_id: "run_1", session_id: "sess_1" } });
         }
         // getRun (GET run-detail): the canonical envelope with cost / steps.
+        if (u.endsWith("/do_anything/runs/run_1/artifacts")) return new Response(JSON.stringify({ items: [] }), { headers: { "content-type": "application/json" } });
         if (u.endsWith("/do_anything/runs/run_1")) {
           return jsonResponse({
             data: {
