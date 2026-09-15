@@ -118,6 +118,7 @@ function createHarness() {
       return jsonResponse({ data: { id: "sess_matrix", session_id: "sess_matrix" } });
     }
 
+    if (url.pathname.endsWith("/do_anything/runs/run_matrix/artifacts")) return jsonResponse({ items: [] });
     if (url.pathname.includes("/do_anything/") && url.pathname.includes("/runs/run_matrix")) {
       return jsonResponse({
         data: {

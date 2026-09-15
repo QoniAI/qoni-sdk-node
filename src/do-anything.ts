@@ -1,6 +1,7 @@
 import { QoniValidationError } from "./errors";
 import {
   RunHandle,
+  type Artifact,
   type CaptureOptions,
   type RunWireOps,
   type SessionRef,
@@ -224,6 +225,20 @@ export function createDoAnythingNamespace(transport: QoniTransport) {
         },
       ),
 
+    listArtifacts: <T = { items: JsonObject[] }>(
+      input: RuntimeTokenInput & { runId: string; signal?: AbortSignal },
+    ): Promise<QoniResponse<T>> => transport.webAgentJson(
+      "GET", `/do_anything/runs/${encodeURIComponent(input.runId)}/artifacts`, input.token,
+      { signal: input.signal, requiredScopes: ["webagent.do_anything:read"] },
+    ),
+
+    artifactDownloadUrl: (
+      input: RuntimeTokenInput & { artifactId: string },
+    ): Promise<QoniResponse<{ download_url: string; expires_in: number }>> => transport.webAgentJson(
+      "GET", `/do_anything/artifacts/${encodeURIComponent(input.artifactId)}/download-url`, input.token,
+      { requiredScopes: ["webagent.do_anything:read"] },
+    ),
+
     readRecording: <T = unknown>(
       input: RuntimeTokenInput & { sessionId: string },
     ): Promise<QoniResponse<T>> =>
@@ -237,12 +252,47 @@ export function createDoAnythingNamespace(transport: QoniTransport) {
       ),
   };
 
+  /** Durable files for one run; also usable after reconnect without replaying SSE. */
+  async function artifacts(input: RuntimeTokenInput & { runId: string; signal?: AbortSignal }): Promise<Artifact[]> {
+    const { data } = await api.listArtifacts(input);
+    if (!isJsonObject(data) || !Array.isArray(data.items)) {
+      throw new QoniValidationError("artifact list response requires items");
+    }
+    return data.items.map((item) => {
+      if (!isJsonObject(item) || typeof item.id !== "string" || !item.id) {
+        throw new QoniValidationError("artifact requires a nonempty id");
+      }
+      const id = item.id;
+      const artifact: Artifact = {
+        id,
+        name: typeof item.name === "string" ? item.name : undefined,
+        mime: typeof item.mime_type === "string" ? item.mime_type : undefined,
+        sizeBytes: typeof item.size_bytes === "number" ? item.size_bytes : undefined,
+        createdAt: typeof item.created_at === "string" ? item.created_at : undefined,
+        downloadUrl: typeof item.download_url === "string" ? item.download_url : undefined,
+        expiresIn: typeof item.expires_in === "number" ? item.expires_in : undefined,
+        content: async () => (await transport.webAgentBytes(
+          `/do_anything/artifacts/${encodeURIComponent(id)}/blob`, input.token,
+          { requiredScopes: ["webagent.do_anything:read"] },
+        )).bytes,
+        refreshDownloadUrl: async () => {
+          const { data: link } = await api.artifactDownloadUrl({ token: input.token, artifactId: id });
+          artifact.downloadUrl = link.download_url;
+          artifact.expiresIn = link.expires_in;
+          return link.download_url;
+        },
+      };
+      return artifact;
+    });
+  }
+
   function buildOps(
     token: string | undefined,
     runId: string,
     capture: CaptureOptions | undefined,
   ): RunWireOps {
     return {
+      listArtifacts: (signal) => artifacts({ token, runId, signal }),
       getDetail: async (signal) => asRecord((await api.getRun<unknown>({ token, runId, signal })).data),
       streamEvents: (opts) =>
         api.events({
@@ -344,6 +394,7 @@ export function createDoAnythingNamespace(transport: QoniTransport) {
       return handle;
     },
 
+    artifacts,
     api,
   };
 }
