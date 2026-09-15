@@ -63,7 +63,7 @@ interface Captured {
   signal?: AbortSignal | null;
 }
 
-function makeClient(routes: (call: Captured) => Response | Promise<Response>, options: { timeoutMs?: number } = {}) {
+function makeClient(routes: (call: Captured) => Response | Promise<Response>, options: { timeoutMs?: number; emptyArtifacts?: boolean } = {}) {
   const calls: Captured[] = [];
   const client = new Qoni({
     accessKey: "ak_test",
@@ -86,6 +86,7 @@ function makeClient(routes: (call: Captured) => Response | Promise<Response>, op
         signal: init?.signal,
       };
       calls.push(call);
+      if (options.emptyArtifacts !== false && /\/do_anything\/runs\/[^/]+\/artifacts$/.test(call.pathname)) return jsonResponse({ items: [] });
       return routes(call);
     }) as typeof fetch,
   });
@@ -148,7 +149,8 @@ describe("screenshot data URI decoding", () => {
       expect(events[0].raw).toBe(wireEvents[0]);
       expect(wireEvents[0].data).toMatchObject({ data: payload });
       expect(onScreenshot).not.toHaveBeenCalled();
-      expect(calls.map((call) => call.method)).toEqual(["GET", "GET", "GET"]);
+      expect(calls.map((call) => call.method)).toEqual(["GET", "GET", "GET", "GET"]);
+      expect(calls.at(-1)?.pathname).toMatch(/\/runs\/run_1\/artifacts$/);
     });
 
     it("retains undecodable screenshots without progress text in the raw stream", async () => {
@@ -1504,5 +1506,29 @@ describe("permission errors", () => {
       name: "QoniPermissionDeniedError",
       message: expect.stringContaining("Known scopes: gumem.session:create"),
     });
+  });
+});
+
+
+describe("Do Anything durable artifacts", () => {
+  it("returns files after attach, with signed links, refresh and binary content", async () => {
+    const { client } = makeClient((call) => {
+      if (call.pathname.endsWith("/download-url")) return jsonResponse({ download_url: "https://storage.example.test/file?sig=fresh", expires_in: 900 });
+      if (call.pathname.endsWith("/blob")) return new Response("{}");
+      if (call.pathname.endsWith("/artifacts")) return jsonResponse({ items: [{ id: "file-1", name: "result.json", mime_type: "application/json", size_bytes: 2, download_url: "https://storage.example.test/file?sig=initial", expires_in: 900 }] });
+      if (call.pathname.endsWith("/events")) return sseResponse(frame(1, "run.completed", { terminal_reason: "done" }));
+      if (call.pathname.endsWith("/runs/run_1")) return jsonResponse({ run_id: "run_1", session_id: "sess_1", status: "succeeded" });
+      throw new Error("Unexpected request " + call.pathname);
+    }, { emptyArtifacts: false });
+    const run = await client.doAnything.attach("run_1", { token: TOKEN });
+    const result = await run.wait();
+    expect(result.artifacts).toHaveLength(1);
+    const artifact = result.artifacts[0];
+    expect(artifact.downloadUrl).toContain("sig=initial");
+    expect(artifact.expiresIn).toBe(900);
+    expect(Buffer.from(await artifact.content()).toString()).toBe("{}");
+    expect(await artifact.refreshDownloadUrl!()).toContain("sig=fresh");
+    expect(artifact.downloadUrl).toContain("sig=fresh");
+    expect(await client.doAnything.artifacts({ token: TOKEN, runId: "run_1" })).toHaveLength(1);
   });
 });

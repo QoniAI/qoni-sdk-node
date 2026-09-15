@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.4.4
+
+- Populate Do Anything `result.artifacts` from durable run files, including attached runs.
+- Expose signed download URLs, per-file link refresh, and explicit file listing.
+
 All notable changes to `@qoniai/qoni` are documented in this file.
 
 This project follows semantic versioning. Before `1.0.0`, minor versions may
