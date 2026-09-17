@@ -391,11 +391,21 @@ const context = await qoni.gumem.recall({
 const run = await qoni.doAnything.run({
   token,
   prompt: "Open https://en.wikipedia.org/wiki/Solid-state_battery and summarize its key advantages over lithium-ion.",
+  browserProxy: {
+    proxyId: "sg-static", // server-side registry id; never pass credentials here
+    mode: "scoped",       // off | all | scoped
+    region: "ap-southeast-1",
+  },
 });
 
 const status = await run.status(); // refresh the run's current state
 await run.cancel("User stopped the task"); // idempotent
 ```
+
+`browserProxy` affects only newly created Browserbase sessions. `region` selects
+Browserbase compute, while the registered proxy controls network egress. The SDK
+accepts only a proxy ID, mode, and region; operators manage proxy credentials in
+OpsConsole.
 
 ### Web Search
 
