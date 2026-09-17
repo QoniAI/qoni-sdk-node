@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.5.0 - 2026-09-17
+
+### Added
+
+- Let Do Anything callers select a server-managed Browserbase proxy by ID, choose
+  `off`, `all`, or `scoped` routing, and select a supported Browserbase compute
+  region with `browserProxy`.
+
+### Security
+
+- Reject proxy URLs, usernames, passwords, and any unknown proxy option locally.
+  Proxy credentials remain in the backend's private registry and never cross the
+  public SDK API.
+
 ## 0.4.4
 
 - Populate Do Anything `result.artifacts` from durable run files, including attached runs.

@@ -80,6 +80,8 @@ export type {
   DoAnythingAttachOptions,
   DoAnythingRunOptions,
   DoAnythingSnapshot,
+  BrowserProxyOptions,
+  BrowserbaseRegion,
   RunLimits,
   SnapshotImage,
   SnapshotAction,
