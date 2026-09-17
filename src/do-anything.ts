@@ -64,6 +64,21 @@ export interface RunLimits {
   maxDurationMinutes?: number;
 }
 
+export type BrowserbaseRegion =
+  | "us-west-2"
+  | "us-east-1"
+  | "eu-central-1"
+  | "ap-southeast-1";
+
+export interface BrowserProxyOptions {
+  /** Server-side proxy registry id. Credentials never enter the SDK call. */
+  proxyId?: string;
+  /** `off` uses datacenter egress; `all` proxies all requests; `scoped` uses admin patterns. */
+  mode?: "off" | "all" | "scoped";
+  /** Browserbase compute region. This is separate from the proxy's IP geography. */
+  region?: BrowserbaseRegion;
+}
+
 export interface DoAnythingRunOptions {
   /** Delegation token — passed once here; the returned handle holds it. */
   token: string;
@@ -78,6 +93,8 @@ export interface DoAnythingRunOptions {
   session?: SessionRef;
   // Product-specific options stay camelCase.
   profileId?: string;
+  /** Applies when this run creates a new Browserbase session. */
+  browserProxy?: BrowserProxyOptions;
   keepAlive?: boolean;
   allowedActions?: string[];
   skills?: string[];
@@ -109,6 +126,47 @@ const PLATFORM_DECIDED_RUN_OPTIONS = [
   "outputSchema",
   "cacheScript",
 ] as const;
+
+const BROWSERBASE_REGIONS = new Set<BrowserbaseRegion>([
+  "us-west-2",
+  "us-east-1",
+  "eu-central-1",
+  "ap-southeast-1",
+]);
+
+function validateBrowserProxyOptions(value: unknown): void {
+  if (value === undefined) return;
+  if (!isJsonObject(value)) {
+    throw new QoniValidationError("browserProxy must be an object");
+  }
+  const allowed = new Set(["proxyId", "mode", "region"]);
+  const extras = Object.keys(value).filter((key) => !allowed.has(key));
+  if (extras.length > 0) {
+    throw new QoniValidationError(
+      `browserProxy does not accept ${extras.join(", ")} — credentials stay server-side`,
+    );
+  }
+  if (
+    value.proxyId !== undefined &&
+    (typeof value.proxyId !== "string" ||
+      !/^[a-z0-9][a-z0-9._-]{0,63}$/.test(value.proxyId))
+  ) {
+    throw new QoniValidationError("browserProxy.proxyId is invalid");
+  }
+  if (
+    value.mode !== undefined &&
+    !["off", "all", "scoped"].includes(String(value.mode))
+  ) {
+    throw new QoniValidationError("browserProxy.mode must be off, all, or scoped");
+  }
+  if (
+    value.region !== undefined &&
+    (typeof value.region !== "string" ||
+      !BROWSERBASE_REGIONS.has(value.region as BrowserbaseRegion))
+  ) {
+    throw new QoniValidationError("browserProxy.region is not supported");
+  }
+}
 
 export function createDoAnythingNamespace(transport: QoniTransport) {
   /**
@@ -339,6 +397,7 @@ export function createDoAnythingNamespace(transport: QoniTransport) {
       if (!prompt || typeof prompt !== "string") {
         throw new QoniValidationError("doAnything.run requires a prompt string");
       }
+      validateBrowserProxyOptions(rest.browserProxy);
 
       // Fail loudly on options the wire create body cannot carry — a silent
       // drop would let callers believe a knob took effect when it never
@@ -412,7 +471,12 @@ function normalizeDoAnythingRunInput(input: JsonObject): JsonObject {
     keepAlive: "keep_alive",
     allowedActions: "allowed_actions",
     maxDurationMinutes: "max_duration_minutes",
+    browserProxy: "browser_proxy",
   });
+  const browserProxy = body.browser_proxy;
+  if (isJsonObject(browserProxy)) {
+    body.browser_proxy = renameKeys(browserProxy, { proxyId: "proxy_id" });
+  }
   return body;
 }
 

@@ -364,11 +364,20 @@ const context = await qoni.gumem.recall({
 const run = await qoni.doAnything.run({
   token,
   prompt: "打开 https://en.wikipedia.org/wiki/Solid-state_battery ，总结它相对锂离子电池的主要优势。",
+  browserProxy: {
+    proxyId: "sg-static", // 服务端代理注册表 ID；这里绝不传凭据
+    mode: "scoped",       // off | all | scoped
+    region: "ap-southeast-1",
+  },
 });
 
 const status = await run.status(); // 刷新并返回当前状态
 await run.cancel("用户停止任务"); // 幂等
 ```
+
+`browserProxy` 只影响新建的 Browserbase 会话。`region` 选择 Browserbase
+计算区域，注册代理决定网络出口。SDK 只接受代理 ID、模式和区域；代理账号密码由
+运维人员在 OpsConsole 管理。
 
 ### Web Search
 
