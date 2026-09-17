@@ -671,6 +671,11 @@ describe("doAnything.run → RunHandle", () => {
       token: TOKEN,
       prompt: "open the docs",
       profileId: "profile_1",
+      browserProxy: {
+        proxyId: "sg-static",
+        mode: "all",
+        region: "ap-southeast-1",
+      },
       limits: { maxDurationMinutes: 7 },
       capture: { screenshots: true },
     });
@@ -686,6 +691,11 @@ describe("doAnything.run → RunHandle", () => {
     expect(calls[0].body).toEqual({
       instructions: "open the docs",
       profile_id: "profile_1",
+      browser_proxy: {
+        proxy_id: "sg-static",
+        mode: "all",
+        region: "ap-southeast-1",
+      },
       max_duration_minutes: 7,
     });
   });
@@ -743,6 +753,21 @@ describe("doAnything.run → RunHandle", () => {
       ).rejects.toBeInstanceOf(QoniValidationError);
     }
     expect(calls).toHaveLength(0); // rejected locally — nothing was silently dropped
+  });
+
+  it("rejects Browserbase proxy credentials before they reach the wire", async () => {
+    const { client, calls } = makeClient(() => jsonResponse({ data: { run_id: "run_1" } }));
+    await expect(
+      client.doAnything.run({
+        token: TOKEN,
+        prompt: "go",
+        browserProxy: {
+          proxyId: "sg-static",
+          password: "must-stay-server-side",
+        } as never,
+      }),
+    ).rejects.toBeInstanceOf(QoniValidationError);
+    expect(calls).toHaveLength(0);
   });
 
   it("normalizes events: semantic types, camelCase data, raw escape hatch, terminal auto-end", async () => {

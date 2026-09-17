@@ -1,17 +1,20 @@
 # Changelog
 
-## 0.4.4
-
-- Populate Do Anything `result.artifacts` from durable run files, including attached runs.
-- Expose signed download URLs, per-file link refresh, and explicit file listing.
-
 All notable changes to `@qoniai/qoni` are documented in this file.
 
 This project follows semantic versioning. Before `1.0.0`, minor versions may
 include SDK API changes, while patch versions are reserved for backward
 compatible fixes.
 
-## Unreleased
+## 0.5.0 - 2026-09-17
+
+### Added
+
+- Let Do Anything callers select a server-managed Browserbase proxy by ID, choose
+  `off`, `all`, or `scoped` routing, and select a supported Browserbase compute
+  region with `browserProxy`.
+- Populate Do Anything `result.artifacts` from durable run files, including attached runs.
+- Expose signed download URLs, per-file link refresh, and explicit file listing.
 
 - Return typed login and control tickets instead of discarding action responses.
 - Send an explicitly selected site and optional existing Profile when opening login.
@@ -20,6 +23,12 @@ compatible fixes.
 - Document server-side controllers, embedded Live View, and the separate persistent
   Profile lifecycle. Existing `Promise<void>` wrappers around login/control methods
   must accept the new result type. This requires a minor-version release.
+
+### Security
+
+- Reject proxy URLs, usernames, passwords, and any unknown proxy option locally.
+  Proxy credentials remain in the backend's private registry and never cross the
+  public SDK API.
 
 ## 0.4.3 - 2026-09-09
 
