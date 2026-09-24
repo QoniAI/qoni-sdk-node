@@ -12,6 +12,53 @@ import type { RunEvent } from "../src";
 import type { RunWireOps } from "../src/run-handle";
 import { decodeDataUri } from "../src/run-events";
 
+describe("live browser viewer events", () => {
+  it("delivers the rotated viewer URL through the semantic run stream", async () => {
+    const { client } = makeClient((call) => {
+      if (call.pathname.endsWith("/events")) {
+        return sseResponse(
+          frame(1, "run.browser_live_url_changed", {
+            live_url: "https://browser.example/devtools/page/bootstrap",
+            cdp_url: "wss://browser.example/private-cdp",
+            supports_live_pump: false,
+            force_viewer_reload: false,
+            provider_session_id: "browser-session-1",
+          }) +
+          frame(2, "run.browser_live_url_changed", {
+            live_url: "https://browser.example/devtools/page/real-tab",
+            cdp_url: "wss://browser.example/private-cdp",
+            supports_live_pump: false,
+            force_viewer_reload: true,
+            provider_session_id: "browser-session-1",
+          }) +
+          frame(3, "run.completed", { terminal_reason: "done", output: "ok" }),
+        );
+      }
+      return jsonResponse({ data: { run_id: "run_1", status: "succeeded" } });
+    });
+    const run = await client.doAnything.attach("run_1", { token: TOKEN });
+    const events: RunEvent[] = [];
+    for await (const event of run.events()) events.push(event);
+    expect(events.map((event) => event.type)).toEqual([
+      "browserLiveUrlChanged", "browserLiveUrlChanged", "done",
+    ]);
+    expect(events[0]).toMatchObject({
+      type: "browserLiveUrlChanged",
+      data: { liveUrl: "https://browser.example/devtools/page/bootstrap" },
+    });
+    expect(events[1]).toMatchObject({
+      type: "browserLiveUrlChanged",
+      data: {
+        liveUrl: "https://browser.example/devtools/page/real-tab",
+        supportsLivePump: false,
+        forceViewerReload: true,
+        providerSessionId: "browser-session-1",
+      },
+    });
+    expect(JSON.stringify(events[1]?.data)).not.toContain("private-cdp");
+  });
+});
+
 // ---------------------------------------------------------------------------
 // Harness: realistic wire-shaped fixtures (double envelope, snake_case),
 // mocked transport via the fetch option.

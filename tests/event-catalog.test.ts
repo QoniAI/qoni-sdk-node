@@ -17,6 +17,7 @@ const OUT_OF_BAND = new Set([
   "run.screenshot", // → "screenshot"
   "run.completed", // → "done"
   "run.interaction", // → "interaction" (carries the typed Interaction object)
+  "run.browser_live_url_changed", // → "browserLiveUrlChanged" (live viewer URL)
 ]);
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -124,7 +125,7 @@ describe("WireEventTypes ↔ vendored catalog", () => {
   it("QoniEventTypes constants are exactly the produced event.type values", () => {
     // QoniEventTypes is the developer-facing vocabulary; it must cover precisely
     // the set of event.type values the normalizer can emit: WIRE_TO_SEMANTIC
-    // values + out-of-band "screenshot"/"done"/"interaction" + the Track
+    // values + out-of-band "screenshot"/"done"/"interaction"/browser URL + the Track
     // monitor-stream types (triggered/checkCompleted, produced by the monitor.*
     // special cases).
     const produced = new Set<string>([
@@ -132,6 +133,7 @@ describe("WireEventTypes ↔ vendored catalog", () => {
       "screenshot",
       "done",
       "interaction",
+      "browserLiveUrlChanged",
       "triggered",
       "checkCompleted",
     ]);
