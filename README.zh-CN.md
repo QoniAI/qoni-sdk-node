@@ -719,6 +719,8 @@ try {
 - AK/SK 只保存在可信服务端。
 - 不要把 delegation token 暴露给不可信客户端。
 - 每次 Agent 行动只申请必要 scope。
+- SDK 的产品方法每次调用前都会重新兑换 delegation token，因此 AccessKey 的 scope
+  变更会在下一次 SDK 调用前重新校验。已经在 SDK 外取得的产品 token 仍会持续有效至过期。
 - 浏览器接管、站点登录、长期监控、敏感产物访问优先使用 `interactive`。
 - 在业务日志中记录 `auditId`、`requestId`、`traceId`，方便后续审计。
 - 如果怀疑 AK/SK 泄露，应在 Qoni Console 中轮换密钥。

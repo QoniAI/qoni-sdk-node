@@ -6,6 +6,15 @@ This project follows semantic versioning. Before `1.0.0`, minor versions may
 include SDK API changes, while patch versions are reserved for backward
 compatible fixes.
 
+## 0.5.1 - 2026-09-23
+
+### Fixed
+
+- Recheck access-key scope policy at token exchange before every SDK product
+  operation, including repeated calls with the same delegation token. Removing
+  a scope now blocks the next SDK operation instead of leaving a cached product
+  token usable until expiry.
+
 ## 0.5.0 - 2026-09-17
 
 ### Added

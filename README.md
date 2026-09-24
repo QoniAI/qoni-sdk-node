@@ -790,6 +790,9 @@ Common first-run errors:
 - Keep Qoni AK/SK on trusted servers only.
 - Do not expose delegation tokens to untrusted clients.
 - Request the smallest useful scope set for each Agent action.
+- Product methods exchange the delegation token on every call, so a change to
+  the access key's allowed scopes is checked before the next SDK operation.
+  Product tokens already obtained outside the SDK remain valid until expiry.
 - Prefer `interactive` mode for browser control, site login, long-running monitors, and sensitive artifacts.
 - Store `auditId`, `requestId`, and `traceId` with product logs when later investigation matters.
 - Rotate AK/SK through Qoni Console if a credential might have been exposed.
