@@ -1009,6 +1009,41 @@ describe("Qoni", () => {
     );
   });
 
+  it("checks changed access-key scopes again before reusing a delegation token", async () => {
+    const delegationToken = jwt({
+      token_type: "eak_delegation_token",
+      aud: "genauth:token-exchange",
+      eak_tenant_id: "tenant_1",
+    });
+    const productToken = jwt({ aud: "gumem" });
+    let allowed = true;
+    let exchanges = 0;
+    let productCalls = 0;
+    const client = new Qoni({
+      accessKey: "ak_test",
+      secretKey: "sk_test",
+      host: "https://qoni.example.com",
+      gumemBaseUrl: "https://gumem.example.com/api",
+      fetch: (async (url: URL | RequestInfo) => {
+        if (String(url).endsWith("/api/v3/eak/token-exchange")) {
+          exchanges++;
+          return allowed
+            ? jsonResponse({ data: { accessToken: productToken, expiresIn: 3600 } })
+            : jsonResponse({ error: { code: "eak.delegation.no_allowed_scopes", message: "No allowed scopes" } }, { status: 403 });
+        }
+        productCalls++;
+        return jsonResponse({ data: { ok: true } });
+      }) as typeof fetch,
+    });
+
+    await client.gumem.recall({ token: delegationToken, query: "first" });
+    allowed = false;
+    await expect(client.gumem.recall({ token: delegationToken, query: "second" }))
+      .rejects.toMatchObject({ status: 403 });
+    expect(exchanges).toBe(2);
+    expect(productCalls).toBe(1);
+  });
+
   it("surfaces upstream token exchange configuration errors in the thrown message", async () => {
     const delegationToken = jwt({
       token_type: "eak_delegation_token",
@@ -1264,19 +1299,24 @@ describe("Qoni", () => {
     await client.track.api.deleteMonitor({ token: delegationToken, monitorId: "monitor_1" });
     await client.track.api.updateMonitor({ token: delegationToken, monitorId: "monitor_1", title: "updated" });
 
-    // Each product exchanges once per distinct scope set. With the two-verb
-    // model every state-changing call shares the product's `manage` token, so
-    // cancel / intervene / followUp / runNow / deleteMonitor / updateMonitor
-    // all reuse the cached token from the first `manage` exchange.
+    // Each operation exchanges its token so a policy change is checked again.
     expect(exchanges).toEqual([
       { subjectToken: delegationToken, resource: "webagent", scopes: ["webagent.do_anything:manage"] },
       { subjectToken: delegationToken, resource: "webagent", scopes: ["webagent.do_anything:read"] },
+      { subjectToken: delegationToken, resource: "webagent", scopes: ["webagent.do_anything:manage"] },
+      { subjectToken: delegationToken, resource: "webagent", scopes: ["webagent.do_anything:manage"] },
       { subjectToken: delegationToken, resource: "webagent", scopes: ["webagent.web_search:manage"] },
       { subjectToken: delegationToken, resource: "webagent", scopes: ["webagent.web_search:read"] },
+      { subjectToken: delegationToken, resource: "webagent", scopes: ["webagent.web_search:manage"] },
       { subjectToken: delegationToken, resource: "webagent", scopes: ["webagent.deep_research:manage"] },
       { subjectToken: delegationToken, resource: "webagent", scopes: ["webagent.deep_research:read"] },
+      { subjectToken: delegationToken, resource: "webagent", scopes: ["webagent.deep_research:manage"] },
+      { subjectToken: delegationToken, resource: "webagent", scopes: ["webagent.deep_research:manage"] },
       { subjectToken: delegationToken, resource: "webagent", scopes: ["webagent.track:manage"] },
       { subjectToken: delegationToken, resource: "webagent", scopes: ["webagent.track:read"] },
+      { subjectToken: delegationToken, resource: "webagent", scopes: ["webagent.track:manage"] },
+      { subjectToken: delegationToken, resource: "webagent", scopes: ["webagent.track:manage"] },
+      { subjectToken: delegationToken, resource: "webagent", scopes: ["webagent.track:manage"] },
     ]);
   });
 
