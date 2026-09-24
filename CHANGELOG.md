@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.6.0 - 2026-09-23
+
+### Added
+
+- Deliver `browserLiveUrlChanged` on semantic run streams when the browser
+  viewer URL changes. Applications can follow the active tab instead of
+  remaining on the initial blank page. The event includes the live viewer URL
+  and refresh hint, without exposing the private CDP URL in `event.data`.
+
 ## 0.5.2 - 2026-09-23
 
 ### Fixed
