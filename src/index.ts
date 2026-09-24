@@ -42,6 +42,7 @@ export type {
   // Rich-event `event.data` object shapes (simple events' data is a scalar).
   RunMessageData,
   RunScreenshotData,
+  RunBrowserLiveUrlChangedData,
   RunDoneData,
 } from "./run-events";
 // --- Interaction model (axis B) — the typed HITL surface (run.interaction). ---
