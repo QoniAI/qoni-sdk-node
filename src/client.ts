@@ -50,7 +50,6 @@ export class Qoni {
   private readonly secretKey: string;
   private readonly host: string;
   private runtimeConfigPromise?: Promise<ResolvedRuntimeConfig>;
-  private readonly productTokenCache = new Map<string, { token: string; expiresAt: number }>();
   private genAuthAdminTokenCache?: { accessToken: string; userPoolId: string; expiresAt: number };
 
   readonly gumem: ReturnType<typeof createGumemNamespace>;
@@ -698,10 +697,9 @@ export class Qoni {
     const runtimeToken = requiredRuntimeToken(token);
     if (!isQoniDelegationToken(runtimeToken)) return runtimeToken;
 
+    // Every SDK operation must re-enter GenAuth's policy check. A cached
+    // product token can outlive a change to the access key's allowed scopes.
     const scopes = [...(requiredScopes || [])].sort();
-    const cacheKey = [service, runtimeToken, scopes.join(" ")].join(":");
-    const cached = this.productTokenCache.get(cacheKey);
-    if (cached && cached.expiresAt > Date.now() + 30_000) return cached.token;
 
     const response = await this.signedPost<unknown>("/api/v3/eak/token-exchange", {
       subjectToken: runtimeToken,
@@ -718,10 +716,6 @@ export class Qoni {
       );
     }
 
-    this.productTokenCache.set(cacheKey, {
-      token: accessToken,
-      expiresAt: Date.now() + Math.max(0, readExpiresIn(payload) ?? 3600) * 1000,
-    });
     return accessToken;
   }
 
