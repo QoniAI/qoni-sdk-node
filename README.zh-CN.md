@@ -657,7 +657,7 @@ type QoniEvent<T = unknown> = {
 | --- | --- | --- |
 | `QoniValidationError` | 请求发出前的本地校验失败（scope 字符串格式错、silent 委托缺 user）。 | 按消息修正调用——消息里给出正确写法。 |
 | `QoniAuthError` | AK/SK 签名被 Qoni 拒绝（凭据错误/已轮换）。 | 检查 `accessKey` / `secretKey`。 |
-| `QoniPermissionDeniedError` | delegation token 缺所需 scope（403）。 | 带上缺失 scope 重新 `delegateToken`。 |
+| `QoniPermissionDeniedError` | AccessKey 或 delegation token 缺少所需 scope（403）。 | 检查 AccessKey 权限策略，并在 `delegateToken` 中申请所需 scope。 |
 | `QoniTokenExpiredError` | delegation / 产品 token 过期。 | 重新 mint token 再试。 |
 | `QoniDelegationRequiredError` | 产品调用没带 `token`，或带的是网关不接受的裸 token。 | 把 `delegation.data.token` 传给产品调用。 |
 | `QoniRateLimitError` | 被限流（429）。 | 退避后重试（`retryable === true`）。 |
@@ -706,6 +706,7 @@ try {
 | --- | --- | --- |
 | `agent must be a string` | 当前线上 delegation API 期望 `agent` 是字符串 ID。 | 使用 `agent: "memory-agent"`，不要传对象。 |
 | `eak.delegation.user_not_bound` | `userId` 不属于该 Qoni credential 绑定的 GenAuth userpool。 | 使用 `currentUser` 返回的真实用户 ID，或确认用户来自同一个绑定 userpool。 |
+| `eak.delegation.no_allowed_scopes` | AccessKey 没有启用任何权限 scope。 | 在 Qoni Console 的 Permission scope 设置中启用本次调用所需的策略。 |
 | `eak.genauth.userpool_binding_missing` | AK/SK 没有绑定 GenAuth userpool，`genauth.users.*` 无法换取 management token。 | 先把 Qoni credential 绑定到目标 GenAuth userpool。 |
 | `eak.genauth.userpool_owner_missing` | 绑定的 GenAuth userpool 找不到可用于签发 management token 的 owner 用户。 | 修复 GenAuth userpool owner 数据或绑定。 |
 | `eak.token_exchange.upstream_failed` 且包含 `unauthorized_client` 或 `grant_type is not enabled` | Delegation 已成功，但 managed delegation app 缺少 token-exchange grant，或租户绑定发生漂移。 | 先修复 managed delegation app 绑定，再调用 GUMem 或 WebAgent 产品能力。 |

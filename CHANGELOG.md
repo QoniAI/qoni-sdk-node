@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.5.2 - 2026-09-23
+
+### Fixed
+
+- Keep permission errors concise instead of appending every known scope.
+- Explain how to enable a permission policy when an AccessKey has no allowed
+  scopes. Preserve the backend error code and request ID for diagnosis.
+
 ## 0.5.1 - 2026-09-23
 
 ### Fixed
