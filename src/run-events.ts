@@ -36,6 +36,8 @@ export const QoniEventTypes = {
   Interaction: "interaction",
   /** A live screenshot frame (opt in with `capture: { screenshots: true }`); image on `event.image`. */
   Screenshot: "screenshot",
+  /** The browser viewer moved to a new page or needs a fresh attachment. Use `event.data.liveUrl` for the live preview. */
+  BrowserLiveUrlChanged: "browserLiveUrlChanged",
   /** Terminal — the run finished; outcome + output in `event.data` (cost is on the `RunResult`). */
   Done: "done",
   // --- Web Search ---
@@ -60,10 +62,11 @@ export type QoniEventType = (typeof QoniEventTypes)[keyof typeof QoniEventTypes]
 
 /**
  * Categories WIRE_TO_SEMANTIC maps to. Excludes the out-of-band cases the
- * normalizer shapes directly (screenshot / done / interaction) — those don't
+ * normalizer shapes directly (screenshot / done / interaction / browser live
+ * URL change) — those don't
  * go through the generic `shapeData`.
  */
-export type RunProgressType = Exclude<QoniEventType, "screenshot" | "done" | "interaction">;
+export type RunProgressType = Exclude<QoniEventType, "screenshot" | "done" | "interaction" | "browserLiveUrlChanged">;
 
 /** A decoded screenshot frame. `bytes` are the raw image bytes. */
 export interface RunImage {
@@ -91,6 +94,13 @@ interface RunEventBase {
 export interface RunMessageData { text: string; role: string }
 /** `screenshot` — page metadata; the decoded image is on `event.image`. */
 export interface RunScreenshotData { pageUrl?: string; step?: number }
+/** `browserLiveUrlChanged` — the provider's live viewer URL can rotate as tabs change. */
+export interface RunBrowserLiveUrlChangedData {
+  liveUrl: string;
+  supportsLivePump: boolean;
+  forceViewerReload: boolean;
+  providerSessionId?: string;
+}
 /** `done` — terminal outcome + final output. (Total cost is on the `RunResult`.) */
 export interface RunDoneData { output?: unknown; succeeded: boolean | null; terminalReason: string }
 
@@ -101,6 +111,7 @@ export type RunEvent =
   | (RunEventBase & { type: "message"; data: RunMessageData; isTerminal: false })
   | (RunEventBase & { type: "interaction"; data: Interaction; isTerminal: false })
   | (RunEventBase & { type: "screenshot"; data: RunScreenshotData; image: RunImage; isTerminal: false })
+  | (RunEventBase & { type: "browserLiveUrlChanged"; data: RunBrowserLiveUrlChangedData; isTerminal: false })
   | (RunEventBase & { type: "done"; data: RunDoneData; isTerminal: true })
   // Web Search — `event.data` is the count of unique results (number).
   | (RunEventBase & { type: "resultsReady"; data: number; isTerminal: false })
@@ -122,7 +133,7 @@ export type RunEvent =
 /** Events any product run can emit. */
 export type CoreRunEvent = Extract<
   RunEvent,
-  { type: "progress" | "message" | "interaction" | "screenshot" | "done" }
+  { type: "progress" | "message" | "interaction" | "screenshot" | "browserLiveUrlChanged" | "done" }
 >;
 /** Do Anything — core events only. */
 export type DoAnythingEvent = CoreRunEvent;
@@ -281,7 +292,6 @@ export const WIRE_TO_SEMANTIC: Readonly<Record<string, RunProgressType>> = {
   "run.recording_started": "progress",
   "run.recording_paused": "progress",
   "run.recording_finalized": "progress",
-  "run.browser_live_url_changed": "progress",
   // side-channel
   "run.feedback_submitted": "progress",
 };
@@ -389,6 +399,21 @@ export function normalizeRunEvent(
       if (step !== undefined) sData.step = step;
       return { ...base, type: "screenshot", data: sData, image, isTerminal: false };
     }
+  }
+
+  if (wireType === "run.browser_live_url_changed") {
+    const liveUrl = asString(c.liveUrl);
+    // A malformed URL-change frame is still available to onWireEvent, but it
+    // must not tell a viewer to navigate to an empty URL.
+    if (!liveUrl) return null;
+    const data: RunBrowserLiveUrlChangedData = {
+      liveUrl,
+      supportsLivePump: c.supportsLivePump === true,
+      forceViewerReload: c.forceViewerReload === true,
+    };
+    const providerSessionId = asString(c.providerSessionId);
+    if (providerSessionId) data.providerSessionId = providerSessionId;
+    return { ...base, type: "browserLiveUrlChanged", data, isTerminal: false };
   }
 
   // Typed interaction lifecycle (axis B): the whole Interaction object rides

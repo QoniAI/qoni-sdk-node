@@ -687,6 +687,7 @@ that type:
 //     "message"        { text, role }
 //     "interaction"    the typed Interaction object (HITL) — see Interactions
 //     "screenshot"     { pageUrl?, step? }   + the decoded image on event.image
+//     "browserLiveUrlChanged" { liveUrl, supportsLivePump, forceViewerReload, providerSessionId? }
 //     "done"           { output, succeeded, terminalReason }
 // Common to every event: runId, at (ISO 8601), isTerminal (true only for "done"),
 // raw (the original wire event — escape hatch).
@@ -696,10 +697,16 @@ Each product handle is typed to its own subset:
 
 | Product | `event.type` set |
 |---|---|
-| Do Anything | core: `progress` / `message` / `interaction` / `screenshot` / `done` |
+| Do Anything | core: `progress` / `message` / `interaction` / `screenshot` / `browserLiveUrlChanged` / `done` |
 | Web Search | core + `resultsReady` |
 | Deep Research | core + `phase` / `sectionReady` (the outline gate arrives as an `interaction`) |
 | Track (`MonitorHandle`) | core + `monitorCreated` / `triggered` / `checkCompleted` |
+
+For a live browser preview, listen for `browserLiveUrlChanged` and show
+`event.data.liveUrl` in your viewer. A run can switch browser tabs after its
+first URL arrives, so update the viewer on later events too. Remount an
+existing viewer when `forceViewerReload` is true. The URL grants access to the
+browser view; keep it out of public logs.
 
 Dropped connections reconnect automatically with `Last-Event-ID` catch-up; the iterator ends at the run's terminal (`done`) event.
 For complete audit/observability capture, `onWireEvent` receives every original

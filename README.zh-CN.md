@@ -620,6 +620,7 @@ type QoniResponse<T> = {
 //     "message"        { text, role }
 //     "interaction"    带类型的 Interaction 对象（HITL）—— 见「交互」一节
 //     "screenshot"     { pageUrl?, step? }   + 解码后的图在 event.image
+//     "browserLiveUrlChanged" { liveUrl, supportsLivePump, forceViewerReload, providerSessionId? }
 //     "done"           { output, succeeded, terminalReason }
 // 公共字段:runId、at(ISO 8601)、isTerminal(仅 "done" 为 true)、raw(原始 wire 事件,逃生舱)。
 ```
@@ -628,10 +629,12 @@ type QoniResponse<T> = {
 
 | 产品 | `event.type` 集合 |
 |---|---|
-| Do Anything | 核心:`progress` / `message` / `interaction` / `screenshot` / `done` |
+| Do Anything | 核心:`progress` / `message` / `interaction` / `screenshot` / `browserLiveUrlChanged` / `done` |
 | Web Search | 核心 + `resultsReady` |
 | Deep Research | 核心 + `phase` / `sectionReady`（大纲审批走 `interaction`） |
 | Track（`MonitorHandle`） | 核心 + `monitorCreated` / `triggered` / `checkCompleted` |
+
+展示实时浏览器时，监听 `browserLiveUrlChanged`，用 `event.data.liveUrl` 更新预览地址。任务执行期间可能切换标签页，因此不能只使用第一次收到的地址。`forceViewerReload` 为 true 时重载已有预览。live URL 可访问浏览器画面，不要写入公开日志。
 
 断线会带 `Last-Event-ID` 自动重连续传；迭代器在终态事件后自动结束。
 需要完整审计/可观测性证据时，`onWireEvent` 会在语义归一化和过滤之前收到每一个原始 SSE 帧；
