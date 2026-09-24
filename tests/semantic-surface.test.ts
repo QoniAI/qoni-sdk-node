@@ -1517,7 +1517,7 @@ describe("track.create → MonitorHandle", () => {
 // ---------------------------------------------------------------------------
 
 describe("permission errors", () => {
-  it("appends the known scope set to server permission errors", async () => {
+  it("keeps server permission errors concise", async () => {
     const { client } = makeClient(() =>
       jsonResponse(
         { detail: { code: "permission_denied", message: "missing scope" } },
@@ -1529,8 +1529,30 @@ describe("permission errors", () => {
       client.webSearch.api.get({ token: TOKEN, runId: "ws_1" }),
     ).rejects.toMatchObject({
       name: "QoniPermissionDeniedError",
-      message: expect.stringContaining("Known scopes: gumem.session:create"),
+      message: "missing scope",
     });
+  });
+
+  it("explains how to enable scopes for an AccessKey with no permissions", async () => {
+    const { client } = makeClient(() =>
+      jsonResponse(
+        {
+          code: "eak.delegation.no_allowed_scopes",
+          message: "Qoni credential has no allowed scopes",
+          requestId: "req_scope_denied",
+        },
+        { status: 403 },
+      ),
+    );
+
+    const error = await client.webSearch.api.get({ token: TOKEN, runId: "ws_1" }).catch((cause) => cause);
+    expect(error).toMatchObject({
+      name: "QoniPermissionDeniedError",
+      code: "eak.delegation.no_allowed_scopes",
+      requestId: "req_scope_denied",
+      message: expect.stringContaining("open its Permission scope settings"),
+    });
+    expect(error.message).not.toContain("Known scopes:");
   });
 });
 
