@@ -729,7 +729,7 @@ All error classes are exported and can be matched with `instanceof`:
 | --- | --- | --- |
 | `QoniValidationError` | Local input check failed before any request (bad scope string, silent delegation missing a user). | Fix the call — the message states the correct form. |
 | `QoniAuthError` | AK/SK signing rejected by Qoni (bad/rotated credentials). | Check `accessKey` / `secretKey`. |
-| `QoniPermissionDeniedError` | The delegation token lacks a required scope (403). | Re-`delegateToken` with the missing scope. |
+| `QoniPermissionDeniedError` | The AccessKey or delegation token lacks a required scope (403). | Check the AccessKey permission policy and request the missing scope with `delegateToken`. |
 | `QoniTokenExpiredError` | The delegation / product token expired. | Mint a fresh token and retry. |
 | `QoniDelegationRequiredError` | A product call was made without `token`, or with a raw token the gateway won't accept directly. | Pass `delegation.data.token` to the product call. |
 | `QoniRateLimitError` | Rate limited (429). | Back off and retry (`retryable === true`). |
@@ -779,6 +779,7 @@ Common first-run errors:
 | --- | --- | --- |
 | `agent must be a string` | The online delegation API currently expects `agent` to be a string id. | Pass `agent: "memory-agent"` rather than an object. |
 | `eak.delegation.user_not_bound` | The `userId` is not in the GenAuth userpool bound to this Qoni credential. | Use a real user id from `currentUser` or from the same bound userpool. |
+| `eak.delegation.no_allowed_scopes` | The AccessKey has no permission scopes enabled. | In Qoni Console, open its Permission scope settings and enable the policy required by this call. |
 | `eak.genauth.userpool_binding_missing` | The AK/SK is not bound to a GenAuth userpool, so `genauth.users.*` cannot obtain a management token. | Bind the Qoni credential to the target GenAuth userpool before calling user management APIs. |
 | `eak.genauth.userpool_owner_missing` | The bound GenAuth userpool has no resolvable owner user for management-token signing. | Fix the GenAuth userpool owner data or binding. |
 | `eak.token_exchange.upstream_failed` with `unauthorized_client` or `grant_type is not enabled` | Delegation succeeded, but the managed delegation app is missing token-exchange grant support or has drifted from the tenant binding. | Repair the managed delegation app binding before calling GUMem or WebAgent product capabilities. |

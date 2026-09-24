@@ -1,4 +1,3 @@
-import { KNOWN_SCOPES } from "./scopes";
 import { isJsonObject, type JsonObject } from "./types";
 
 /**
@@ -21,6 +20,8 @@ export type QoniErrorCode =
   | "not_found"
   | "conflict"
   | "eak.delegation.user_not_bound"
+  | "eak.delegation.no_allowed_scopes"
+  | "eak.delegation.scope_not_allowed"
   | "eak.genauth.userpool_binding_missing"
   | "eak.genauth.userpool_owner_missing"
   | "eak.genauth.no_bound_users"
@@ -136,10 +137,12 @@ export function errorFromPayload(
     stringField(source, "message") ||
     stringField(source, "detail") ||
     fallbackMessage;
-  const message = appendOnboardingHint(
-    appendDeniedScopes(appendUpstreamDescription(rawMessage, source), source),
-    code,
-  );
+  const message = code === "eak.delegation.no_allowed_scopes"
+    ? "This AccessKey has no permission scopes. In Qoni Console, open its Permission scope settings, enable the policy needed for this call, then retry."
+    : appendOnboardingHint(
+        appendDeniedScopes(appendUpstreamDescription(rawMessage, source), source),
+        code,
+      );
   const options: QoniErrorOptions = {
     code,
     status,
@@ -154,10 +157,7 @@ export function errorFromPayload(
   if (isDelegationRequired(code)) return new QoniDelegationRequiredError(message, options);
   if (status === 401) return new QoniAuthError(message, options);
   if (status === 403 || isPermissionDenied(code)) {
-    // Server permission errors pass through with the known scope set appended
-    // so callers can see what a valid grant looks like without leaving the
-    // stack trace.
-    return new QoniPermissionDeniedError(appendKnownScopes(message), options);
+    return new QoniPermissionDeniedError(message, options);
   }
   if (status === 400 || status === 422) return new QoniValidationError(message, options);
   if (status === 429) return new QoniRateLimitError(message, options);
@@ -212,17 +212,14 @@ const ONBOARDING_HINTS: Record<string, string> = {
     "Resolve a real user with qoni.resolveAnyBoundUser() (demo/smoke) or qoni.currentUser({ accessToken }).",
   "eak.genauth.userpool_binding_missing":
     "Hint: bind the Qoni credential to a GenAuth userpool before calling genauth.users.*.",
+  "eak.delegation.scope_not_allowed":
+    "Hint: enable the denied scopes in this AccessKey's Permission scope settings in Qoni Console.",
 };
 
 function appendOnboardingHint(message: string, code: string): string {
   const hint = ONBOARDING_HINTS[code];
   if (!hint || message.includes(hint)) return message;
   return `${message} ${hint}`;
-}
-
-function appendKnownScopes(message: string): string {
-  if (message.includes("Known scopes:")) return message;
-  return `${message} (Known scopes: ${KNOWN_SCOPES.join(", ")})`;
 }
 
 function statusCodeToCode(status: number): string {
