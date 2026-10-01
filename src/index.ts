@@ -69,6 +69,10 @@ export type {
   WaitPayload,
   WaitKind,
   InteractionPayloadByType,
+  OpenLoginOptions,
+  OpenLoginResult,
+  ConfirmLoginOptions,
+  ConfirmLoginResult,
 } from "./interactions";
 export { MonitorHandle } from "./track";
 export type {

@@ -1,6 +1,6 @@
 import { QoniValidationError } from "./errors";
-import { InteractionHandle, type Interaction } from "./interactions";
-import { camelizeRecord, normalizeRunEvent, type MonitorEvent } from "./run-events";
+import { InteractionHandle, interactionActionScopes, type Interaction } from "./interactions";
+import { camelizeKeys, normalizeRunEvent, type MonitorEvent } from "./run-events";
 import {
   isJsonObject,
   type QoniEvent,
@@ -37,8 +37,8 @@ export interface MonitorRunsOptions {
 
 /** A monitor's check cadence. */
 export type MonitorSchedule =
-  | { kind: "cron"; expr: string }
-  | { kind: "interval"; intervalSeconds: number };
+  | { kind: "cron"; expr: string; /** IANA time zone for the cron expression. */ tz?: string }
+  | { kind: "interval"; intervalSeconds: number; tz?: string };
 
 /**
  * Fields to change on a monitor via {@link MonitorHandle.refine}. Pass any
@@ -61,7 +61,11 @@ interface MonitorWireOps {
   update(input: JsonObject): Promise<JsonObject>;
   runNow(): Promise<JsonObject>;
   streamEvents(opts: MonitorEventsOptions): AsyncIterable<QoniEvent<unknown>>;
-  postAction(action: Action, body: JsonObject | undefined): Promise<void>;
+  postAction(
+    action: Action,
+    body: JsonObject | undefined,
+    options?: { requiredScopes?: readonly string[] },
+  ): Promise<unknown>;
   listRuns(opts: MonitorRunsOptions): Promise<JsonObject>;
   getRun(runId: string): Promise<JsonObject>;
   delete(): Promise<void>;
@@ -81,7 +85,7 @@ export class MonitorHandle {
 
   /** Refresh and return the monitor (normalized camelCase fields). */
   async get(): Promise<JsonObject> {
-    return camelizeRecord(await this.ops.get());
+    return normalizeMonitorRecord(await this.ops.get());
   }
 
   /**
@@ -90,12 +94,12 @@ export class MonitorHandle {
    * deleting.
    */
   async pause(): Promise<JsonObject> {
-    return camelizeRecord(await this.ops.update({ action: "pause" }));
+    return normalizeMonitorRecord(await this.ops.update({ action: "pause" }));
   }
 
   /** Resume a paused monitor. */
   async resume(): Promise<JsonObject> {
-    return camelizeRecord(await this.ops.update({ action: "resume" }));
+    return normalizeMonitorRecord(await this.ops.update({ action: "resume" }));
   }
 
   /**
@@ -115,12 +119,12 @@ export class MonitorHandle {
           "extractionSchema / triggerDsl / stopConditionDsl / notifyChannel)",
       );
     }
-    return camelizeRecord(await this.ops.update({ action: "refine", patch: body }));
+    return normalizeMonitorRecord(await this.ops.update({ action: "refine", patch: body }));
   }
 
   /** Trigger an immediate tick outside the schedule. */
   async runNow(): Promise<JsonObject> {
-    return camelizeRecord(await this.ops.runNow());
+    return normalizeMonitorRecord(await this.ops.runNow());
   }
 
   /**
@@ -143,8 +147,8 @@ export class MonitorHandle {
    * the endpoint the backend declared for that action.
    */
   interactionHandle(interaction: Interaction): InteractionHandle {
-    return new InteractionHandle(interaction, (action, body) =>
-      this.ops.postAction(action, body),
+    return new InteractionHandle(interaction, (action, body, options) =>
+      this.ops.postAction(action, body, options),
     );
   }
 
@@ -294,17 +298,18 @@ export function createTrackNamespace(transport: QoniTransport) {
       runNow: async () => asRecord((await api.runNow<unknown>({ token, monitorId })).data),
       streamEvents: (opts) =>
         api.events({ token, monitorId, lastEventId: opts.lastEventId, signal: opts.signal }),
-      postAction: async (action, body) => {
-        await transport.webAgentJson(
-          (action.method || "POST") as QoniHttpMethod,
-          action.endpoint,
-          token,
-          {
-            ...(body !== undefined ? { body } : {}),
-            requiredScopes: ["webagent.track:manage"],
-          },
-        );
-      },
+      postAction: async (action, body, options) =>
+        (
+          await transport.webAgentJson(
+            (action.method || "POST") as QoniHttpMethod,
+            action.endpoint,
+            token,
+            {
+              ...(body !== undefined ? { body } : {}),
+              requiredScopes: options?.requiredScopes ?? interactionActionScopes(action, "webagent.track:manage"),
+            },
+          )
+        ).data,
       listRuns: async (opts) =>
         asRecord((await api.listRuns<unknown>({ token, monitorId, ...opts })).data),
       getRun: async (runId) =>
@@ -322,10 +327,15 @@ export function createTrackNamespace(transport: QoniTransport) {
       if (!prompt || typeof prompt !== "string") {
         throw new QoniValidationError("track.create requires a prompt string");
       }
+      const body = snakeifyKeys(rest);
+      // Same wire shape as refine(): `{ kind: "interval", intervalSeconds }`
+      // must reach the backend as `interval_seconds`, or it falls back to its
+      // default interval.
+      if (body.schedule !== undefined) body.schedule = normalizeSchedule(body.schedule);
       const created = await api.createMonitor<{ id?: string; monitor_id?: string }>({
         token,
         intent: prompt,
-        ...snakeifyKeys(rest),
+        ...body,
       });
       const monitorId = created.data.id || created.data.monitor_id;
       if (!monitorId) {
@@ -348,7 +358,7 @@ export function createTrackNamespace(transport: QoniTransport) {
 // Tick runs are read-only views — normalize to camelCase and guarantee a
 // uniform `id` regardless of which wire field carried it.
 function normalizeMonitorRun(item: JsonObject): JsonObject {
-  const normalized = camelizeRecord(item);
+  const normalized = normalizeMonitorRecord(item);
   if (typeof normalized.id !== "string" || !normalized.id) {
     const id = normalized.runId ?? normalized.snapshotId;
     if (typeof id === "string" && id) normalized.id = id;
@@ -360,12 +370,62 @@ function normalizeTrackInterveneInput(input: JsonObject): JsonObject {
   return renameKeys(input, { requestId: "request_id" });
 }
 
-/** Normalize a {@link MonitorSchedule} to the backend's wire shape. */
-function normalizeSchedule(schedule: MonitorSchedule): JsonObject {
-  if (schedule.kind === "interval") {
-    return { kind: "interval", interval_seconds: schedule.intervalSeconds };
+// Wire fields whose keys are user-defined (the extraction schema's field names
+// and the values extracted for them). camelCase normalization stops at these
+// keys: `{ source_url: "string" }` must read back as `source_url`.
+const USER_KEYED_FIELDS = new Set(["extraction_schema", "baseline_extracted", "extracted"]);
+// Inside each `diffs[]` entry, these carry extracted values keyed by the user's
+// field names (field_diff before/after) or list items keyed the same way
+// (list_diff added/removed/sample_unchanged). fingerprint_diff carries hashes only.
+const USER_KEYED_DIFF_FIELDS = new Set(["before", "after", "added", "removed", "sample_unchanged"]);
+
+/** camelCase a monitor / tick record, leaving user-keyed field contents verbatim. */
+function normalizeMonitorRecord(value: JsonObject): JsonObject {
+  const out: JsonObject = {};
+  for (const [key, item] of Object.entries(value)) {
+    if (USER_KEYED_FIELDS.has(key)) out[camelKey(key)] = item;
+    else if (key === "diffs" && Array.isArray(item)) out.diffs = item.map(normalizeDiff);
+    else out[camelKey(key)] = camelizeKeys(item);
   }
-  return { kind: "cron", expr: schedule.expr };
+  return out;
+}
+
+function normalizeDiff(entry: unknown): unknown {
+  if (!isJsonObject(entry)) return camelizeKeys(entry);
+  const out: JsonObject = {};
+  for (const [key, item] of Object.entries(entry)) {
+    out[camelKey(key)] = USER_KEYED_DIFF_FIELDS.has(key) ? item : camelizeKeys(item);
+  }
+  return out;
+}
+
+function camelKey(key: string): string {
+  return key.replace(/_([a-z0-9])/g, (_, ch: string) => ch.toUpperCase());
+}
+
+/**
+ * Normalize a {@link MonitorSchedule} to the backend's wire shape
+ * (`{ kind, expr | interval_seconds, tz }`). Only `intervalSeconds` is renamed;
+ * every other field (such as `tz`) passes through unchanged. Accepts an already
+ * snake_case `interval_seconds`; kinds other than interval/cron pass through for
+ * the backend to validate.
+ */
+function normalizeSchedule(schedule: unknown): unknown {
+  if (!isJsonObject(schedule)) return schedule;
+  if (schedule.kind === "interval") {
+    const { intervalSeconds, interval_seconds, ...rest } = schedule;
+    const seconds = intervalSeconds ?? interval_seconds;
+    if (typeof seconds !== "number" || !Number.isFinite(seconds) || seconds <= 0) {
+      throw new QoniValidationError(
+        'track interval schedule needs a positive number: { kind: "interval", intervalSeconds }',
+      );
+    }
+    return { ...rest, interval_seconds: seconds };
+  }
+  if (schedule.kind === "cron" && (typeof schedule.expr !== "string" || !schedule.expr.trim())) {
+    throw new QoniValidationError('track cron schedule needs an expression: { kind: "cron", expr }');
+  }
+  return schedule;
 }
 
 /** Shallow camelCase → snake_case for wire bodies; nested values untouched. */

@@ -7,6 +7,7 @@ import {
   type SessionRef,
 } from "./run-handle";
 import type { DoAnythingEvent } from "./run-events";
+import { interactionActionScopes } from "./interactions";
 import {
   isJsonObject,
   type QoniEvent,
@@ -362,17 +363,18 @@ export function createDoAnythingNamespace(transport: QoniTransport) {
           // Skip screenshot rows in backfill when the caller did not opt in.
           includeScreenshots: capture?.screenshots ? undefined : false,
         }),
-      postAction: async (action, body) => {
-        await transport.webAgentJson(
-          (action.method || "POST") as QoniHttpMethod,
-          action.endpoint,
-          token,
-          {
-            ...(body !== undefined ? { body } : {}),
-            requiredScopes: ["webagent.do_anything:manage"],
-          },
-        );
-      },
+      postAction: async (action, body, options) =>
+        (
+          await transport.webAgentJson(
+            (action.method || "POST") as QoniHttpMethod,
+            action.endpoint,
+            token,
+            {
+              ...(body !== undefined ? { body } : {}),
+              requiredScopes: options?.requiredScopes ?? interactionActionScopes(action, "webagent.do_anything:manage"),
+            },
+          )
+        ).data,
       cancel: async (reason) =>
         asRecord(
           (

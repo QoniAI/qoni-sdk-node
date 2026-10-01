@@ -174,7 +174,7 @@ describeLiveE2E("live e2e: interactions (InteractionHandle + run.interactionHand
     // the structural guard, naming the kind it could not find — proving the
     // method is wired to its ActionKind and that no request is sent for an
     // affordance the backend never offered.
-    const calls: Array<[ActionKind, () => Promise<void>]> = [
+    const calls: Array<[ActionKind, () => Promise<unknown>]> = [
       [ActionKinds.answer, () => handle.answer("sdk live e2e")],
       [ActionKinds.skip, () => handle.skip()],
       [ActionKinds.confirm, () => handle.confirm()],

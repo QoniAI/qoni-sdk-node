@@ -281,7 +281,7 @@ await qoni.gumem.recall({
 
 ## Scope 怎么选
 
-每个 WebAgent 产品只有两个 scope：`read`（只读观察——状态、事件、产物）与 `manage`（一切改变执行状态的操作——发起、取消、应答、消息、监控的增删改）。全集共 8 个：`webagent.{do_anything, web_search, deep_research, track}:{read, manage}`。最简单的授权方式是 `products` 糖——每个产品名展开为该产品的 `read` + `manage` 一对：
+每个 WebAgent 产品只有两个 scope：`read`（只读观察——状态、事件、产物）与 `manage`（一切改变执行状态的操作——发起、取消、应答、消息、监控的增删改）。产品 scope 共 8 个：`webagent.{do_anything, web_search, deep_research, track}:{read, manage}`。交互式站点登录（`openLogin()`）另外需要 `QoniScopes.SITE_LOGIN_REQUEST` 和 `QoniScopes.SITE_LOGIN_CONFIRM`，它们不属于任何产品，必须在 `scopes` 中显式申请。最简单的授权方式是 `products` 糖——每个产品名展开为该产品的 `read` + `manage` 一对：
 
 ```ts
 await qoni.delegateToken({
@@ -426,7 +426,7 @@ const monitor = await qoni.track.create({
 // 都要求 `active`，所以先等它就绪再操作：
 for await (const event of monitor.events()) {
   if (event.type === "interaction") {
-    const i = monitor.interactionHandle(event.data); // 如 needs-reauth 的 site_login
+    const i = monitor.interactionHandle(event.data); // 如意图澄清
     if (i.can("confirm")) await i.confirm();
     continue;
   }
@@ -439,7 +439,8 @@ const ticks = await monitor.runs({ limit: 10 }); // tick 产生的 run 只读列
 
 // 用 refine() 改定义（任意字段子集：schedule / targetUrls / extractionSchema /
 // triggerDsl / stopConditionDsl / notifyChannel）。`schedule` 是
-// { kind: "cron", expr } 或 { kind: "interval", intervalSeconds }。
+// { kind: "cron", expr } 或 { kind: "interval", intervalSeconds }（track.create() 相同）。
+// get()/run() 读回时，抽取字段名与抽取结果保留原始键名。
 // 自然语言意图不可 refine——要改描述请新建 monitor：
 await monitor.refine({ schedule: { kind: "cron", expr: "0 9 * * *" } });
 await monitor.pause();   // 停掉定时 tick 但不删除
@@ -568,7 +569,33 @@ for await (const event of run.events()) {
 }
 ```
 
-方法：`answer(text)`、`skip()`、`confirm()`、`reject()`、`openLogin()`、`confirmSignedIn()`、`connectControl()`、`refreshControl()`、`releaseControl()`、`retry()`、`switchProfile()`。`i.can(kind)` 判断该交互当前是否提供这个动作；调用后端没声明的方法会抛错（所以「恢复」按钮只有在真能用时才出现）。
+方法：`answer(text)`、`skip()`、`confirm()`、`reject()`、`openLogin({ siteId?, profileId? })`、`confirmSignedIn()`、`connectControl()`、`refreshControl()`、`releaseControl()`、`retry()`、`switchProfile()`。`i.can(kind)` 判断该交互当前是否提供这个动作；调用后端没声明的方法会抛错（所以「恢复」按钮只有在真能用时才出现）。
+
+`openLogin()` 为运行中的 `site_login` 交互开启一次交互式登录会话。传入 `siteId`（取自 `i.interaction.payload.sites[].siteId`），交互只列出一个站点时可以省略。把返回的 `liveUrl` 展示给用户；用户登录完成后，先用 `login.confirm()` 把登录态写入 Profile，再调用 `confirmSignedIn()` 通知 Agent：
+
+```ts
+import { QoniError } from "@qoniai/qoni";
+
+const login = await i.openLogin();          // { profileId, siteId, sessionId, liveUrl }
+showToUser(login.liveUrl);                  // 用户在这里登录
+await waitForUserToFinish();
+let result;
+try {
+  result = await login.confirm();           // 结束这次会话；检测到登录态就写入 Profile
+} catch (error) {
+  // 409：该 Profile 没有待确认的登录（会话已结束，或 Profile 已不存在）。
+  if (!(error instanceof QoniError && error.code === "no_pending_login")) throw error;
+}
+if (!result || result.active || result.probeResult === "no_session") {
+  await i.confirmSignedIn();                // Agent 重新检查；仍未登录会再次请求
+} else {
+  // 用户没有登录成功，而 confirm() 已关闭这次会话的浏览器。
+  const retry = await i.openLogin({ siteId: login.siteId, profileId: login.profileId });
+  showToUser(retry.liveUrl);                // 同一个 Profile 的新登录会话
+}
+```
+
+`probeResult: "no_session"` 表示服务端已不再持有这次登录会话：它可能在检测到用户登录后已经自动保存了登录态，也可能已经重启。部分浏览器提供方会改为让 `confirm()` 抛出 `code` 为 `no_pending_login` 的 `QoniError`（HTTP 409），服务端在 Profile 已不属于当前用户或已删除时也会返回这个错误码；示例按同样方式处理，因为 Agent 会重新检查，如果站点仍未登录会再次请求。委托时需要申请 `QoniScopes.SITE_LOGIN_REQUEST` 和 `QoniScopes.SITE_LOGIN_CONFIRM`，并在 AccessKey 权限策略中允许这两个 scope。
 
 上面用到的判别字符串也都导出成了常量，避免裸写字面量：`InteractionTypes`（`site_login` / `clarification` / `confirmation` / `take_control` / `wait`）、`InteractionStatuses`、`ActionKinds`（`i.can(...)` 的动作名）。授权 scope 同样有：`QoniScopes`（每个单独 scope）、`QoniProductScopes`（`products` 语法糖展开成的 per-product `read`+`manage` 对）、`QoniScopeBundles`（精选 bundle）。用它们代替手写字符串：
 
@@ -586,7 +613,7 @@ if (i.type === InteractionTypes.Clarification && i.can(ActionKinds.answer)) {
 
 原始 wire 事件类型（`run.action.started` 这种内部传输名，命名是历史遗留、也不一致）**不作为公开导出**——开发者按上面那套精选 `event.type` 匹配即可；极少数要精确 wire 的场景，`event.raw.event` 是个原始字符串，直接比对。
 
-Browser Use、Site Login 的 scope 已预留，但产品运行时 SDK 方法导出前不作为公开方法说明。
+Browser Use 的 scope 已预留，但产品运行时 SDK 方法导出前不作为公开方法说明。Site Login 的 scope（`QoniScopes.SITE_LOGIN_REQUEST`、`QoniScopes.SITE_LOGIN_CONFIRM`）用于运行交互上的 `InteractionHandle.openLogin()` 和 `confirm()`。
 
 ### 返回结构
 

@@ -6,6 +6,7 @@ import {
   type InteractionStatus,
   type InteractionType,
 } from "./generated/interaction-types";
+import { QoniScopes } from "./scopes";
 import { isJsonObject, type JsonObject } from "./types";
 
 /**
@@ -241,7 +242,85 @@ export function normalizeInteraction(payload: unknown): Interaction | null {
 export type InteractionActionPoster = (
   action: Action,
   body: JsonObject | undefined,
-) => Promise<void>;
+  options?: { requiredScopes?: readonly string[] },
+) => Promise<unknown>;
+
+/**
+ * Scopes the product token must carry to invoke `action`. `open_login` starts
+ * an interactive login session on the profiles route, which the backend guards
+ * with `webagent.site_login:request`; every other action resolves the
+ * interaction inside the product run and needs the product's manage scope.
+ */
+export function interactionActionScopes(action: Action, productManageScope: string): string[] {
+  return action.kind === ActionKinds.openLogin
+    ? [QoniScopes.SITE_LOGIN_REQUEST]
+    : [productManageScope];
+}
+
+/** Options for {@link InteractionHandle.openLogin}. */
+export interface OpenLoginOptions {
+  /**
+   * Site to sign in to — one of `interaction.payload.sites[].siteId`. May be
+   * omitted when the interaction lists exactly one site.
+   */
+  siteId?: string;
+  /** Re-login an existing browser profile in place instead of creating one. */
+  profileId?: string;
+}
+
+/** Interactive login session started by {@link InteractionHandle.openLogin}. */
+export interface OpenLoginResult {
+  profileId: string;
+  siteId: string;
+  /** Login browser session the user signs in through. */
+  sessionId: string;
+  /** Live view URL of the login browser to show to the user. */
+  liveUrl: string;
+  /** Unmodified response body (escape hatch — shape may evolve with the API). */
+  raw: JsonObject;
+  /**
+   * Persist the login into the profile after the user signs in
+   * (`POST /profiles/{profileId}/confirm`). Confirming ends this login
+   * session and closes its browser, whatever the outcome:
+   *
+   * - `active: true` — the login is saved; call
+   *   {@link InteractionHandle.confirmSignedIn}.
+   * - `active: false` with `probeResult: "no_session"` — the backend no longer
+   *   holds the session (it may already have saved the login automatically, or
+   *   restarted). Call `confirmSignedIn()`: the agent rechecks the site and
+   *   raises a new `site_login` interaction if it is still signed out.
+   * - Rejects with a `QoniError` whose `code` is `no_pending_login` (HTTP 409)
+   *   when the backend has no pending login for this profile: the session
+   *   already ended on providers that report it this way, or the profile no
+   *   longer exists for this user. Handle it like `no_session`: call
+   *   `confirmSignedIn()`, and the agent asks again if it is still signed out.
+   * - `active: false` with any other `probeResult` — the user was not signed
+   *   in. Start a new session with `openLogin({ siteId, profileId })` and show
+   *   its new `liveUrl`; the old one no longer works.
+   *
+   * Requires `QoniScopes.SITE_LOGIN_CONFIRM`.
+   */
+  confirm(options?: ConfirmLoginOptions): Promise<ConfirmLoginResult>;
+}
+
+/** Options for {@link OpenLoginResult.confirm}. */
+export interface ConfirmLoginOptions {
+  /** Optional human-readable label stored on the profile. */
+  displayLabel?: string;
+}
+
+/** Result of {@link OpenLoginResult.confirm}. */
+export interface ConfirmLoginResult {
+  profileId: string;
+  /** True only when the profile is now `active` (the login was captured). */
+  active: boolean;
+  /** Profile state after confirmation: `active`, or `pending_login` when no signed-in session was detected. */
+  state: string;
+  /** Outcome of the backend's signed-in probe, for example `no_session`. */
+  probeResult: string;
+  /** Unmodified response body (escape hatch — shape may evolve with the API). */
+  raw: JsonObject;
+}
 
 /**
  * Typed wrapper over an {@link Interaction} that exposes one method per
@@ -279,48 +358,130 @@ export class InteractionHandle<T extends InteractionType = InteractionType> {
   }
 
   /** Answer a clarification ask. */
-  answer(text: string): Promise<void> {
-    return this.invoke(ActionKinds.answer, { response: text });
+  async answer(text: string): Promise<void> {
+    await this.invoke(ActionKinds.answer, { response: text });
   }
   /** Skip / dismiss the interaction (proceed without acting on it). */
-  skip(): Promise<void> {
-    return this.invoke(ActionKinds.skip);
+  async skip(): Promise<void> {
+    await this.invoke(ActionKinds.skip);
   }
   /** Confirm a pending confirmation (approve the plan / destructive op). */
-  confirm(): Promise<void> {
-    return this.invoke(ActionKinds.confirm);
+  async confirm(): Promise<void> {
+    await this.invoke(ActionKinds.confirm);
   }
   /** Reject a pending confirmation. */
-  reject(): Promise<void> {
-    return this.invoke(ActionKinds.reject);
+  async reject(): Promise<void> {
+    await this.invoke(ActionKinds.reject);
   }
-  /** Open the login surface for a site_login interaction. */
-  openLogin(): Promise<void> {
-    return this.invoke(ActionKinds.openLogin);
+  /**
+   * Start an interactive login session for a `site_login` interaction. The
+   * backend needs the site to sign in to: pass `siteId`, or omit it when the
+   * interaction lists exactly one site. Show `liveUrl` to the user; when they
+   * finish, call `confirm()` on the result to save the login, and act on its
+   * outcome (see {@link OpenLoginResult.confirm}) before {@link confirmSignedIn}.
+   * The delegation must include `QoniScopes.SITE_LOGIN_REQUEST` and
+   * `QoniScopes.SITE_LOGIN_CONFIRM`; the AccessKey policy must allow both.
+   */
+  async openLogin(options: OpenLoginOptions = {}): Promise<OpenLoginResult> {
+    // Undeclared action first: same contract as every other method.
+    this.#declaredAction(ActionKinds.openLogin);
+    const body: JsonObject = { site_id: this.#loginSiteId(options.siteId) };
+    if (options.profileId !== undefined) {
+      if (typeof options.profileId !== "string" || !options.profileId) {
+        throw new QoniValidationError("openLogin profileId must be a non-empty string");
+      }
+      body.profile_id = options.profileId;
+    }
+    const response = await this.invoke(ActionKinds.openLogin, body);
+    const raw = isJsonObject(response) ? response : {};
+    const fields = camelizeRecord(raw);
+    const profileId = asString(fields.profileId) ?? "";
+    const siteId = asString(fields.siteId) ?? String(body.site_id);
+    return {
+      profileId,
+      siteId,
+      sessionId: asString(fields.sessionId) ?? "",
+      liveUrl: asString(fields.liveUrl) ?? "",
+      raw,
+      confirm: async (confirmOptions: ConfirmLoginOptions = {}) => {
+        if (!profileId) {
+          throw new QoniValidationError("openLogin response did not include a profileId to confirm");
+        }
+        const confirmBody: JsonObject = { site_id: siteId };
+        if (confirmOptions.displayLabel !== undefined) confirmBody.display_label = confirmOptions.displayLabel;
+        // The confirm route is not a declared interaction action; it belongs to
+        // the login session openLogin() started, on the same profiles router.
+        const response = await this.post(
+          {
+            kind: ActionKinds.openLogin,
+            label: "Confirm login",
+            method: "POST",
+            endpoint: `/profiles/${encodeURIComponent(profileId)}/confirm`,
+          },
+          confirmBody,
+          { requiredScopes: [QoniScopes.SITE_LOGIN_CONFIRM] },
+        );
+        const raw = isJsonObject(response) ? response : {};
+        const fields = camelizeRecord(raw);
+        const state = asString(fields.state) ?? "";
+        return {
+          profileId: asString(fields.profileId) ?? profileId,
+          active: state === "active",
+          state,
+          probeResult: asString(fields.probeResult) ?? "",
+          raw,
+        };
+      },
+    };
   }
   /** Tell the agent the user has finished signing in. */
-  confirmSignedIn(): Promise<void> {
-    return this.invoke(ActionKinds.confirmSignedIn);
+  async confirmSignedIn(): Promise<void> {
+    await this.invoke(ActionKinds.confirmSignedIn);
   }
   /** Connect to the live browser for a take_control interaction. */
-  connectControl(): Promise<void> {
-    return this.invoke(ActionKinds.connectControl);
+  async connectControl(): Promise<void> {
+    await this.invoke(ActionKinds.connectControl);
   }
   /** Refresh the live control surface / live url. */
-  refreshControl(): Promise<void> {
-    return this.invoke(ActionKinds.refreshControl);
+  async refreshControl(): Promise<void> {
+    await this.invoke(ActionKinds.refreshControl);
   }
   /** Hand control back to the agent. */
-  releaseControl(): Promise<void> {
-    return this.invoke(ActionKinds.releaseControl);
+  async releaseControl(): Promise<void> {
+    await this.invoke(ActionKinds.releaseControl);
   }
   /** Retry a wait interaction now. */
-  retry(): Promise<void> {
-    return this.invoke(ActionKinds.retry);
+  async retry(): Promise<void> {
+    await this.invoke(ActionKinds.retry);
   }
   /** Switch the profile a wait/login interaction is bound to. */
-  switchProfile(): Promise<void> {
-    return this.invoke(ActionKinds.switchProfile);
+  async switchProfile(): Promise<void> {
+    await this.invoke(ActionKinds.switchProfile);
+  }
+
+  /** Resolve the site for `openLogin`: explicit, or the only listed site. */
+  #loginSiteId(requested: string | undefined): string {
+    const payload = this.interaction.payload as Partial<SiteLoginPayload> | undefined;
+    const listed = Array.isArray(payload?.sites)
+      ? payload.sites.map((site) => site.siteId).filter((id) => typeof id === "string" && id.length > 0)
+      : [];
+    if (requested !== undefined) {
+      if (typeof requested !== "string" || !requested) {
+        throw new QoniValidationError("openLogin siteId must be a non-empty string");
+      }
+      if (listed.length > 0 && !listed.includes(requested)) {
+        throw new QoniValidationError(
+          `openLogin siteId "${requested}" is not one of the sites this interaction asks for: ${listed.join(", ")}`,
+        );
+      }
+      return requested;
+    }
+    if (listed.length === 1) return listed[0];
+    throw new QoniValidationError(
+      listed.length === 0
+        ? "openLogin needs a siteId: this interaction does not list the site to sign in to"
+        : `openLogin needs a siteId: choose one of ${listed.join(", ")}`,
+    );
   }
 
   /**
@@ -328,7 +489,12 @@ export class InteractionHandle<T extends InteractionType = InteractionType> {
    * error surfaces as a rejected promise (not a synchronous throw), keeping the
    * method contract uniformly promise-based.
    */
-  private async invoke(kind: ActionKind, body?: JsonObject): Promise<void> {
+  private async invoke(kind: ActionKind, body?: JsonObject): Promise<unknown> {
+    return this.post(this.#declaredAction(kind), body);
+  }
+
+  /** The declared action of `kind`; throws when the backend did not offer it. */
+  #declaredAction(kind: ActionKind): Action {
     const action = this.interaction.actions.find((a) => a.kind === kind);
     if (!action) {
       const offered = this.interaction.actions.map((a) => a.kind).join(", ") || "none";
@@ -338,6 +504,6 @@ export class InteractionHandle<T extends InteractionType = InteractionType> {
           "Only call methods whose action the interaction currently offers.",
       );
     }
-    await this.post(action, body);
+    return action;
   }
 }
