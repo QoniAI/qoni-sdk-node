@@ -115,7 +115,11 @@ export interface RunWireOps {
    * Interaction model's `actions[]` carry the endpoint + method, so the SDK
    * never hard-codes a HITL route — it forwards what the backend declared.
    */
-  postAction(action: Action, body: JsonObject | undefined): Promise<void>;
+  postAction(
+    action: Action,
+    body: JsonObject | undefined,
+    options?: { requiredScopes?: readonly string[] },
+  ): Promise<unknown>;
   cancel(reason?: string): Promise<JsonObject>;
   /** Products without artifacts leave this undefined → `result.artifacts` is []. */
   listArtifacts?(signal?: AbortSignal): Promise<Artifact[]>;
@@ -213,7 +217,7 @@ export class RunHandle<E extends RunEvent = RunEvent> {
         // the last seen event id — but only if the stream made progress since
         // the previous clean close, so a server that keeps closing an idle
         // stream cannot spin us in a tight reconnect loop.
-        const detail = await waitWithSignal(() => this.ops.getDetail(signal), signal);
+        const detail = await settleRead(() => this.ops.getDetail(signal), signal);
         if (isTerminalRunStatus(normalizeRunStatus(this.id, detail).status)) {
           terminalDetail = detail;
           break;
@@ -229,11 +233,11 @@ export class RunHandle<E extends RunEvent = RunEvent> {
         eventIdAtLastClose = lastEventId;
       }
 
-      const detail = terminalDetail ?? await waitWithSignal(() => this.ops.getDetail(signal), signal);
+      const detail = terminalDetail ?? await settleRead(() => this.ops.getDetail(signal), signal);
       this.#adoptSessionRef(detail);
       const result = settleRunResult(this.id, detail, [], terminalDoneReason);
       result.artifacts = this.ops.listArtifacts
-        ? await waitWithSignal(() => this.ops.listArtifacts!(signal), signal)
+        ? await settleRead(() => this.ops.listArtifacts!(signal), signal)
         : [];
       return result;
     } catch (err) {
@@ -257,8 +261,8 @@ export class RunHandle<E extends RunEvent = RunEvent> {
    * endpoint the backend declared for that action.
    */
   interactionHandle(interaction: Interaction): InteractionHandle {
-    return new InteractionHandle(interaction, (action, body) =>
-      this.ops.postAction(action, body),
+    return new InteractionHandle(interaction, (action, body, options) =>
+      this.ops.postAction(action, body, options),
     );
   }
 
@@ -374,6 +378,47 @@ export function withTimeout(
     else signal.addEventListener("abort", onAbort, { once: true });
   }
   return { signal: controller.signal, timedOut: () => fired, dispose };
+}
+
+/** Retries after the first failure of a settle read (two retries in total). */
+const SETTLE_READ_BACKOFF_MS = [250, 1_000] as const;
+
+/**
+ * Idempotent reads `wait()` performs after the event stream: run detail and
+ * the artifact list. A transient failure here (a dropped connection or a
+ * timed-out token exchange, both `retryable`) must not fail a run that
+ * already finished, so these reads retry a bounded number of times. Only
+ * `retryable` QoniErrors are retried; aborts and `wait()`'s own deadline
+ * (both surfaced through `signal`) stop immediately.
+ */
+async function settleRead<T>(read: () => Promise<T>, signal: AbortSignal | undefined): Promise<T> {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return await waitWithSignal(read, signal);
+    } catch (err) {
+      const delay = SETTLE_READ_BACKOFF_MS[attempt];
+      if (delay === undefined || signal?.aborted || !(err instanceof QoniError) || !err.retryable) throw err;
+      await sleepWithSignal(delay, signal);
+    }
+  }
+}
+
+function sleepWithSignal(ms: number, signal: AbortSignal | undefined): Promise<void> {
+  return new Promise<void>((resolve, reject) => {
+    if (signal?.aborted) {
+      reject(signal.reason ?? new DOMException("Aborted", "AbortError"));
+      return;
+    }
+    const onAbort = () => {
+      clearTimeout(timer);
+      reject(signal!.reason ?? new DOMException("Aborted", "AbortError"));
+    };
+    const timer = setTimeout(() => {
+      signal?.removeEventListener("abort", onAbort);
+      resolve();
+    }, ms);
+    signal?.addEventListener("abort", onAbort, { once: true });
+  });
 }
 
 function waitWithSignal<T>(operation: () => T | PromiseLike<T>, signal?: AbortSignal): Promise<T> {

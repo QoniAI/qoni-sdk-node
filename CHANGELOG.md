@@ -1,5 +1,50 @@
 # Changelog
 
+## 0.7.0 - 2026-10-02
+
+### Changed
+
+- `InteractionHandle.openLogin()` now resolves to an `OpenLoginResult`
+  (`{ profileId, siteId, sessionId, liveUrl, raw, confirm() }`) instead of
+  `void`. TypeScript code that stores the method as `() => Promise<void>` needs
+  to widen that type; runtime callers that ignore the result are unaffected.
+
+### Added
+
+- `OpenLoginResult.confirm()` persists the login into the profile
+  (`POST /profiles/{profileId}/confirm`) and reports `active`. Call
+  `confirmSignedIn()` once it is active (or when `probeResult` is
+  `no_session`), otherwise reopen the session with
+  `openLogin({ siteId, profileId })`.
+- `QoniScopes.SITE_LOGIN_REQUEST` (`webagent.site_login:request`) and
+  `QoniScopes.SITE_LOGIN_CONFIRM` (`webagent.site_login:confirm`). They are not
+  part of any product bundle: delegate them explicitly and allow them in the
+  AccessKey policy.
+
+### Fixed
+
+- `openLogin()` now starts a working login session. It sends the `site_id` the
+  backend's `/profiles/login` route requires (the only site listed on the
+  `site_login` interaction, or `openLogin({ siteId })`; pass `profileId` to
+  re-login an existing profile) and requests the site-login scope instead of the
+  product's manage scope. Previously the backend always rejected it. This
+  covers `site_login` interactions on Do Anything and Deep Research runs; Track
+  monitor re-login (`monitor.needs_login`, backend `/track/monitors/{id}/re_auth`)
+  is not wrapped by the SDK yet.
+- `run.wait()` retries a transient failure of the reads it makes after the run
+  finished (run detail, artifact list) up to twice. A dropped connection or a
+  timed-out token exchange no longer fails a run that already succeeded. Only
+  `retryable` errors are retried; aborts and the `timeoutMs` deadline stop it.
+- `track.create()` sends `{ kind: "interval", intervalSeconds }` as
+  `interval_seconds`, as `refine()` already did. The backend previously ignored
+  the camelCase field and fell back to its default 60-second interval. Other
+  schedule fields such as `tz` pass through unchanged, for `create()` and
+  `refine()` alike. Malformed interval or cron schedules are rejected locally.
+- Monitor and tick reads keep user-defined keys verbatim: `extractionSchema`,
+  `baselineExtracted`, a tick's `extracted`, and the `before` / `after` /
+  `added` / `removed` / `sampleUnchanged` values in `diffs` no longer rename
+  `source_url` to `sourceUrl`. Protocol fields are still camelCased.
+
 ## 0.6.0 - 2026-09-23
 
 ### Added

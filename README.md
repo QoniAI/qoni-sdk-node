@@ -310,7 +310,7 @@ await qoni.gumem.recall({
 
 ## Choosing Scopes
 
-Each WebAgent product exposes exactly two scopes: `read` (observe — status, events, artifacts) and `manage` (anything that changes execution state — run, cancel, respond, messages, monitor CRUD). The full set is the 8 scopes `webagent.{do_anything, web_search, deep_research, track}:{read, manage}`. The simplest authorization is the `products` sugar — each product name expands to its `read` + `manage` pair:
+Each WebAgent product exposes exactly two scopes: `read` (observe — status, events, artifacts) and `manage` (anything that changes execution state — run, cancel, respond, messages, monitor CRUD). The 8 product scopes are `webagent.{do_anything, web_search, deep_research, track}:{read, manage}`. Interactive site login (`openLogin()`) additionally needs `QoniScopes.SITE_LOGIN_REQUEST` and `QoniScopes.SITE_LOGIN_CONFIRM`, which are not part of any product and must be requested explicitly in `scopes`. The simplest authorization is the `products` sugar — each product name expands to its `read` + `manage` pair:
 
 ```ts
 await qoni.delegateToken({
@@ -457,7 +457,7 @@ const monitor = await qoni.track.create({
 // runNow()/refine() require `active`, so wait for it before acting:
 for await (const event of monitor.events()) {
   if (event.type === "interaction") {
-    const i = monitor.interactionHandle(event.data); // e.g. a needs-reauth site_login
+    const i = monitor.interactionHandle(event.data); // e.g. an intent clarification
     if (i.can("confirm")) await i.confirm();
     continue;
   }
@@ -470,7 +470,9 @@ const ticks = await monitor.runs({ limit: 10 }); // read-only tick run views
 
 // Change the definition with refine() (any subset of: schedule / targetUrls /
 // extractionSchema / triggerDsl / stopConditionDsl / notifyChannel). `schedule`
-// is { kind: "cron", expr } or { kind: "interval", intervalSeconds }. The
+// is { kind: "cron", expr } or { kind: "interval", intervalSeconds } (same for
+// track.create()). Extraction field names and extracted values keep their
+// original keys in get()/run() reads. The
 // natural-language intent isn't refinable — create a new monitor to change it:
 await monitor.refine({ schedule: { kind: "cron", expr: "0 9 * * *" } });
 await monitor.pause();   // stop scheduled ticks without deleting
@@ -623,11 +625,48 @@ for await (const event of run.events()) {
 }
 ```
 
-Methods: `answer(text)`, `skip()`, `confirm()`, `reject()`, `openLogin()`,
+Methods: `answer(text)`, `skip()`, `confirm()`, `reject()`, `openLogin({ siteId?, profileId? })`,
 `confirmSignedIn()`, `connectControl()`, `refreshControl()`, `releaseControl()`,
 `retry()`, `switchProfile()`. `i.can(kind)` reports whether the interaction
 currently offers that action; calling a method the backend did NOT declare
 throws (so a "recovery" button only exists when it actually works).
+
+`openLogin()` starts an interactive login session for a `site_login`
+interaction of a run. Pass `siteId` (one of
+`i.interaction.payload.sites[].siteId`), or omit it when exactly one site is
+listed. Show the returned `liveUrl` to the user; after they sign in, persist the
+login with `login.confirm()`, then tell the agent with `confirmSignedIn()`:
+
+```ts
+import { QoniError } from "@qoniai/qoni";
+
+const login = await i.openLogin();          // { profileId, siteId, sessionId, liveUrl }
+showToUser(login.liveUrl);                  // the user signs in there
+await waitForUserToFinish();
+let result;
+try {
+  result = await login.confirm();           // ends the session; saves the login if found
+} catch (error) {
+  // 409: no pending login for this profile (session already ended, or profile gone).
+  if (!(error instanceof QoniError && error.code === "no_pending_login")) throw error;
+}
+if (!result || result.active || result.probeResult === "no_session") {
+  await i.confirmSignedIn();                // the agent rechecks; it asks again if still signed out
+} else {
+  // The user was not signed in, and confirm() closed that session's browser.
+  const retry = await i.openLogin({ siteId: login.siteId, profileId: login.profileId });
+  showToUser(retry.liveUrl);                // a new session for the same profile
+}
+```
+
+`probeResult: "no_session"` means the backend no longer holds the login session —
+it may already have saved the login on its own once it detected the sign-in, or
+it restarted. Some browser providers instead reject `confirm()` with a
+`QoniError` coded `no_pending_login` (HTTP 409), which the backend also uses when
+the profile no longer exists for this user; the example handles it the same way,
+because the agent rechecks and asks again if the site is still signed out. Delegate
+`QoniScopes.SITE_LOGIN_REQUEST` and `QoniScopes.SITE_LOGIN_CONFIRM`, and allow
+both in the AccessKey policy.
 
 The discriminant strings used above are also exported as constants so you can
 avoid bare literals: `InteractionTypes` (`site_login` / `clarification` /
@@ -651,7 +690,7 @@ The 1:1 low-level methods live under `qoni.<product>.api.*` (e.g. `qoni.doAnythi
 
 `event.raw.event` is the **raw wire event type** — an internal transport name (`run.action.started`, `run.section_completed`, …) whose naming is historical and inconsistent, exposed as a plain string. This is an implementation detail, not the product API: developers match on the curated `event.type` above. The full wire-type catalog is intentionally NOT exported — reach for `event.raw.event` (a string) only when you need an exact wire match the curated layer folds into `progress` (e.g. telling a specific browser action apart).
 
-Browser Use and Site Login scopes are reserved until their product runtime SDK methods are exported.
+Browser Use scopes are reserved until their product runtime SDK methods are exported. Site Login scopes (`QoniScopes.SITE_LOGIN_REQUEST`, `QoniScopes.SITE_LOGIN_CONFIRM`) back `InteractionHandle.openLogin()` and `confirm()` on run interactions.
 
 ### Response Shape
 

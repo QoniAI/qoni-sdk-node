@@ -22,6 +22,13 @@ export const QoniScopes = {
   DEEP_RESEARCH_MANAGE: "webagent.deep_research:manage",
   TRACK_READ: "webagent.track:read",
   TRACK_MANAGE: "webagent.track:manage",
+
+  // Interactive site login (`InteractionHandle.openLogin()` on a `site_login`
+  // interaction). Not part of any product bundle: the AccessKey policy must
+  // allow it, and the delegation must request it explicitly.
+  SITE_LOGIN_REQUEST: "webagent.site_login:request",
+  // Persist that login into the browser profile (`OpenLoginResult.confirm()`).
+  SITE_LOGIN_CONFIRM: "webagent.site_login:confirm",
 } as const;
 
 export type QoniScope = (typeof QoniScopes)[keyof typeof QoniScopes];

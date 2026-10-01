@@ -7,6 +7,7 @@ import {
   type SessionRef,
 } from "./run-handle";
 import type { DeepResearchEvent } from "./run-events";
+import { interactionActionScopes } from "./interactions";
 import type { RunLimits } from "./do-anything";
 import {
   isJsonObject,
@@ -170,17 +171,18 @@ export function createDeepResearchNamespace(transport: QoniTransport) {
           signal: opts.signal,
           onReconnect: opts.onReconnect,
         }),
-      postAction: async (action, body) => {
-        await transport.webAgentJson(
-          (action.method || "POST") as QoniHttpMethod,
-          action.endpoint,
-          token,
-          {
-            ...(body !== undefined ? { body } : {}),
-            requiredScopes: ["webagent.deep_research:manage"],
-          },
-        );
-      },
+      postAction: async (action, body, options) =>
+        (
+          await transport.webAgentJson(
+            (action.method || "POST") as QoniHttpMethod,
+            action.endpoint,
+            token,
+            {
+              ...(body !== undefined ? { body } : {}),
+              requiredScopes: options?.requiredScopes ?? interactionActionScopes(action, "webagent.deep_research:manage"),
+            },
+          )
+        ).data,
       cancel: async () => asRecord((await api.cancel<unknown>({ token, runId })).data),
       listArtifacts: async (signal) => {
         const res = await api.listArtifacts<{ items?: unknown }>({ token, runId, signal });
