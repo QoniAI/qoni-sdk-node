@@ -71,7 +71,7 @@ const result = await run.wait({
 console.log(result.output);
 ```
 
-For explicit authorization, the Qoni Console/BFF owns GenAuth login and grant completion before it redirects back to the business `redirectUri`. The redirect only carries one-time callback fields such as `code`, `state`, and `grant_state`/`grantId`; never design an API that exposes a delegation token to browser code.
+For explicit authorization, the Qoni Console/BFF owns GenAuth login and grant completion before it redirects back to the business `redirectUri`. The redirect only carries one-time callback fields: `code`, `grant_state`, and your business `state` when you supplied one. It does not carry `grantId`; load the `grantId` you saved by `grant_state`. Never design an API that exposes a delegation token to browser code.
 
 ```ts
 const grant = await qoni.delegateToken({
@@ -82,12 +82,17 @@ const grant = await qoni.delegateToken({
   scopes: [QoniScopes.GUMEM_MEMORY_READ],
 });
 
+// The callback carries code, state (your business state) and grant_state, but no grantId.
+await savePendingGrant(grant.data.grantState, { grantId: grant.data.grantId, businessState: "business-csrf-state" });
 redirectUserTo(grant.data.authorizationUrl);
 
+// Callback handler: look up by grant_state, check the business state, then exchange.
+const pending = await loadPendingGrant(callback.grant_state);
+if (!pending || callback.state !== pending.businessState) throw new Error("Invalid delegation callback");
 const completed = await qoni.completeDelegateToken({
-  grantId,
-  code,
-  state,
+  grantId: pending.grantId,
+  code: callback.code,
+  state: callback.grant_state,
 });
 ```
 

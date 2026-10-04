@@ -286,18 +286,27 @@ const grant = await qoni.delegateToken({
   scopes: ["gumem.memory:read", "webagent.do_anything:manage"],
 });
 
+// The callback will not carry grantId: save it with your business state, keyed by grantState.
+await savePendingGrant(grant.data.grantState, {
+  grantId: grant.data.grantId,
+  businessState: "business-csrf-state",
+});
 redirectUserTo(grant.data.authorizationUrl);
 ```
 
-The user visits `authorizationUrl` in Qoni Console/BFF. If they are not logged in, Console/BFF sends them through GenAuth login, confirms authorization, completes the grant internally, then redirects back to your `redirectUri` with a one-time `code`, your `state`, and `grant_state`/`grantId`. The browser never receives a delegation token.
+The user visits `authorizationUrl` in Qoni Console/BFF. If they are not logged in, Console/BFF sends them through GenAuth login, confirms authorization, completes the grant internally, then redirects back to your `redirectUri` with a one-time `code`, your `state`, and `grant_state`. The callback does **not** carry `grantId`, so look up the record you saved by `grant_state`. The browser never receives a delegation token.
 
 Your callback handler runs on the server and exchanges the callback fields with AK/SK:
 
 ```ts
+const pending = await loadPendingGrant(String(req.query.grant_state));
+// Your business state comes back unchanged; reject forged or mixed-up callbacks.
+if (!pending || req.query.state !== pending.businessState) throw new Error("Invalid delegation callback");
+
 const completed = await qoni.completeDelegateToken({
-  grantId: String(req.query.grantId ?? req.query.grant_id),
+  grantId: pending.grantId,
   code: String(req.query.code),
-  state: String(req.query.state),
+  state: String(req.query.grant_state), // grant_state, not your business state
 });
 
 await qoni.gumem.recall({
@@ -308,7 +317,7 @@ await qoni.gumem.recall({
 
 `completeDelegateToken` is the recommended server callback helper. Root `qoni.delegateAgent` and `qoni.completeDelegateAgent` remain as deprecated compatibility names, but the current callback contract is `{ grantId, code, state }`; old `{ code, state }` completion is not supported.
 
-## Original delegation style (0.8.0, unreleased)
+## Original delegation style (0.8.0+)
 
 ```ts
 const grant = await qoni.genauth.delegateAgent({
@@ -329,8 +338,8 @@ the authorization request directly; use `completeDelegateToken()` in the server
 callback after consent. `agentKey` aliases `agent`; both labels must agree when
 supplied together. Top-level `userId` retains precedence over `user.id`.
 Expiry accepts integer seconds or whole-number
-`s/m/h/d` durations, between 60 and 86400 seconds. Until published, use the 0.8.0
-source build for these additions.
+`s/m/h/d` durations, between 60 and 86400 seconds. These additions are available
+in the published `@qoniai/qoni@0.8.0` release.
 
 Legacy `mailbox.*`, `web.search`, and `web.extract` scopes, and `deniedScopes`, are unsupported and rejected.
 They are never expanded into broader product permissions. Product scopes do not

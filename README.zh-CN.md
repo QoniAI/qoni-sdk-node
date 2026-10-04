@@ -257,18 +257,27 @@ const grant = await qoni.delegateToken({
   scopes: ["gumem.memory:read", "webagent.do_anything:manage"],
 });
 
+// 回调不会带回 grantId：按 grantState 保存 grantId 和业务 state
+await savePendingGrant(grant.data.grantState, {
+  grantId: grant.data.grantId,
+  businessState: "business-csrf-state",
+});
 redirectUserTo(grant.data.authorizationUrl);
 ```
 
-用户访问 `authorizationUrl` 进入 Qoni Console/BFF。若用户未登录，Console/BFF 会先走 GenAuth 登录；授权确认后由 Console/BFF 统一 complete，再回跳业务 `redirectUri`，只带一次性 `code`、业务 `state`、`grant_state`/`grantId`。浏览器不会拿到 delegation token。
+用户访问 `authorizationUrl` 进入 Qoni Console/BFF。若用户未登录，Console/BFF 会先走 GenAuth 登录；授权确认后由 Console/BFF 统一 complete，再回跳业务 `redirectUri`，只带一次性 `code`、业务 `state` 和 `grant_state`，**不带 `grantId`**，需要按 `grant_state` 找回创建请求时保存的记录。浏览器不会拿到 delegation token。
 
 业务 callback handler 在服务端用 AK/SK 兑换最终 token：
 
 ```ts
+const pending = await loadPendingGrant(String(req.query.grant_state));
+// 业务 state 原样回到回调里，和保存的值比对，防止回调被伪造或串用
+if (!pending || req.query.state !== pending.businessState) throw new Error("Invalid delegation callback");
+
 const completed = await qoni.completeDelegateToken({
-  grantId: String(req.query.grantId ?? req.query.grant_id),
+  grantId: pending.grantId,
   code: String(req.query.code),
-  state: String(req.query.state),
+  state: String(req.query.grant_state), // 传 grant_state，不是业务 state
 });
 
 await qoni.gumem.recall({
@@ -279,7 +288,7 @@ await qoni.gumem.recall({
 
 `completeDelegateToken` 是推荐的服务端 callback helper。顶层 `qoni.delegateAgent` 和 `qoni.completeDelegateAgent` 仍保留为 deprecated 兼容命名，但当前 callback 契约是 `{ grantId, code, state }`；旧的 `{ code, state }` complete 签名不再兼容。
 
-## 原始委托写法（0.8.0，尚未发布）
+## 原始委托写法（0.8.0 起）
 
 ```ts
 const grant = await qoni.genauth.delegateAgent({
@@ -299,7 +308,7 @@ console.log(grant.grantId, grant.auditId);
 用 `completeDelegateToken()` 兑换 token。`agentKey`、`userId` 分别兼容 `agent`、
 `user.id`；同时提供两个 Agent 标签时必须一致，顶层 `userId` 保持原有的优先级。
 有效期支持整数秒或整数 `s/m/h/d` 时长，
-范围为 60–86400 秒。这些新增能力在发布前需要使用 0.8.0 源码构建。
+范围为 60–86400 秒。这些新增能力已随 `@qoniai/qoni@0.8.0` 发布到 npm。
 
 旧版 `mailbox.*`、`web.search`、`web.extract` scope 和 `deniedScopes` 不受支持，SDK 会拒绝，不会将它们
 扩展成更宽的产品权限。产品 scope 不限制发送、删除邮件；任务描述不能代替禁止策略。
