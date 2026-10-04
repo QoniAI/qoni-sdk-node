@@ -84,6 +84,7 @@ export class Qoni {
     };
     this.genauth = createGenAuthNamespace(transport, {
       adminTokenFor: () => this.genauthAdminTokenFor(),
+      delegateTokenFor: (input) => this.delegateToken(input),
     });
     this.qoni = createQoniNamespace(
       transport,
@@ -991,6 +992,15 @@ function toRecord(value: object): JsonObject {
 
 function normalizeDelegateTokenInput(input: DelegateTokenInput): JsonObject {
   const body = toRecord(input);
+  if (input.deniedScopes !== undefined) {
+    throw new QoniValidationError(
+      "delegateToken: deniedScopes is not supported by the delegation service. " +
+        "Do not rely on this field to prevent mailbox or browser actions.",
+    );
+  }
+  if (input.agent !== undefined && input.agentKey !== undefined && input.agent !== input.agentKey) {
+    throw new QoniValidationError("delegateToken: agent and agentKey must identify the same Agent");
+  }
   if (!body.userId && isJsonObject(input.user) && typeof input.user.id === "string") {
     body.userId = input.user.id;
   }
@@ -1003,14 +1013,31 @@ function normalizeDelegateTokenInput(input: DelegateTokenInput): JsonObject {
   if (input.mode !== "interactive" && !body.userId) {
     throw new QoniValidationError(
       "delegateToken: silent mode requires a user — pass `user: { id: <genauthUserId> }` " +
-        "(or the deprecated top-level `userId`). Interactive mode (`mode: \"interactive\"`) " +
+        "(or the top-level `userId`). Interactive mode (`mode: \"interactive\"`) " +
         "does not need one.",
     );
   }
-  body.agent = input.agent ?? "sdk";
+  body.agent = input.agent ?? input.agentKey ?? "sdk";
+  delete body.agentKey;
+  if (input.expiresIn !== undefined) body.expiresIn = delegationDurationSeconds(input.expiresIn);
   body.scopes = resolveDelegationScopes(input.scopes, input.products);
   delete body.products;
   return body;
+}
+
+function delegationDurationSeconds(value: string | number): number {
+  let seconds = value;
+  if (typeof value === "string") {
+    const duration = /^(\d+)(s|m|h|d)?$/.exec(value);
+    const units: Record<string, number> = { s: 1, m: 60, h: 3600, d: 86400 };
+    seconds = duration ? Number(duration[1]) * units[duration[2] ?? "s"] : NaN;
+  }
+  if (typeof seconds !== "number" || !Number.isInteger(seconds) || seconds < 60 || seconds > 86400) {
+    throw new QoniValidationError(
+      'delegateToken: expiresIn must be 60–86400 integer seconds or a whole-number duration such as "15m"',
+    );
+  }
+  return seconds;
 }
 
 /**
@@ -1046,6 +1073,12 @@ function resolveDelegationScopes(
 }
 
 function validateScopeFormat(scope: string): void {
+  if (scope.startsWith("mailbox.") || scope === "web.search" || scope === "web.extract") {
+    throw new QoniValidationError(
+      `delegateToken: legacy action scope "${scope}" has no enforced mapping in this delegation service. ` +
+        "It will not be expanded into broader product permissions.",
+    );
+  }
   if (KNOWN_SCOPES.includes(scope)) return;
   // A known scope minus its service prefix — the most common mistake.
   const prefixed = KNOWN_SCOPES.find((known) => known.endsWith(`.${scope}`) || known === `webagent.${scope}`);

@@ -78,11 +78,16 @@ export interface UserRef {
 interface DelegateTokenBaseInput {
   /** Audit label for this delegation. Defaults to "sdk". */
   agent?: string;
+  /** Compatibility alias for agent. Supplying conflicting labels is an error. */
+  agentKey?: string;
   /** Fine-grained scopes. May be combined with `products`. */
   scopes?: readonly string[];
   /** Per-product authorization sugar — expands to the product's scope set. */
   products?: readonly QoniProductName[];
+  /** Integer seconds (60–86400), or a whole-number duration such as "15m". */
   expiresIn?: string | number;
+  /** Not supported: the delegation service does not enforce a deny policy. */
+  deniedScopes?: never;
   idempotencyKey?: string;
 }
 
@@ -99,12 +104,12 @@ export type DelegateTokenSilentInput = DelegateTokenBaseInput & {
 } & (
   | {
       user: UserRef;
-      /** @deprecated Use user. */
+      /** Alternative to user.id. A nonempty userId takes precedence. */
       userId?: string;
     }
   | {
       user?: UserRef;
-      /** @deprecated Use user. */
+      /** Alternative to user.id. A nonempty userId takes precedence. */
       userId: string;
     }
 );
@@ -114,7 +119,7 @@ export interface DelegateTokenInteractiveInput extends DelegateTokenBaseInput {
   redirectUri: string;
   state: string;
   user?: UserRef;
-  /** @deprecated Use user. */
+  /** Alternative to user.id; optional for interactive authorization. */
   userId?: string;
 }
 

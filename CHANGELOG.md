@@ -1,5 +1,28 @@
 # Changelog
 
+## 0.8.0 - Unreleased
+
+### Added
+
+- `qoni.genauth.delegateAgent(input)` returns the grant directly (`grant.token`),
+  or an interactive authorization request, through the existing signed endpoint.
+- `agentKey` is an alias for `agent`. Existing root and `qoni.qoni` entries keep
+  their `QoniResponse` envelopes. Conflicting Agent labels are rejected;
+  the existing top-level `userId` precedence is unchanged.
+
+### Fixed
+
+- Expiry strings such as `"15m"` are converted to integer seconds; valid
+  durations are 60–86400 seconds, matching the GenAuth DTO.
+- Unsupported `deniedScopes` is rejected rather than forwarding an unenforced
+  deny policy. Legacy `mailbox.*`, `web.search`, and `web.extract` scopes are rejected without mapping to product scopes.
+
+### Changed
+
+- Expiry validation now happens locally before signing. Invalid formats and
+  values outside 60–86400 seconds throw `QoniValidationError`; numeric seconds
+  strings are sent as integers.
+
 ## 0.7.0 - 2026-10-02
 
 ### Changed

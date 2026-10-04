@@ -636,6 +636,114 @@ describe("run wait failure boundaries", () => {
 // ---------------------------------------------------------------------------
 
 describe("delegateToken semantic enhancements", () => {
+  it.each(["mailbox.open", "mailbox.read.visible", "mailbox.draft.create", "mailbox.messages:send", "web.search", "web.extract"])(
+    "rejects legacy action scope %s without broadening it into product permissions", async scope => {
+      const { client, calls } = makeClient(() => jsonResponse({ data: {} }));
+      await expect(client.genauth.delegateAgent({ userId: "user_1", agentKey: "assistant", scopes: [scope] }))
+        .rejects.toMatchObject({ name: "QoniValidationError", message: expect.stringContaining("legacy action scope") });
+      expect(calls).toHaveLength(0);
+    },
+  );
+
+  it.each([{ userId: "legacy", expected: "legacy" }, { userId: "", expected: "current" }])(
+    "preserves namespace userId fallback for '$userId'", async ({ userId, expected }) => {
+      const { client, calls } = makeClient(() => jsonResponse({ data: { token: "t", expiresIn: 900 } }));
+      const grant = await client.genauth.delegateAgent({ userId, user: { id: "current" }, agentKey: "assistant", scopes: ["webagent.do_anything:manage"] });
+      expect(grant.token).toBe("t");
+      expect(calls.find(call => call.pathname.endsWith("/delegations"))?.body).toMatchObject({ userId: expected });
+    },
+  );
+
+  it("supports the GenAuth delegateAgent entry with a direct token and the legacy parameter names", async () => {
+    const { client, calls } = makeClient(() => jsonResponse({ data: {
+      token: "compat-token", tokenType: "Bearer", expiresIn: 900, grantId: "g", auditId: "a",
+    } }));
+    const grant = await client.genauth.delegateAgent({
+      userId: "user_1", agentKey: "email-assistant",
+      scopes: ["webagent.do_anything:read", "webagent.do_anything:manage"], expiresIn: "15m",
+    });
+    expect(grant.token).toBe("compat-token");
+    expect(grant.grantId).toBe("g");
+    expect(grant.auditId).toBe("a");
+    const body = calls.find(call => call.pathname.endsWith("/delegations"))?.body;
+    expect(body).toMatchObject({ userId: "user_1", agent: "email-assistant", expiresIn: 900 });
+    expect(body).not.toHaveProperty("agentKey");
+    expect(body).not.toHaveProperty("products");
+  });
+
+  it("returns the interactive authorization request directly without inventing a token", async () => {
+    const { client, calls } = makeClient(() => jsonResponse({ data: {
+      mode: "interactive", authorizationUrl: "https://qoni.example.com/authorize",
+      grantId: "g", grantState: "server-state", state: "server-state",
+    } }));
+    const authorization = await client.genauth.delegateAgent({
+      mode: "interactive", agentKey: "email-assistant", scopes: ["webagent.do_anything:manage"],
+      expiresIn: "15m", state: "business-state", redirectUri: "http://localhost:3000/callback",
+    });
+    expect(authorization.authorizationUrl).toBe("https://qoni.example.com/authorize");
+    expect(authorization).not.toHaveProperty("token");
+    expect(calls.find(call => call.pathname.endsWith("/delegations"))?.body).toMatchObject({
+      agent: "email-assistant", expiresIn: 900, state: "business-state",
+    });
+  });
+
+  it("normalizes legacy fields through the existing root and qoni namespace entries too", async () => {
+    const { client, calls } = makeClient(() => jsonResponse({ data: {
+      token: "t", expiresIn: 900, grantId: "g", auditId: "a",
+    } }));
+    const input = { userId: "user_1", agentKey: "email-assistant", scopes: ["webagent.do_anything:manage"], expiresIn: "15m" };
+    expect((await client.delegateToken(input)).data.token).toBe("t");
+    expect((await client.delegateAgent(input)).data).toMatchObject({ token: "t" });
+    expect((await client.qoni.delegateToken(input)).data.token).toBe("t");
+    for (const call of calls.filter(call => call.pathname.endsWith("/delegations"))) {
+      expect(call.body).toMatchObject({ agent: "email-assistant", expiresIn: 900 });
+      expect(call.body).not.toHaveProperty("agentKey");
+    }
+  });
+
+  it.each([["60s", 60], ["15m", 900], ["1h", 3600], ["1d", 86400], ["900", 900], [900, 900]])(
+    "sends duration %s as integer seconds %s", async (expiresIn, seconds) => {
+      const { client, calls } = makeClient(() => jsonResponse({ data: { token: "t", expiresIn: seconds } }));
+      await client.delegateToken({ userId: "user_1", scopes: ["webagent.do_anything:manage"], expiresIn });
+      expect(calls.find(call => call.pathname.endsWith("/delegations"))?.body).toMatchObject({ expiresIn: seconds });
+    },
+  );
+
+  it.each(["0m", "15minutes", "1.5m", "2d", "", 59, 86401, 60.5, NaN])(
+    "rejects unsupported duration %s before signing or dispatch", async expiresIn => {
+      const { client, calls } = makeClient(() => jsonResponse({ data: {} }));
+      await expect(client.delegateToken({ userId: "user_1", scopes: ["webagent.do_anything:manage"], expiresIn }))
+        .rejects.toMatchObject({ name: "QoniValidationError", message: expect.stringContaining("expiresIn") });
+      expect(calls).toHaveLength(0);
+    },
+  );
+
+  it.each([{ deniedScopes: [] }, { deniedScopes: ["mailbox.send"] }])("rejects $deniedScopes instead of pretending to enforce a deny policy", async ({ deniedScopes }) => {
+    const { client, calls } = makeClient(() => jsonResponse({ data: {} }));
+    // Plain-JS callers can supply fields excluded from the TypeScript contract.
+    const input = { userId: "user_1", scopes: ["webagent.do_anything:manage"], deniedScopes };
+    // @ts-expect-error deniedScopes is intentionally excluded from the public contract.
+    await expect(client.delegateToken(input)).rejects.toMatchObject({
+      name: "QoniValidationError", message: expect.stringContaining("deniedScopes"),
+    });
+    expect(calls).toHaveLength(0);
+  });
+
+  it("rejects a nonenumerable deniedScopes property instead of silently dropping it", async () => {
+    const { client, calls } = makeClient(() => jsonResponse({ data: {} }));
+    const input = Object.defineProperty({ userId: "user_1", scopes: ["webagent.do_anything:manage"] },
+      "deniedScopes", { value: ["mailbox.send"] });
+    await expect(client.delegateToken(input)).rejects.toBeInstanceOf(QoniValidationError);
+    expect(calls).toHaveLength(0);
+  });
+
+  it("rejects conflicting Agent labels rather than silently choosing one", async () => {
+    const { client, calls } = makeClient(() => jsonResponse({ data: {} }));
+    await expect(client.delegateToken({ userId: "user_1", agent: "one", agentKey: "two", scopes: ["webagent.do_anything:manage"] }))
+      .rejects.toMatchObject({ name: "QoniValidationError", message: expect.stringContaining("agentKey") });
+    expect(calls).toHaveLength(0);
+  });
+
   it("expands products to the product scope sets, merges explicit scopes, defaults agent to sdk", async () => {
     const { client, calls } = makeClient(() =>
       jsonResponse({

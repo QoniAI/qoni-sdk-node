@@ -264,7 +264,7 @@ describe("complete public method coverage matrix", () => {
           userId: "legacy_user_matrix",
           agent: "agent_matrix",
           scopes: [QoniScopes.GUMEM_MEMORY_READ],
-          expiresIn: "3600",
+          expiresIn: 3600,
           idempotencyKey: "idem_matrix",
           redirectUri: "https://app.example.com/callback",
           state: "business_state",

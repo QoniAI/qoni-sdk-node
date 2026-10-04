@@ -1,4 +1,9 @@
-import type { QoniResponse, QoniTransport, JsonObject } from "./types";
+import type {
+  QoniResponse, QoniTransport, JsonObject, DelegateTokenInput,
+  DelegateTokenSilentInput, DelegateTokenInteractiveInput,
+  DelegateTokenSilentResponse, InteractiveDelegationResponse, DelegateAgentResponse,
+} from "./types";
+import { QoniValidationError } from "./errors";
 
 export interface GenAuthAccessTokenInput {
   accessToken: string;
@@ -40,9 +45,24 @@ export type GenAuthUserDeleteBatchInput = GenAuthAdminTokenOverrideInput & { use
 
 export function createGenAuthNamespace(
   transport: QoniTransport,
-  options: { adminTokenFor?: GenAuthAdminTokenProvider } = {},
+  options: {
+    adminTokenFor?: GenAuthAdminTokenProvider;
+    delegateTokenFor?: (input: DelegateTokenInput) => Promise<QoniResponse<DelegateAgentResponse>>;
+  } = {},
 ) {
+  // The compatibility entry returns the grant itself; root delegateToken keeps
+  // the existing QoniResponse envelope, including its transport metadata.
+  function delegateAgent(input: DelegateTokenSilentInput): Promise<DelegateTokenSilentResponse>;
+  function delegateAgent(input: DelegateTokenInteractiveInput): Promise<InteractiveDelegationResponse>;
+  function delegateAgent(input: DelegateTokenInput): Promise<DelegateAgentResponse>;
+  async function delegateAgent(input: DelegateTokenInput): Promise<DelegateAgentResponse> {
+    if (!options.delegateTokenFor) {
+      throw new QoniValidationError("GenAuth delegateAgent requires a Qoni delegation provider");
+    }
+    return (await options.delegateTokenFor(input)).data;
+  }
   return {
+    delegateAgent,
     userInfo: <T = unknown>(input: GenAuthAccessTokenInput): Promise<QoniResponse<T>> =>
       transport.genauthJson("GET", "/oidc/me", input.accessToken),
 

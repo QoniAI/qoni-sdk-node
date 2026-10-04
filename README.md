@@ -251,7 +251,7 @@ Silent product calls receive `token: delegation.data.token`. If that token is an
 
 - **Silent** (`mode: "silent"`, the default) — acts for one end user, so a user
   is **required**: pass `user: { id: <genauthUserId> }` (preferred) or the
-  deprecated top-level `userId`. Omitting it throws `QoniValidationError`
+  top-level `userId`. Omitting it throws `QoniValidationError`
   locally before any request. Authorize with the `products` sugar and/or
   explicit `scopes`.
 - **Interactive** (`mode: "interactive"`) — pass `redirectUri`, `state`,
@@ -306,7 +306,35 @@ await qoni.gumem.recall({
 });
 ```
 
-`completeDelegateToken` is the recommended server callback helper. `delegateAgent` and `completeDelegateAgent` remain as deprecated compatibility names, but the current callback contract is `{ grantId, code, state }`; old `{ code, state }` completion is not supported.
+`completeDelegateToken` is the recommended server callback helper. Root `qoni.delegateAgent` and `qoni.completeDelegateAgent` remain as deprecated compatibility names, but the current callback contract is `{ grantId, code, state }`; old `{ code, state }` completion is not supported.
+
+## Original delegation style (0.8.0, unreleased)
+
+```ts
+const grant = await qoni.genauth.delegateAgent({
+  userId: process.env.QONI_USER_ID!, // The current user's GenAuth ID
+  agentKey: "email-assistant", // Agent audit label; alias for agent
+  scopes: [
+    "webagent.do_anything:read", // Read status, events, and artifacts
+    "webagent.do_anything:manage", // Start/cancel tasks and respond to interactions
+  ],
+  expiresIn: "15m", // Converted to 900 seconds before signing
+});
+console.log(grant.grantId, grant.auditId);
+```
+
+This entry returns the grant directly; root `delegateToken` still returns
+`QoniResponse`, with the token in `response.data.token`. Interactive mode returns
+the authorization request directly; use `completeDelegateToken()` in the server
+callback after consent. `agentKey` aliases `agent`; both labels must agree when
+supplied together. Top-level `userId` retains precedence over `user.id`.
+Expiry accepts integer seconds or whole-number
+`s/m/h/d` durations, between 60 and 86400 seconds. Until published, use the 0.8.0
+source build for these additions.
+
+Legacy `mailbox.*`, `web.search`, and `web.extract` scopes, and `deniedScopes`, are unsupported and rejected.
+They are never expanded into broader product permissions. Product scopes do not
+prohibit email sending or deletion; a prompt is not an enforced deny policy.
 
 ## Choosing Scopes
 
