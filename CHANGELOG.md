@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.8.0 - Unreleased
+## 0.8.0 - 2026-10-04
 
 ### Added
 
@@ -150,7 +150,7 @@ compatible fixes.
 - Optional abort signals on product run-detail and artifact-list wire reads;
   existing calls without a signal remain compatible.
 
-## Unreleased
+## Earlier changes
 
 ### Breaking
 
