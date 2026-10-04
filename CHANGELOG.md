@@ -159,8 +159,8 @@ compatible fixes.
 
 ### Changed
 
-- The default Qoni host is now `https://dashboard.qoni.ai` (was
-  `https://anima.eazo.ai/dashboard`). Callers that never passed an explicit `host`
+- The default Qoni host is now `https://dashboard.qoni.ai`.
+  Callers that never passed an explicit `host`
   reach a different control plane after upgrading. Note that the new default has
   no `/dashboard` path segment — pass `host` explicitly for private or local
   deployments.
