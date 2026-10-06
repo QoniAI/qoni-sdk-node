@@ -4,6 +4,7 @@ import {
   foldInteraction,
   rememberBounded,
   interactionSettled,
+  markLoginEnded,
   INTERACTION_MEMORY_LIMIT,
   type Action,
   type Interaction,
@@ -180,6 +181,7 @@ export class RunHandle<E extends RunEvent = RunEvent> {
       if (event.type === "interaction") {
         const card = foldInteraction(this.#interactions.get(event.data.id), event.data);
         rememberBounded(this.#interactions, card.id, card, INTERACTION_MEMORY_LIMIT, interactionSettled);
+        markLoginEnded(this.#loginSessions, card);
         event = { ...event, data: card };
       }
       if (event.type === "screenshot" && !this.capture.screenshots) continue;

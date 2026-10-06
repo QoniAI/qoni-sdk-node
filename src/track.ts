@@ -4,6 +4,7 @@ import {
   foldInteraction,
   rememberBounded,
   interactionSettled,
+  markLoginEnded,
   INTERACTION_MEMORY_LIMIT,
   interactionActionScopes,
   type Interaction,
@@ -150,6 +151,7 @@ export class MonitorHandle {
       if (event?.type === "interaction") {
         const card = foldInteraction(this.#interactions.get(event.data.id), event.data);
         rememberBounded(this.#interactions, card.id, card, INTERACTION_MEMORY_LIMIT, interactionSettled);
+        markLoginEnded(this.#loginSessions, card);
         event = { ...event, data: card };
       }
       // The monitor stream only carries core + Track events; the cast narrows

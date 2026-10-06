@@ -497,12 +497,24 @@ export interface LoginSessionSlot {
   calls: number;
   /** `openLogin()` calls still waiting for the backend. */
   inflight: number;
+  /** The interaction settled (resolved, expired or canceled): nothing will confirm this login any more. */
+  ended?: boolean;
   session?: LoginSession;
 }
 
-/** A login slot may be forgotten only when nothing is in flight and its session (if any) is done. */
-function loginSlotIdle(slot: LoginSessionSlot): boolean {
-  return slot.inflight === 0 && (!slot.session || slot.session.completed === true || slot.session.replaced === true);
+/**
+ * A login slot may be forgotten only when no `openLogin()` is in flight and
+ * its login is done: saved and rechecked, or its interaction already ended.
+ */
+export function loginSlotIdle(slot: LoginSessionSlot): boolean {
+  return slot.inflight === 0 && (!slot.session || slot.ended === true || slot.session.completed === true);
+}
+
+/** Note that `interaction` settled, so its login slot can be reclaimed once nothing is in flight. */
+export function markLoginEnded(store: LoginSessionStore, interaction: Interaction): void {
+  if (!SETTLED_INTERACTION_STATUSES.has(interaction.status)) return;
+  const slot = store.get(interaction.id);
+  if (slot) slot.ended = true;
 }
 
 /** Login sessions by interaction id, shared by the handles one RunHandle / MonitorHandle hands out. */
@@ -855,8 +867,9 @@ export class InteractionHandle<T extends InteractionType = InteractionType> {
     // The user reopened the login while this one was being saved: the newer
     // session is not saved yet, so do not tell the agent to go on.
     if (session.replaced) {
-      throw new QoniValidationError(
+      throw new QoniError(
         "the login was reopened while it was being saved; call confirmSignedIn() again to save the newer login",
+        { code: "site_login.session_replaced", retryable: true },
       );
     }
     await this.post(action, undefined);

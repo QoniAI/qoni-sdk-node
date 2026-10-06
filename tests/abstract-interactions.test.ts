@@ -795,7 +795,8 @@ describe("a replaced login session never moves the interaction on", () => {
     await vi.waitFor(() => expect(calls.some((call) => call.pathname.endsWith("/confirm"))).toBe(true));
     await handle.openLogin(); // the user reopened the login while the first save was in flight
     releaseSave();
-    await expect(first).rejects.toBeInstanceOf(QoniValidationError);
+    await expect(first).rejects.toMatchObject({ code: "site_login.session_replaced", retryable: true });
+    await expect(first).rejects.not.toBeInstanceOf(QoniValidationError);
     expect(calls.filter((call) => call.pathname.endsWith("/confirm_signed_in"))).toEqual([]);
     await handle.confirmSignedIn(); // saves the newer session, then rechecks
     expect(calls.filter((call) => /\/profiles\/[^/]+\/confirm$/.test(call.pathname))).toHaveLength(2);
@@ -838,5 +839,31 @@ describe("bounded caches keep what is still in use", () => {
     }
     await first.confirmSignedIn();
     expect(calls.filter((call) => /\/profiles\/[^/]+\/confirm$/.test(call.pathname))).toHaveLength(1);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Review round 4 (codex-reviewer, 2026-10-07).
+// ---------------------------------------------------------------------------
+
+describe("login state of an ended interaction can be reclaimed", () => {
+  it("markLoginEnded() lets an idle login slot go once its interaction settled, but never one still in flight", async () => {
+    const { markLoginEnded, rememberBounded, loginSlotIdle } = await import("../src/interactions");
+    const store = new Map<string, { calls: number; inflight: number; ended?: boolean; session?: { profileId: string; siteId: string; sessionId: string; call: number } }>();
+    const opened = { calls: 1, inflight: 0, session: { profileId: "u-1", siteId: "amazon", sessionId: "s1", call: 1 } };
+    const opening = { calls: 1, inflight: 1 };
+    store.set("ix_open", opened);
+    store.set("ix_opening", opening);
+    expect(loginSlotIdle(opened)).toBe(false); // opened, never confirmed: still work in progress
+
+    markLoginEnded(store, { id: "ix_open", status: "pending" } as never);
+    expect(loginSlotIdle(opened)).toBe(false); // a pending update is not an ending
+    markLoginEnded(store, { id: "ix_open", status: "resolved" } as never);
+    markLoginEnded(store, { id: "ix_opening", status: "expired" } as never);
+    expect(loginSlotIdle(opened)).toBe(true);
+    expect(loginSlotIdle(opening)).toBe(false); // an openLogin() still in flight is never dropped
+
+    rememberBounded(store, "ix_new", { calls: 0, inflight: 0 }, 2, loginSlotIdle);
+    expect([...store.keys()]).toEqual(["ix_opening", "ix_new"]);
   });
 });

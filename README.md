@@ -734,7 +734,8 @@ and continue; if the user turns out not to be signed in, the agent raises a new
 `site_login`. It saves once and rechecks once per login session, however many
 times it is called. If the backend could not save the login yet, it throws a
 retryable `QoniError` coded `site_login.save_failed` without telling the agent to
-go on; call it again. Handles from the same `RunHandle` (or `MonitorHandle`)
+go on; call it again. The same holds for `site_login.session_replaced`, thrown
+when the login was reopened while it was being saved. Handles from the same `RunHandle` (or `MonitorHandle`)
 share the login session, so `confirmSignedIn()` also works on the handle of a
 later callback; a RunHandle from a new `attach()` does not. Delegate
 `QoniScopes.SITE_LOGIN_REQUEST` and `QoniScopes.SITE_LOGIN_CONFIRM`, and allow

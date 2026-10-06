@@ -52,9 +52,9 @@ system `wait`.
   - Reopening that returns the same backend session shares its save; when a
     newer backend session replaces it, `confirm()` on the old result throws
     `QoniValidationError` instead of saving. If the login is reopened while a
-    `confirmSignedIn()` is still saving, that call throws
-    `QoniValidationError` without telling the agent to go on; call it again
-    to save the newer login.
+    `confirmSignedIn()` is still saving, that call throws a retryable
+    `QoniError` coded `site_login.session_replaced` without telling the agent
+    to go on; call it again to save the newer login.
   - Handles from the same `RunHandle` or `MonitorHandle` share the login
     session, so a handle from a later callback saves it too. A RunHandle from
     another `attach()` or process does not.
@@ -70,8 +70,9 @@ system `wait`.
   `site_login` with one empty site): only `status`, `resolvedAt` and `actions`
   change. A settled update with content of its own, such as an expired
   take-over with its reason, replaces the card as before. Run and monitor
-  handles keep about 256 interactions, forgetting settled cards and finished
-  logins first; a pending card or a login still in progress is never dropped.
+  handles keep about 256 interactions, forgetting settled cards first, and
+  logins once they are saved or their interaction ended; a pending card or a
+  login still in progress is never dropped.
 
 ### Added
 
