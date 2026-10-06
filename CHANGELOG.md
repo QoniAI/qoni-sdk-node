@@ -51,21 +51,27 @@ system `wait`.
     session, whichever response arrives last.
   - Reopening that returns the same backend session shares its save; when a
     newer backend session replaces it, `confirm()` on the old result throws
-    `QoniValidationError` instead of saving.
+    `QoniValidationError` instead of saving. If the login is reopened while a
+    `confirmSignedIn()` is still saving, that call throws
+    `QoniValidationError` without telling the agent to go on; call it again
+    to save the newer login.
   - Handles from the same `RunHandle` or `MonitorHandle` share the login
     session, so a handle from a later callback saves it too. A RunHandle from
     another `attach()` or process does not.
 - `connectControl()` and `refreshControl()` resolve to a `ControlSession`
   (`{ liveUrl, expiresAt?, status?, raw }`, the signed URL of the browser the
-  user now controls) instead of `void`. Code that ignored the result is
-  unaffected.
+  user now controls) instead of `void`. `await handle.connectControl()` is
+  unaffected; code that returns the call where `Promise<void>` is expected,
+  such as `const cb: () => Promise<void> = () => handle.connectControl()`, no
+  longer compiles (TS2322) — wrap it: `async () => { await handle.connectControl(); }`.
 - `run.events()`, `wait({ onInteraction })` and `monitor.events()` keep an
   interaction's type and content when the backend settles it with an empty
   shell (a resolve labelled `clarification` with an empty question, or a
   `site_login` with one empty site): only `status`, `resolvedAt` and `actions`
   change. A settled update with content of its own, such as an expired
   take-over with its reason, replaces the card as before. Run and monitor
-  handles remember at most 256 interactions.
+  handles keep about 256 interactions, forgetting settled cards and finished
+  logins first; a pending card or a login still in progress is never dropped.
 
 ### Added
 

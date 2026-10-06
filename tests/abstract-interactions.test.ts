@@ -763,3 +763,80 @@ describe("long-lived handles keep their caches bounded", () => {
     expect([...map.entries()]).toEqual([["a", 3], ["c", 4]]);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Review round 3 (codex-reviewer, 2026-10-07).
+// ---------------------------------------------------------------------------
+
+describe("a replaced login session never moves the interaction on", () => {
+  it("a save that finishes after a newer openLogin() does not send the recheck", async () => {
+    let releaseSave!: () => void;
+    const held = new Promise<void>((resolve) => { releaseSave = resolve; });
+    let opened = 0;
+    const { client, calls } = makeClient(async (call) => {
+      if (call.pathname === "/api/v3/eak/token-exchange") return jsonResponse({ data: { accessToken: PRODUCT_TOKEN, expiresIn: 3600 } });
+      if (call.pathname.endsWith("/do_anything/runs") && call.method === "POST") {
+        return jsonResponse({ data: { run_id: "run_1", session_id: "sess_1", status: "running" } });
+      }
+      if (call.pathname.endsWith("/profiles/login")) {
+        const n = ++opened;
+        return jsonResponse({ profile_id: "u-1", site_id: "amazon", session_id: `login_${n}`, live_url: `https://live/${n}` }, { status: 201 });
+      }
+      if (/\/profiles\/[^/]+\/confirm$/.test(call.pathname)) {
+        if (opened === 1) await held;
+        return jsonResponse({ profile_id: "u-1", state: "active", probe_result: "alive" });
+      }
+      return jsonResponse({ data: {} });
+    });
+    const run = await client.doAnything.run({ token: DELEGATION_TOKEN, prompt: "buy" });
+    const handle = run.interactionHandle(normalizeInteraction(wireSiteLogin())!);
+    await handle.openLogin();
+    const first = handle.confirmSignedIn();
+    await vi.waitFor(() => expect(calls.some((call) => call.pathname.endsWith("/confirm"))).toBe(true));
+    await handle.openLogin(); // the user reopened the login while the first save was in flight
+    releaseSave();
+    await expect(first).rejects.toBeInstanceOf(QoniValidationError);
+    expect(calls.filter((call) => call.pathname.endsWith("/confirm_signed_in"))).toEqual([]);
+    await handle.confirmSignedIn(); // saves the newer session, then rechecks
+    expect(calls.filter((call) => /\/profiles\/[^/]+\/confirm$/.test(call.pathname))).toHaveLength(2);
+    expect(calls.filter((call) => call.pathname.endsWith("/confirm_signed_in"))).toHaveLength(1);
+  });
+});
+
+describe("bounded caches keep what is still in use", () => {
+  it("rememberBounded() evicts only entries the predicate allows and otherwise lets the map grow", async () => {
+    const { rememberBounded } = await import("../src/interactions");
+    const map = new Map<string, { busy: boolean }>();
+    const idle = (value: { busy: boolean }) => !value.busy;
+    rememberBounded(map, "busy", { busy: true }, 2, idle);
+    rememberBounded(map, "a", { busy: false }, 2, idle);
+    rememberBounded(map, "b", { busy: false }, 2, idle);
+    expect([...map.keys()]).toEqual(["busy", "b"]);
+    rememberBounded(map, "busy-2", { busy: true }, 2, idle);
+    expect([...map.keys()]).toEqual(["busy", "busy-2"]);
+    rememberBounded(map, "busy-3", { busy: true }, 2, idle);
+    expect([...map.keys()]).toEqual(["busy", "busy-2", "busy-3"]);
+  });
+
+  it("an open login survives hundreds of later logins on other interactions", async () => {
+    const { client, calls } = makeClient((call) => {
+      if (call.pathname === "/api/v3/eak/token-exchange") return jsonResponse({ data: { accessToken: PRODUCT_TOKEN, expiresIn: 3600 } });
+      if (call.pathname.endsWith("/do_anything/runs") && call.method === "POST") {
+        return jsonResponse({ data: { run_id: "run_1", session_id: "sess_1", status: "running" } });
+      }
+      if (call.pathname.endsWith("/profiles/login")) {
+        return jsonResponse({ profile_id: "u-1", site_id: "amazon", session_id: `login_${calls.length}`, live_url: "https://live" }, { status: 201 });
+      }
+      if (/\/profiles\/[^/]+\/confirm$/.test(call.pathname)) return jsonResponse({ profile_id: "u-1", state: "active", probe_result: "alive" });
+      return jsonResponse({ data: {} });
+    });
+    const run = await client.doAnything.run({ token: DELEGATION_TOKEN, prompt: "buy" });
+    const first = run.interactionHandle(normalizeInteraction(wireSiteLogin())!);
+    await first.openLogin();
+    for (let i = 0; i < 300; i++) {
+      await run.interactionHandle(normalizeInteraction({ ...wireSiteLogin(), id: `ix_other_${i}` })!).openLogin();
+    }
+    await first.confirmSignedIn();
+    expect(calls.filter((call) => /\/profiles\/[^/]+\/confirm$/.test(call.pathname))).toHaveLength(1);
+  });
+});

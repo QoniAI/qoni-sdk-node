@@ -428,7 +428,8 @@ export interface OpenLoginResult {
    *
    * Persist the login into the profile after the user signs in
    * (`POST /profiles/{profileId}/confirm`). Confirming ends this login
-   * session and closes its browser, whatever the outcome:
+   * session and closes its browser, except when the backend could not save
+   * it yet (`release_failed`, below):
    *
    * - `active: true` — the login is saved; call
    *   {@link InteractionHandle.confirmSignedIn}.
@@ -483,6 +484,8 @@ export interface LoginSession {
   call: number;
   /** A newer backend session took over: this one can no longer be saved. */
   replaced?: boolean;
+  /** Saved and rechecked: nothing left to do for this session. */
+  completed?: boolean;
   /** The save in flight or done; cleared when it fails so a retry saves again. */
   save?: Promise<ConfirmLoginResult>;
   /** `confirmSignedIn()` in flight or done: one save and one recheck per session. */
@@ -492,7 +495,14 @@ export interface LoginSession {
 /** Per interaction: how many `openLogin()` calls were made, and the session of the latest call that succeeded. */
 export interface LoginSessionSlot {
   calls: number;
+  /** `openLogin()` calls still waiting for the backend. */
+  inflight: number;
   session?: LoginSession;
+}
+
+/** A login slot may be forgotten only when nothing is in flight and its session (if any) is done. */
+function loginSlotIdle(slot: LoginSessionSlot): boolean {
+  return slot.inflight === 0 && (!slot.session || slot.session.completed === true || slot.session.replaced === true);
 }
 
 /** Login sessions by interaction id, shared by the handles one RunHandle / MonitorHandle hands out. */
@@ -509,17 +519,30 @@ function isNoPendingLogin(err: unknown): boolean {
 export const INTERACTION_MEMORY_LIMIT = 256;
 
 /**
- * Set `key` as the newest entry and drop the oldest beyond `limit`, so caches
- * on long-lived handles (a Track monitor never ends) stay bounded.
+ * Set `key` as the newest entry and, beyond `limit`, drop the oldest entries
+ * that `evictable` allows, so caches on long-lived handles (a Track monitor
+ * never ends) stay bounded. Entries still in use are never dropped: when none
+ * can go, the map grows rather than forgetting work in progress.
  */
-export function rememberBounded<K, V>(map: Map<K, V>, key: K, value: V, limit = INTERACTION_MEMORY_LIMIT): void {
+export function rememberBounded<K, V>(
+  map: Map<K, V>,
+  key: K,
+  value: V,
+  limit = INTERACTION_MEMORY_LIMIT,
+  evictable: (value: V) => boolean = () => true,
+): void {
   map.delete(key);
   map.set(key, value);
-  while (map.size > limit) {
-    const oldest = map.keys().next();
-    if (oldest.done) break;
-    map.delete(oldest.value);
+  if (map.size <= limit) return;
+  for (const [candidate, entry] of map) {
+    if (map.size <= limit) break;
+    if (candidate !== key && evictable(entry)) map.delete(candidate);
   }
+}
+
+/** Settled cards can be forgotten first; pending ones may still be folded. */
+export function interactionSettled(interaction: Interaction): boolean {
+  return SETTLED_INTERACTION_STATUSES.has(interaction.status);
 }
 
 /** A control session returned by `connectControl()` / `refreshControl()`. */
@@ -671,7 +694,13 @@ export class InteractionHandle<T extends InteractionType = InteractionType> {
     // succeeds owns the session, whichever response arrives last.
     const slot = this.#loginSlot();
     const call = ++slot.calls;
-    const response = await this.invoke(ActionKinds.openLogin, body);
+    slot.inflight += 1;
+    let response: unknown;
+    try {
+      response = await this.invoke(ActionKinds.openLogin, body);
+    } finally {
+      slot.inflight -= 1;
+    }
     const raw = isJsonObject(response) ? response : {};
     const fields = camelizeRecord(raw);
     const profileId = asString(fields.profileId) ?? "";
@@ -823,14 +852,22 @@ export class InteractionHandle<T extends InteractionType = InteractionType> {
         { code: "site_login.save_failed", retryable: true },
       );
     }
+    // The user reopened the login while this one was being saved: the newer
+    // session is not saved yet, so do not tell the agent to go on.
+    if (session.replaced) {
+      throw new QoniValidationError(
+        "the login was reopened while it was being saved; call confirmSignedIn() again to save the newer login",
+      );
+    }
     await this.post(action, undefined);
+    session.completed = true;
   }
 
   #loginSlot(): LoginSessionSlot {
     let slot = this.loginSessions.get(this.id);
     if (!slot) {
-      slot = { calls: 0 };
-      rememberBounded(this.loginSessions, this.id, slot);
+      slot = { calls: 0, inflight: 0 };
+      rememberBounded(this.loginSessions, this.id, slot, INTERACTION_MEMORY_LIMIT, loginSlotIdle);
     }
     return slot;
   }

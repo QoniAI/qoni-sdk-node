@@ -3,6 +3,8 @@ import {
   InteractionHandle,
   foldInteraction,
   rememberBounded,
+  interactionSettled,
+  INTERACTION_MEMORY_LIMIT,
   type Action,
   type Interaction,
   type LoginSessionStore,
@@ -177,7 +179,7 @@ export class RunHandle<E extends RunEvent = RunEvent> {
       if (!event) continue;
       if (event.type === "interaction") {
         const card = foldInteraction(this.#interactions.get(event.data.id), event.data);
-        rememberBounded(this.#interactions, card.id, card);
+        rememberBounded(this.#interactions, card.id, card, INTERACTION_MEMORY_LIMIT, interactionSettled);
         event = { ...event, data: card };
       }
       if (event.type === "screenshot" && !this.capture.screenshots) continue;

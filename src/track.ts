@@ -3,6 +3,8 @@ import {
   InteractionHandle,
   foldInteraction,
   rememberBounded,
+  interactionSettled,
+  INTERACTION_MEMORY_LIMIT,
   interactionActionScopes,
   type Interaction,
   type LoginSessionStore,
@@ -147,7 +149,7 @@ export class MonitorHandle {
       let event = normalizeRunEvent(wire);
       if (event?.type === "interaction") {
         const card = foldInteraction(this.#interactions.get(event.data.id), event.data);
-        rememberBounded(this.#interactions, card.id, card);
+        rememberBounded(this.#interactions, card.id, card, INTERACTION_MEMORY_LIMIT, interactionSettled);
         event = { ...event, data: card };
       }
       // The monitor stream only carries core + Track events; the cast narrows
