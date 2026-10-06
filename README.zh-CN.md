@@ -327,7 +327,7 @@ await qoni.delegateToken({
 
 scope 字符串在发请求前就会本地预检：漏掉服务前缀（比如写成 `do_anything:manage` 而不是 `webagent.do_anything:manage`）会立即抛出 `QoniValidationError`，错误消息里带正确写法；短写法有歧义时列出全部候选（`profile:read` → `gumem.profile:read` 或 `user.profile:read`）。
 
-站点登录、用户 Profile、支付和 Agent 邮箱的 scope（`QoniScopes.SITE_LOGIN_*`、`USER_PROFILE_READ`、`USER_PROFILE_WRITE`、`USER_PAYMENT_USE`、`AGENT_MAIL_READ`、`AGENT_MAIL_SEND`）不属于任何产品：需要在 `scopes` 中显式申请，并在 AccessKey 权限策略中允许。
+站点登录、用户 Profile、支付和 Agent 邮箱的 scope（`QoniScopes.SITE_LOGIN_*`、`USER_PROFILE_READ`、`USER_PROFILE_WRITE`、`USER_PAYMENT_USE`、`AGENT_MAIL_READ`、`AGENT_MAIL_SEND`）不属于任何产品：需要在 `scopes` 中显式申请，并在 AccessKey 权限策略中允许。用户 Profile、支付和 Agent 邮箱这几个常量只是 scope 名称：申请它们本身不会让任务获得 Profile、支付或邮箱能力。
 
 需要让授权边界直接出现在业务代码里时，使用显式 scope 字符串。
 
@@ -626,7 +626,7 @@ async function handleInteraction(handle: InteractionHandle) {
       break;
     }
     case "take_control":
-      await handle.connectControl();
+      if (handle.can("connect_control")) await handle.connectControl();
       await showToUser(request.payload.liveUrl);
       await handle.releaseControl();            // 把浏览器交还给 Agent
       break;
@@ -643,11 +643,11 @@ async function handleInteraction(handle: InteractionHandle) {
 const result = await run.wait({ onInteraction: handleInteraction });
 ```
 
-交互按顺序一个一个出现：当前这个处理完，run 才会继续。同一个交互在每次状态变化和断线回放时都会再次回调，`id`、`type` 和 `payload` 始终不变——界面卡片请按 `request.id` 更新。方法：`answer(value)`、`skip()`、`confirm()`、`reject()`、`openLogin({ siteId?, profileId? })`、`confirmSignedIn()`、`connectControl()`、`refreshControl()`、`releaseControl()`、`retry()`、`switchProfile()`。`handle.can(kind)` 判断该交互当前是否提供这个动作；调用后端没声明的方法会抛错（所以「恢复」按钮只有在真能用时才出现）。
+交互按顺序一个一个出现：当前这个处理完，run 才会继续。同一个交互在每次状态变化和断线回放时都会再次回调，`id` 和 `type` 始终不变；后端用空壳结束交互时，卡片保留原来的 `payload`——界面卡片请按 `request.id` 更新。方法：`answer(value)`、`skip()`、`confirm()`、`reject()`、`openLogin({ siteId?, profileId? })`、`confirmSignedIn()`、`connectControl()`、`refreshControl()`、`releaseControl()`、`retry()`、`switchProfile()`。`handle.can(kind)` 判断该交互当前是否提供这个动作；调用后端没声明的方法会抛错（所以「恢复」按钮只有在真能用时才出现）。
 
 **`ask_user` 的回答是结构化的。** `answer()` 接收与 `payload.answerType` 对应的值：`text` → 字符串，`number` → 数字，`boolean` → 布尔，`single_choice` → 一个 `options[].value`，`multiple_choice` → 选项 value 数组；不匹配时在发送前就抛出 `QoniValidationError`。线上协议里这个类型仍叫 `clarification`，SDK 统一呈现为 `ask_user`（候选项是 `{ value, label }`）。
 
-**登录只需两步。** `openLogin()` 为 `site_login` 交互打开一个实时登录浏览器（`siteId` 取自 `payload.sites[].siteId`，只列出一个站点时可以省略）。用户登录完成后调用 `confirmSignedIn()`：SDK 先保存这次登录，之后的任务直接复用，再通知 Agent 复查站点并继续；如果用户其实没有登录成功，Agent 会再发起一次 `site_login`。同一个 run 的句柄共享登录会话，所以在之后回调拿到的句柄上调用 `confirmSignedIn()` 也有效。委托时需要申请 `QoniScopes.SITE_LOGIN_REQUEST` 和 `QoniScopes.SITE_LOGIN_CONFIRM`，并在 AccessKey 权限策略中允许这两个 scope。`openLogin()` 返回值上的 `confirm()` 仍然保留，供自己保存登录的调用方使用，已标记为弃用。
+**登录只需两步。** `openLogin()` 为 `site_login` 交互打开一个实时登录浏览器（`siteId` 取自 `payload.sites[].siteId`，只列出一个站点时可以省略）。用户登录完成后调用 `confirmSignedIn()`：SDK 先保存这次登录，之后的任务直接复用，再通知 Agent 复查站点并继续；如果用户其实没有登录成功，Agent 会再发起一次 `site_login`。无论调用几次，同一个登录会话只保存一次、只通知 Agent 复查一次。后端暂时没能保存登录时，它抛出 `code` 为 `site_login.save_failed` 的可重试 `QoniError`，不会让 Agent 继续；再调用一次即可。同一个 `RunHandle`（或 `MonitorHandle`）发出的句柄共享登录会话，所以在之后回调拿到的句柄上调用 `confirmSignedIn()` 也有效；重新 `attach()` 得到的 RunHandle 不共享。委托时需要申请 `QoniScopes.SITE_LOGIN_REQUEST` 和 `QoniScopes.SITE_LOGIN_CONFIRM`，并在 AccessKey 权限策略中允许这两个 scope。`openLogin()` 返回值上的 `confirm()` 仍然保留，供自己保存登录的调用方使用，已标记为弃用。
 
 上面用到的判别字符串也都导出成了常量，避免裸写字面量：`InteractionTypes`（`SiteLogin` / `TakeControl` / `AskUser` / `Confirmation` / `Wait`；已弃用的 `Clarification` 现在等于 `AskUser`）、`InteractionStatuses`、`ActionKinds`（`handle.can(...)` 的动作名）。授权 scope 同样有：`QoniScopes`（每个单独 scope）、`QoniProductScopes`（`products` 语法糖展开成的 per-product `read`+`manage` 对）、`QoniScopeBundles`（精选 bundle）。用它们代替手写字符串：
 

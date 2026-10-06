@@ -359,7 +359,7 @@ await qoni.delegateToken({
 
 Scope strings are validated locally before any request: a scope missing its service prefix (e.g. `do_anything:manage` instead of `webagent.do_anything:manage`) throws `QoniValidationError` immediately with the correct form in the message — every candidate when the short form is ambiguous (`profile:read` → `gumem.profile:read` or `user.profile:read`).
 
-The site-login, user Profile, payment and Agent mailbox scopes (`QoniScopes.SITE_LOGIN_*`, `USER_PROFILE_READ`, `USER_PROFILE_WRITE`, `USER_PAYMENT_USE`, `AGENT_MAIL_READ`, `AGENT_MAIL_SEND`) belong to no product: request them explicitly in `scopes`, and allow them in the AccessKey policy.
+The site-login, user Profile, payment and Agent mailbox scopes (`QoniScopes.SITE_LOGIN_*`, `USER_PROFILE_READ`, `USER_PROFILE_WRITE`, `USER_PAYMENT_USE`, `AGENT_MAIL_READ`, `AGENT_MAIL_SEND`) belong to no product: request them explicitly in `scopes`, and allow them in the AccessKey policy. The user Profile, payment and Agent mailbox constants only name the scopes; requesting them does not by itself enable Profile, payment or mailbox access in a run.
 
 Use explicit scope strings when the requested permission boundary should be visible in code.
 
@@ -684,7 +684,7 @@ async function handleInteraction(handle: InteractionHandle) {
       break;
     }
     case "take_control":
-      await handle.connectControl();
+      if (handle.can("connect_control")) await handle.connectControl();
       await showToUser(request.payload.liveUrl);
       await handle.releaseControl();            // hand the browser back
       break;
@@ -703,8 +703,9 @@ const result = await run.wait({ onInteraction: handleInteraction });
 
 Interactions arrive one at a time: the run waits until the current one is
 handled. The same interaction calls back again on every status change and on
-reconnect replays, always with the same `id`, `type` and `payload` — key your UI
-cards by `request.id`. Methods: `answer(value)`, `skip()`, `confirm()`,
+reconnect replays, always with the same `id` and `type`; when the backend
+settles it with an empty shell, the card keeps its original `payload` — key your
+UI cards by `request.id`. Methods: `answer(value)`, `skip()`, `confirm()`,
 `reject()`, `openLogin({ siteId?, profileId? })`, `confirmSignedIn()`,
 `connectControl()`, `refreshControl()`, `releaseControl()`, `retry()`,
 `switchProfile()`. `handle.can(kind)` reports whether the interaction currently
@@ -723,8 +724,12 @@ fit. The wire still calls this type `clarification`; the SDK presents it as
 when exactly one site is listed). Once the user is signed in, `confirmSignedIn()`
 saves the login so later tasks reuse it, then tells the agent to recheck the site
 and continue; if the user turns out not to be signed in, the agent raises a new
-`site_login`. The handles of one run share the login session, so
-`confirmSignedIn()` also works on the handle of a later callback. Delegate
+`site_login`. It saves once and rechecks once per login session, however many
+times it is called. If the backend could not save the login yet, it throws a
+retryable `QoniError` coded `site_login.save_failed` without telling the agent to
+go on; call it again. Handles from the same `RunHandle` (or `MonitorHandle`)
+share the login session, so `confirmSignedIn()` also works on the handle of a
+later callback; a RunHandle from a new `attach()` does not. Delegate
 `QoniScopes.SITE_LOGIN_REQUEST` and `QoniScopes.SITE_LOGIN_CONFIRM`, and allow
 both in the AccessKey policy. `openLogin()`'s result still offers `confirm()` for
 callers that save the login themselves; it is deprecated.

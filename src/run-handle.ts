@@ -269,9 +269,10 @@ export class RunHandle<E extends RunEvent = RunEvent> {
    * Wrap an {@link Interaction} (from `event.data` of an `interaction` event)
    * in a typed {@link InteractionHandle} bound to this run. The handle's action
    * methods (`answer` / `confirmSignedIn` / `releaseControl` / …) post to the
-   * endpoint the backend declared for that action. Handles of one run share
-   * the login sessions `openLogin()` opens, so `confirmSignedIn()` on the
-   * handle of a later event still saves that login.
+   * endpoint the backend declared for that action. Handles this RunHandle
+   * hands out share the login sessions `openLogin()` opens, so
+   * `confirmSignedIn()` on the handle of a later event still saves that login.
+   * A RunHandle from another `attach()` (or process) does not see them.
    */
   interactionHandle(interaction: Interaction): InteractionHandle {
     return new InteractionHandle(

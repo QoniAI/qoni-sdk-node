@@ -1,4 +1,4 @@
-import { describe, expect, expectTypeOf, it } from "vitest";
+import { describe, expect, expectTypeOf, it, vi } from "vitest";
 import {
   InteractionTypes,
   Qoni,
@@ -481,5 +481,183 @@ describe("scopes for the Personal Agent guide", () => {
     expect((error as Error).message).toContain("gumem.profile:read");
     expect((error as Error).message).toContain("user.profile:read");
     expect(calls).toHaveLength(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Review round 1 (codex-reviewer, 2026-10-07): edge cases the first cut missed.
+// ---------------------------------------------------------------------------
+
+describe("ask_user options keep every legal value", () => {
+  it("keeps an empty-string option and accepts it as an answer", async () => {
+    const posted: unknown[] = [];
+    const ix = normalizeInteraction(wireAsk({ input_type: "choice", options: ["", "Yes"] }))!;
+    expect(ix.payload).toEqual({
+      question: "Which color?",
+      answerType: "single_choice",
+      options: [{ value: "", label: "" }, { value: "Yes", label: "Yes" }],
+    });
+    await new InteractionHandleClass(ix, async (_action, body) => { posted.push(body); }).answer("");
+    expect(posted).toEqual([{ response: "" }]);
+  });
+
+  it("keeps a native answer_type even when it arrives without options", async () => {
+    const posted: unknown[] = [];
+    const ix = normalizeInteraction({ ...wireAsk({}), type: "ask_user", answer_type: "multiple_choice", options: [] })!;
+    expect(ix.payload).toEqual({ question: "Which color?", answerType: "multiple_choice" });
+    await new InteractionHandleClass(ix, async (_action, body) => { posted.push(body); }).answer([]);
+    expect(posted).toEqual([{ response: [] }]);
+  });
+});
+
+describe("folding keeps real updates and repairs only shells", () => {
+  const takeControl = (status: string, extra: Record<string, unknown>) => ({
+    id: "ix_tc", type: "take_control", status, created_at: "2026-10-07T08:00:00Z", title: "Take over",
+    actions: [], ...extra,
+  });
+
+  async function cardsFrom(frames: Array<Record<string, unknown>>, startAt?: string) {
+    const body = frames.map((data, i) => frame(i + 1, "run.interaction", data)).join("") +
+      frame(frames.length + 1, "run.completed", { terminal_reason: "done" });
+    const { client } = makeClient((call) => {
+      if (call.pathname === "/api/v3/eak/token-exchange") return jsonResponse({ data: { accessToken: PRODUCT_TOKEN, expiresIn: 3600 } });
+      if (call.pathname.endsWith("/events")) return sseResponse(body);
+      return jsonResponse({ data: { run_id: "run_1", session_id: "sess_1" } });
+    });
+    const run = await client.doAnything.run({ token: DELEGATION_TOKEN, prompt: "buy" });
+    const cards: Interaction[] = [];
+    for await (const event of run.events({ lastEventId: startAt })) if (event.type === "interaction") cards.push(event.data);
+    return cards;
+  }
+
+  it("a settled update with real content of the same type replaces the card", async () => {
+    const cards = await cardsFrom([
+      takeControl("pending", { live_url: "https://live/old", reason: "captcha" }),
+      takeControl("active", { live_url: "https://live/new", reason: "captcha" }),
+      takeControl("expired", { live_url: "", reason: "control_expired", expires_at: "2026-10-07T08:09:00Z" }),
+    ]);
+    expect(cards.at(-1)).toMatchObject({
+      type: "take_control",
+      status: "expired",
+      expiresAt: "2026-10-07T08:09:00Z",
+      payload: { liveUrl: "", reason: "control_expired" },
+    });
+  });
+
+  it("a same-type resolve shell (site_login login_cleared) keeps the original sites and title", async () => {
+    const cards = await cardsFrom([
+      wireSiteLogin(),
+      { id: "ix_1", type: "site_login", status: "resolved", created_at: "2026-10-07T08:05:00Z",
+        resolved_at: "2026-10-07T08:05:00Z", title: "Resolved", actions: [],
+        sites: [{ site_id: "", display_name: "", login_url: "" }] },
+    ]);
+    expect(cards.at(-1)).toMatchObject({
+      type: "site_login", status: "resolved", title: "Sign in", createdAt: "2026-10-07T08:00:00Z",
+      payload: { sites: [{ siteId: "amazon" }] },
+    });
+  });
+
+  it("a full card arriving after a shell (replay order) repairs the cached type", async () => {
+    const shell = {
+      id: "ix_1", type: "clarification", status: "resolved", created_at: "2026-10-07T08:05:00Z",
+      resolved_at: "2026-10-07T08:05:00Z", title: "Resolved", question: "", actions: [],
+    };
+    const cards = await cardsFrom([shell, wireSiteLogin()]);
+    expect(cards.map((ix) => [ix.type, ix.status])).toEqual([
+      ["ask_user", "resolved"],
+      ["site_login", "pending"],
+    ]);
+    expect(cards[1].payload).toMatchObject({ sites: [{ siteId: "amazon" }] });
+  });
+});
+
+describe("confirmSignedIn(): one save, one recheck, honest failures", () => {
+  function loginHarness(confirm: () => Response | Promise<Response>, open?: () => Response | Promise<Response>) {
+    return makeClient((call) => {
+      if (call.pathname === "/api/v3/eak/token-exchange") return jsonResponse({ data: { accessToken: PRODUCT_TOKEN, expiresIn: 3600 } });
+      if (call.pathname.endsWith("/do_anything/runs") && call.method === "POST") {
+        return jsonResponse({ data: { run_id: "run_1", session_id: "sess_1", status: "running" } });
+      }
+      if (call.pathname.endsWith("/profiles/login")) {
+        return open?.() ?? jsonResponse({ profile_id: "u-1", site_id: "amazon", session_id: "login_1", live_url: "https://live/1" }, { status: 201 });
+      }
+      if (/\/profiles\/[^/]+\/confirm$/.test(call.pathname)) return confirm();
+      return jsonResponse({ data: {} });
+    });
+  }
+  const saves = (calls: Captured[]) => calls.filter((call) => /\/profiles\/[^/]+\/confirm$/.test(call.pathname));
+  const rechecks = (calls: Captured[]) => calls.filter((call) => call.pathname.endsWith("/confirm_signed_in"));
+  const SAVED = () => jsonResponse({ profile_id: "u-1", state: "active", probe_result: "alive" });
+
+  it("treats release_failed as a retryable save failure: no recheck, and a retry saves again", async () => {
+    let attempt = 0;
+    const { client, calls } = loginHarness(() => (++attempt === 1
+      ? jsonResponse({ profile_id: "u-1", state: "pending_login", probe_result: "release_failed" })
+      : SAVED()));
+    const run = await client.doAnything.run({ token: DELEGATION_TOKEN, prompt: "buy" });
+    const handle = run.interactionHandle(normalizeInteraction(wireSiteLogin())!);
+    await handle.openLogin();
+    await expect(handle.confirmSignedIn()).rejects.toMatchObject({ code: "site_login.save_failed", retryable: true });
+    expect(rechecks(calls)).toEqual([]);
+    await handle.confirmSignedIn();
+    expect(saves(calls)).toHaveLength(2);
+    expect(rechecks(calls)).toHaveLength(1);
+  });
+
+  it("concurrent confirmSignedIn() calls from two handles save once and recheck once", async () => {
+    const { client, calls } = loginHarness(SAVED);
+    const run = await client.doAnything.run({ token: DELEGATION_TOKEN, prompt: "buy" });
+    const first = run.interactionHandle(normalizeInteraction(wireSiteLogin())!);
+    const second = run.interactionHandle(normalizeInteraction(wireSiteLogin())!);
+    await first.openLogin();
+    await Promise.all([first.confirmSignedIn(), second.confirmSignedIn()]);
+    expect(saves(calls)).toHaveLength(1);
+    expect(rechecks(calls)).toHaveLength(1);
+  });
+
+  it("the deprecated login.confirm() and confirmSignedIn() share one save, even when concurrent", async () => {
+    const { client, calls } = loginHarness(SAVED);
+    const run = await client.doAnything.run({ token: DELEGATION_TOKEN, prompt: "buy" });
+    const handle = run.interactionHandle(normalizeInteraction(wireSiteLogin())!);
+    const login = await handle.openLogin();
+    const [result] = await Promise.all([login.confirm(), handle.confirmSignedIn()]);
+    expect(result).toMatchObject({ active: true });
+    expect(saves(calls)).toHaveLength(1);
+    expect(rechecks(calls)).toHaveLength(1);
+  });
+
+  it("the latest openLogin() call wins even when an older call returns later", async () => {
+    const pending: Array<() => void> = [];
+    let opened = 0;
+    const { client, calls } = loginHarness(SAVED, () => new Promise<Response>((resolve) => {
+      const n = ++opened;
+      pending.push(() => resolve(jsonResponse({ profile_id: `u-${n}`, site_id: "amazon", session_id: `login_${n}`, live_url: `https://live/${n}` }, { status: 201 })));
+    }));
+    const run = await client.doAnything.run({ token: DELEGATION_TOKEN, prompt: "buy" });
+    const handle = run.interactionHandle(normalizeInteraction(wireSiteLogin())!);
+    const older = handle.openLogin();
+    const newer = handle.openLogin();
+    await vi.waitFor(() => expect(pending).toHaveLength(2));
+    pending[1]();
+    await newer;
+    pending[0]();
+    await older;
+    await handle.confirmSignedIn();
+    expect(saves(calls).map((call) => call.pathname)).toEqual(["/api/v1/projects/tenant_1/profiles/u-2/confirm"]);
+  });
+
+  it("Track monitor handles share the login session across interactionHandle() calls", async () => {
+    const { client, calls } = makeClient((call) => {
+      if (call.pathname === "/api/v3/eak/token-exchange") return jsonResponse({ data: { accessToken: PRODUCT_TOKEN, expiresIn: 3600 } });
+      if (call.pathname.endsWith("/profiles/login")) {
+        return jsonResponse({ profile_id: "u-1", site_id: "amazon", session_id: "login_1", live_url: "https://live/1" }, { status: 201 });
+      }
+      if (/\/profiles\/[^/]+\/confirm$/.test(call.pathname)) return SAVED();
+      return jsonResponse({ data: { id: "mon_1", monitor_id: "mon_1", status: "active" } });
+    });
+    const monitor = await client.track.attach("mon_1", { token: DELEGATION_TOKEN });
+    await monitor.interactionHandle(normalizeInteraction(wireSiteLogin())!).openLogin();
+    await monitor.interactionHandle(normalizeInteraction(wireSiteLogin())!).confirmSignedIn();
+    expect(saves(calls)).toHaveLength(1);
   });
 });

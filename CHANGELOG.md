@@ -11,16 +11,25 @@ system `wait`.
 - `Interaction` is a union distributed over `type`: `switch (interaction.type)`
   narrows `payload` in each branch, including `handle.interaction` inside
   `onInteraction`. `Interaction<"site_login">` still picks one member.
-  `TypedInteraction` names the union.
+  `TypedInteraction` names the union. Because it is now a type alias, not an
+  interface, `interface X extends Interaction` no longer compiles (TS2312):
+  use `type X = Interaction & { ... }`. Code that builds an `Interaction` from a
+  separate `type` and `payload` must narrow them together or cast the object.
 - The wire's `clarification` is presented as `ask_user`, with payload
   `{ question, answerType, options? }`. `answerType` is `text`, `number`,
   `boolean`, `single_choice` or `multiple_choice`, and options are
-  `{ value, label }`. A clarification with choices becomes `single_choice`.
-  TypeScript code that compares `type` with `"clarification"` no longer
-  compiles; compare with `"ask_user"`. `InteractionTypes.Clarification` is
-  deprecated and now equals `InteractionTypes.AskUser`, so code using the
-  constant keeps working. `ClarificationPayload` is a deprecated alias of
-  `AskUserPayload`.
+  `{ value, label }`. A clarification with choices becomes `single_choice`; one
+  without choices is `text`. A native `ask_user` keeps the `answer_type` it
+  sends, and every string option value is kept, including `""`.
+  Migration: compare `type` with `"ask_user"` instead of `"clarification"`
+  (TypeScript no longer compiles the old comparison); read
+  `payload.answerType` / `payload.options` instead of `payload.inputType`
+  (removed) or the answer action's `inputSchema` enum.
+  `InteractionTypes.Clarification` is deprecated and now equals
+  `InteractionTypes.AskUser`: it still matches interactions the SDK hands out,
+  but not a raw wire `type` or a `"clarification"` string you stored.
+  `ClarificationPayload` is a deprecated alias of `AskUserPayload`, which
+  requires `answerType`.
 - `InteractionHandle.answer(value)` accepts the structured value its
   `answerType` names (string, number, boolean, one option value, or an array of
   option values) and throws `QoniValidationError` before sending a value that
@@ -28,17 +37,27 @@ system `wait`.
 - `InteractionHandle.confirmSignedIn()` saves the login opened by `openLogin()`
   on the same interaction (`POST /profiles/{profileId}/confirm`, scope
   `webagent.site_login:confirm`), then tells the agent to recheck. Sign-in is
-  `openLogin()` → `confirmSignedIn()`. If the backend no longer holds the
-  login (409 `no_pending_login`), or the user turns out not to be signed in,
-  the agent still rechecks and raises a new `site_login` when needed; any other
-  save failure is thrown. Handles of one run share the login session, so a
-  handle from a later callback saves it too. `OpenLoginResult.confirm()` is
-  deprecated; calling it first no longer causes a second save.
-- An interaction keeps its `type`, `payload`, `title` and `createdAt` across its
-  lifecycle on `run.events()` and `wait({ onInteraction })`. Resolve events from
-  the backend carry a minimal shell typed `clarification`; the run handle now
-  folds them onto the original card, updating only `status`, `resolvedAt` and
-  `actions`.
+  `openLogin()` → `confirmSignedIn()`:
+  - It saves once and rechecks once per login session, however many handles
+    or concurrent calls ask; the deprecated `OpenLoginResult.confirm()` shares
+    the same save.
+  - A user who is not signed in yet, or 409 `no_pending_login`, still gets a
+    recheck: the agent raises a new `site_login` when needed.
+  - When the backend keeps the session but could not save it
+    (`probeResult: "release_failed"`), it throws a retryable `QoniError` coded
+    `site_login.save_failed` and does not tell the agent to go on; calling it
+    again saves again. Any other save failure is thrown as well.
+  - When `openLogin()` calls overlap, the latest call's session is the one
+    saved, whichever response arrives last.
+  - Handles from the same `RunHandle` or `MonitorHandle` share the login
+    session, so a handle from a later callback saves it too. A RunHandle from
+    another `attach()` or process does not.
+- `run.events()`, `wait({ onInteraction })` and `monitor.events()` keep an
+  interaction's type and content when the backend settles it with an empty
+  shell (a resolve labelled `clarification` with an empty question, or a
+  `site_login` with one empty site): only `status`, `resolvedAt` and `actions`
+  change. A settled update with content of its own, such as an expired
+  take-over with its reason, replaces the card as before.
 
 ### Added
 
@@ -46,7 +65,9 @@ system `wait`.
   (`user.profile:write`), `USER_PAYMENT_USE` (`user.payment:use`),
   `AGENT_MAIL_READ` (`agent.mail:read`) and `AGENT_MAIL_SEND`
   (`agent.mail:send`). They belong to no product bundle: request them
-  explicitly, and allow them in the AccessKey policy.
+  explicitly, and allow them in the AccessKey policy. The constants only name
+  the scopes; requesting them does not by itself enable Profile, payment or
+  mailbox access in a run.
 - Exported types `AskUserPayload`, `AskUserOption`, `AskUserAnswer`,
   `AskUserAnswerType`, `InteractionBase` and `TypedInteraction`.
 
@@ -61,6 +82,7 @@ system `wait`.
   identifies the signed-in user, and the delegation service ignores them.
 - `DelegateTokenResponse.grantedScopes`: the delegation service does not return
   it. Read `qoni.genauth.introspectDelegationToken({ token }).data.scope`.
+- `OpenLoginResult.confirm()`: `confirmSignedIn()` saves the login itself.
 
 ## 0.8.0 - 2026-10-04
 

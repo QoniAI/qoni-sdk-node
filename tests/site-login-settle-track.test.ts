@@ -171,8 +171,11 @@ describe("InteractionHandle.openLogin()", () => {
     const { normalizeInteraction } = await import("../src/interactions");
     const login = await run.interactionHandle(normalizeInteraction(siteLogin([XHS]))!).openLogin();
     await expect(login.confirm()).rejects.toMatchObject({ status: 409, code: "no_pending_login" });
+    // Since 0.9.0 a session is saved at most once and 409 is final for it, so
+    // the other error needs a session of its own.
     confirmStatus = 502;
-    await expect(login.confirm()).rejects.toMatchObject({ status: 502 });
+    const next = await run.interactionHandle(normalizeInteraction(siteLogin([XHS]))!).openLogin();
+    await expect(next.confirm()).rejects.toMatchObject({ status: 502 });
   });
 
   it("confirm() reports active: false while the backend has not captured the login", async () => {

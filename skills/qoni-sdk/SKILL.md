@@ -221,9 +221,9 @@ When a run needs the user it pauses and emits one `interaction` event per reques
 
 - Act only on `status === "pending"` and dedupe by `interaction.id`: creation, status changes and reconnect replays all call back again with the same `id`, `type` and `payload`.
 - Interactions arrive one at a time; the run resumes once the current one is handled.
-- `site_login`: `openLogin()` → show `liveUrl` → after the user signs in, `confirmSignedIn()` (it saves the login, then the agent rechecks). Do NOT call the deprecated `login.confirm()` first. Delegate `webagent.site_login:request` and `webagent.site_login:confirm`.
+- `site_login`: `openLogin()` → show `liveUrl` → after the user signs in, `confirmSignedIn()` (it saves the login once, then the agent rechecks). Do NOT call the deprecated `login.confirm()` first. A `QoniError` coded `site_login.save_failed` is retryable: call `confirmSignedIn()` again. Delegate `webagent.site_login:request` and `webagent.site_login:confirm`.
 - `ask_user`: `answer(value)` with the type `payload.answerType` names (`text` string, `number`, `boolean`, `single_choice` option value, `multiple_choice` array of option values), or `skip()`. The wire's `clarification` arrives as `ask_user`; never switch on `"clarification"`.
-- `take_control`: `connectControl()` → user works in `payload.liveUrl` → `releaseControl()`.
+- `take_control`: `connectControl()` only when `handle.can("connect_control")` → user works in `payload.liveUrl` → `releaseControl()`.
 - `confirmation`: `confirm()` or `reject()` after showing `payload.summary`.
 - Only call methods `handle.can(kind)` reports; an undeclared action throws.
 

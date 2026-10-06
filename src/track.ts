@@ -1,5 +1,11 @@
 import { QoniValidationError } from "./errors";
-import { InteractionHandle, interactionActionScopes, type Interaction } from "./interactions";
+import {
+  InteractionHandle,
+  foldInteraction,
+  interactionActionScopes,
+  type Interaction,
+  type LoginSessionStore,
+} from "./interactions";
 import { camelizeKeys, normalizeRunEvent, type MonitorEvent } from "./run-events";
 import {
   isJsonObject,
@@ -78,6 +84,10 @@ interface MonitorWireOps {
  */
 export class MonitorHandle {
   readonly id: string;
+  /** Login sessions opened on this monitor's interactions — see {@link interactionHandle}. */
+  readonly #loginSessions: LoginSessionStore = new Map();
+  /** Latest card per interaction id, so settling shells fold onto it. */
+  readonly #interactions = new Map<string, Interaction>();
 
   constructor(private readonly ops: MonitorWireOps, id: string) {
     this.id = id;
@@ -133,7 +143,12 @@ export class MonitorHandle {
    */
   async *events(opts: MonitorEventsOptions = {}): AsyncIterable<MonitorEvent> {
     for await (const wire of this.ops.streamEvents(opts)) {
-      const event = normalizeRunEvent(wire);
+      let event = normalizeRunEvent(wire);
+      if (event?.type === "interaction") {
+        const card = foldInteraction(this.#interactions.get(event.data.id), event.data);
+        this.#interactions.set(card.id, card);
+        event = { ...event, data: card };
+      }
       // The monitor stream only carries core + Track events; the cast narrows
       // the full RunEvent union to that subset.
       if (event) yield event as MonitorEvent;
@@ -144,11 +159,14 @@ export class MonitorHandle {
    * Wrap an {@link Interaction} (from `event.data` of an `interaction` event on
    * the monitor stream — e.g. a `site_login` to unlock a `needs_reauth` park)
    * in a typed {@link InteractionHandle}. The handle's action methods post to
-   * the endpoint the backend declared for that action.
+   * the endpoint the backend declared for that action. Handles of one
+   * MonitorHandle share the login sessions `openLogin()` opens.
    */
   interactionHandle(interaction: Interaction): InteractionHandle {
-    return new InteractionHandle(interaction, (action, body, options) =>
-      this.ops.postAction(action, body, options),
+    return new InteractionHandle(
+      interaction,
+      (action, body, options) => this.ops.postAction(action, body, options),
+      this.#loginSessions,
     );
   }
 

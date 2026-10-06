@@ -216,32 +216,37 @@ const ANSWER_TYPES = new Set<AskUserAnswerType>([
   "multiple_choice",
 ]);
 
-/** Wire `options`: plain strings (today's clarification) or `{ value, label }` objects. */
+/**
+ * Wire `options`: plain strings (today's clarification) or `{ value, label }`
+ * objects. Every string is a legal value, including the empty string.
+ */
 function normalizeOptions(value: unknown): AskUserOption[] {
   if (!Array.isArray(value)) return [];
   return value.flatMap((raw): AskUserOption[] => {
-    if (typeof raw === "string" && raw) return [{ value: raw, label: raw }];
-    if (!isJsonObject(raw)) return [];
-    const optionValue = asString(raw.value);
-    return optionValue ? [{ value: optionValue, label: asString(raw.label) ?? optionValue }] : [];
+    if (typeof raw === "string") return [{ value: raw, label: raw }];
+    if (!isJsonObject(raw) || typeof raw.value !== "string") return [];
+    return [{ value: raw.value, label: typeof raw.label === "string" ? raw.label : raw.value }];
   });
+}
+
+function isAnswerType(value: string | undefined): value is AskUserAnswerType {
+  return value !== undefined && ANSWER_TYPES.has(value as AskUserAnswerType);
 }
 
 /**
  * `ask_user` from either wire shape. A native `ask_user` names its
- * `answer_type`; a `clarification` only hints with `input_type: "choice"` when
- * it carries options. A choice without any option degrades to free text, so the
- * app never renders an empty picker.
+ * `answer_type`, which is kept as sent. A `clarification` only hints: with
+ * options it is a single choice (`input_type: "choice"`); without any option it
+ * is free text, so the app never renders an empty picker.
  */
 function askUserPayload(c: JsonObject): AskUserPayload {
   const options = normalizeOptions(c.options);
-  const declared = asString(c.answerType) ?? asString(c.inputType);
-  let answerType: AskUserAnswerType = "text";
-  if (declared && ANSWER_TYPES.has(declared as AskUserAnswerType)) answerType = declared as AskUserAnswerType;
-  else if (declared === "choice" || (!declared && options.length > 0)) answerType = "single_choice";
-  if ((answerType === "single_choice" || answerType === "multiple_choice") && options.length === 0) {
-    answerType = "text";
-  }
+  const native = asString(c.answerType);
+  const hint = asString(c.inputType);
+  let answerType: AskUserAnswerType;
+  if (isAnswerType(native)) answerType = native;
+  else if (isAnswerType(hint) && hint !== "single_choice" && hint !== "multiple_choice") answerType = hint;
+  else answerType = options.length > 0 ? (hint === "multiple_choice" ? "multiple_choice" : "single_choice") : "text";
   const payload: AskUserPayload = { question: asString(c.question) ?? "", answerType };
   if (options.length > 0) payload.options = options;
   return payload;
@@ -339,16 +344,35 @@ export function normalizeInteraction(payload: unknown): Interaction | null {
 const SETTLED_INTERACTION_STATUSES = new Set<string>(["resolved", "expired", "canceled"]);
 
 /**
- * Fold a lifecycle update onto the card already seen for the same `id`. A
- * settling update (resolved / expired / canceled) carries no new card content
- * — the backend sends a minimal shell, and today labels every resolve
- * `clarification` — so it only moves `status`, `resolvedAt` and `actions`.
- * The same holds for any update whose type disagrees with the original: an
- * interaction never changes type, so a card keyed by `id` stays type-stable.
+ * The backend settles an interaction with a minimal shell: no actions and the
+ * type-specific fields blanked (a resolve is labelled `clarification` with an
+ * empty question, or `site_login` with one empty site). It carries no card
+ * content of its own.
+ */
+function isSettlingShell(next: Interaction): boolean {
+  if (!SETTLED_INTERACTION_STATUSES.has(next.status) || next.actions.length > 0) return false;
+  switch (next.type) {
+    case "ask_user":
+      return next.payload.question === "";
+    case "site_login":
+      return next.payload.sites.every((site) => !site.siteId);
+    case "confirmation":
+      return next.payload.summary === "";
+    default:
+      return false;
+  }
+}
+
+/**
+ * Fold a lifecycle update onto the card already seen for the same `id`. Only a
+ * settling shell is folded: it keeps the card's type, payload, title and
+ * creation time, and moves `status`, `resolvedAt` and `actions`. Any update
+ * with real content — including a settled one, such as an expired take-over
+ * with its own reason — replaces the card, so a full card replayed after a
+ * shell repairs it.
  */
 export function foldInteraction(previous: Interaction | undefined, next: Interaction): Interaction {
-  if (!previous || previous.id !== next.id) return next;
-  if (previous.type === next.type && !SETTLED_INTERACTION_STATUSES.has(next.status)) return next;
+  if (!previous || previous.id !== next.id || !isSettlingShell(next)) return next;
   const folded = { ...previous, status: next.status, actions: next.actions } as Interaction;
   if (next.resolvedAt) folded.resolvedAt = next.resolvedAt;
   return folded;
@@ -449,12 +473,27 @@ export interface ConfirmLoginResult {
 export interface LoginSession {
   profileId: string;
   siteId: string;
-  /** Settles once the login is saved (or the session already ended). */
-  saving?: Promise<void>;
+  /** The save in flight or done; cleared when it fails so a retry saves again. */
+  save?: Promise<ConfirmLoginResult>;
+  /** `confirmSignedIn()` in flight or done: one save and one recheck per session. */
+  done?: Promise<void>;
 }
 
-/** Login sessions by interaction id, shared by the handles of one run. */
-export type LoginSessionStore = Map<string, LoginSession>;
+/** Per interaction: how many `openLogin()` calls were made, and the latest call's session. */
+export interface LoginSessionSlot {
+  calls: number;
+  session?: LoginSession;
+}
+
+/** Login sessions by interaction id, shared by the handles one RunHandle / MonitorHandle hands out. */
+export type LoginSessionStore = Map<string, LoginSessionSlot>;
+
+/** The backend kept the login session but could not save it yet (Browserbase release failed). */
+const SAVE_RETRY_PROBES = new Set(["release_failed"]);
+
+function isNoPendingLogin(err: unknown): boolean {
+  return err instanceof QoniError && err.status === 409 && err.code === "no_pending_login";
+}
 
 function describeOptions(payload: AskUserPayload): string {
   return (payload.options ?? []).map((option) => option.value).join(", ");
@@ -504,10 +543,10 @@ export class InteractionHandle<T extends InteractionType = InteractionType> {
   readonly interaction: Interaction<T>;
 
   /**
-   * @param loginSessions Login sessions opened on this run's interactions, by
-   *   interaction id. A run shares one store across the handles it hands out,
-   *   so `confirmSignedIn()` finds the login `openLogin()` opened even on the
-   *   handle of a later event.
+   * @param loginSessions Login sessions opened on interactions, by interaction
+   *   id. A RunHandle / MonitorHandle shares one store across the handles it
+   *   hands out, so `confirmSignedIn()` finds the login `openLogin()` opened
+   *   even on the handle of a later event.
    */
   constructor(
     interaction: Interaction<T>,
@@ -579,15 +618,17 @@ export class InteractionHandle<T extends InteractionType = InteractionType> {
       }
       body.profile_id = options.profileId;
     }
+    // Count the call before awaiting: when calls overlap, only the latest call's
+    // session becomes current, whichever response arrives last.
+    const slot = this.#loginSlot();
+    const call = ++slot.calls;
     const response = await this.invoke(ActionKinds.openLogin, body);
     const raw = isJsonObject(response) ? response : {};
     const fields = camelizeRecord(raw);
     const profileId = asString(fields.profileId) ?? "";
     const siteId = asString(fields.siteId) ?? String(body.site_id);
-    // A new session replaces any earlier one on this interaction: only the
-    // latest live browser holds the login confirmSignedIn() should save.
     const session: LoginSession = { profileId, siteId };
-    if (profileId) this.loginSessions.set(this.id, session);
+    if (profileId && slot.calls === call) slot.session = session;
     return {
       profileId,
       siteId,
@@ -598,11 +639,8 @@ export class InteractionHandle<T extends InteractionType = InteractionType> {
         if (!profileId) {
           throw new QoniValidationError("openLogin response did not include a profileId to confirm");
         }
-        const result = await this.#confirmLogin(session, confirmOptions);
-        // Confirming ends the session whatever the outcome; confirmSignedIn()
-        // must not try to save it a second time.
-        session.saving = Promise.resolve();
-        return result;
+        // Shares the save with confirmSignedIn(): never two saves for one session.
+        return this.#saveOnce(session, confirmOptions);
       },
     };
   }
@@ -617,15 +655,17 @@ export class InteractionHandle<T extends InteractionType = InteractionType> {
    */
   async confirmSignedIn(): Promise<void> {
     const action = this.#declaredAction(ActionKinds.confirmSignedIn);
-    const session = this.loginSessions.get(this.id);
-    if (session) {
-      session.saving ??= this.#saveLogin(session).catch((err: unknown) => {
-        session.saving = undefined; // let a retry save again
-        throw err;
-      });
-      await session.saving;
+    const session = this.loginSessions.get(this.id)?.session;
+    if (!session) {
+      await this.post(action, undefined);
+      return;
     }
-    await this.post(action, undefined);
+    // One save and one recheck per session, however many handles or calls ask.
+    session.done ??= this.#saveThenRecheck(session, action).catch((err: unknown) => {
+      session.done = undefined; // let a retry run again
+      throw err;
+    });
+    await session.done;
   }
   /** Connect to the live browser for a take_control interaction. */
   async connectControl(): Promise<void> {
@@ -676,18 +716,52 @@ export class InteractionHandle<T extends InteractionType = InteractionType> {
     };
   }
 
+  /** The save for `session`, started once; a failed attempt is forgotten so a retry saves again. */
+  #saveOnce(session: LoginSession, options?: ConfirmLoginOptions): Promise<ConfirmLoginResult> {
+    session.save ??= this.#confirmLogin(session, options).then(
+      (result) => {
+        if (SAVE_RETRY_PROBES.has(result.probeResult)) session.save = undefined;
+        return result;
+      },
+      (err: unknown) => {
+        // 409 no_pending_login is final: the backend already saved or dropped it.
+        if (!isNoPendingLogin(err)) session.save = undefined;
+        throw err;
+      },
+    );
+    return session.save;
+  }
+
   /**
-   * Save the login for confirmSignedIn(). Whatever the probe says, the agent
-   * rechecks next, so only a failed request matters — except 409
-   * `no_pending_login`: the backend already saved or dropped the session.
+   * Save the login, then let the agent recheck. A user who is not signed in
+   * yet still gets a recheck (the agent asks again), and so does 409
+   * `no_pending_login`. A save the backend could not complete (`release_failed`)
+   * throws a retryable error instead of telling the agent to go on.
    */
-  async #saveLogin(session: LoginSession): Promise<void> {
+  async #saveThenRecheck(session: LoginSession, action: Action): Promise<void> {
+    let result: ConfirmLoginResult | undefined;
     try {
-      await this.#confirmLogin(session);
+      result = await this.#saveOnce(session);
     } catch (err) {
-      if (err instanceof QoniError && err.status === 409 && err.code === "no_pending_login") return;
-      throw err;
+      if (!isNoPendingLogin(err)) throw err;
     }
+    if (result && SAVE_RETRY_PROBES.has(result.probeResult)) {
+      throw new QoniError(
+        `the login could not be saved yet (probeResult "${result.probeResult}"); ` +
+          "the login browser is kept — call confirmSignedIn() again to retry",
+        { code: "site_login.save_failed", retryable: true },
+      );
+    }
+    await this.post(action, undefined);
+  }
+
+  #loginSlot(): LoginSessionSlot {
+    let slot = this.loginSessions.get(this.id);
+    if (!slot) {
+      slot = { calls: 0 };
+      this.loginSessions.set(this.id, slot);
+    }
+    return slot;
   }
 
   /** Resolve the site for `openLogin`: explicit, or the only listed site. */
