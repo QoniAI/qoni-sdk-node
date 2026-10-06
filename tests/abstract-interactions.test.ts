@@ -646,6 +646,28 @@ describe("confirmSignedIn(): one save, one recheck, honest failures", () => {
     expect(saves(calls).map((call) => call.pathname)).toEqual(["/api/v1/projects/tenant_1/profiles/u-2/confirm"]);
   });
 
+  it("when the newer overlapping openLogin() fails, the older successful call still owns the session", async () => {
+    const pending: Array<(ok: boolean) => void> = [];
+    let opened = 0;
+    const { client, calls } = loginHarness(SAVED, () => new Promise<Response>((resolve) => {
+      const n = ++opened;
+      pending.push((ok) => resolve(ok
+        ? jsonResponse({ profile_id: `u-${n}`, site_id: "amazon", session_id: `login_${n}`, live_url: `https://live/${n}` }, { status: 201 })
+        : jsonResponse({ detail: { code: "agent_core_profile_login_failed", detail: "boom" } }, { status: 502 })));
+    }));
+    const run = await client.doAnything.run({ token: DELEGATION_TOKEN, prompt: "buy" });
+    const handle = run.interactionHandle(normalizeInteraction(wireSiteLogin())!);
+    const older = handle.openLogin();
+    const newer = handle.openLogin();
+    await vi.waitFor(() => expect(pending).toHaveLength(2));
+    pending[1](false);
+    await expect(newer).rejects.toMatchObject({ status: 502 });
+    pending[0](true);
+    await older;
+    await handle.confirmSignedIn();
+    expect(saves(calls).map((call) => call.pathname)).toEqual(["/api/v1/projects/tenant_1/profiles/u-1/confirm"]);
+  });
+
   it("Track monitor handles share the login session across interactionHandle() calls", async () => {
     const { client, calls } = makeClient((call) => {
       if (call.pathname === "/api/v3/eak/token-exchange") return jsonResponse({ data: { accessToken: PRODUCT_TOKEN, expiresIn: 3600 } });
@@ -659,5 +681,85 @@ describe("confirmSignedIn(): one save, one recheck, honest failures", () => {
     await monitor.interactionHandle(normalizeInteraction(wireSiteLogin())!).openLogin();
     await monitor.interactionHandle(normalizeInteraction(wireSiteLogin())!).confirmSignedIn();
     expect(saves(calls)).toHaveLength(1);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Review round 2 (codex-reviewer, 2026-10-07).
+// ---------------------------------------------------------------------------
+
+describe("take_control: the control URL comes back from the action", () => {
+  const takeOver = {
+    id: "ix_tc", type: "take_control", status: "pending", created_at: "2026-10-07T08:00:00Z", title: "Take over",
+    live_url: "https://live/view", reason: "captcha_required",
+    actions: ["connect_control", "refresh_control", "release_control"].map((kind) => ({
+      kind, label: kind, method: "POST", endpoint: `/do_anything/runs/run_1/interactions/ix_tc/${kind}`,
+    })),
+  };
+
+  it("connectControl() and refreshControl() return the signed control URL and its expiry", async () => {
+    let n = 0;
+    const handle = new InteractionHandleClass(normalizeInteraction(takeOver)!, async (action) =>
+      action.kind === "release_control"
+        ? { released_at: "2026-10-07T08:05:00Z" }
+        : { standalone_control_url: `https://live/control/${++n}`, control_token_expires_at: "2026-10-07T09:00:00Z", status: "active" });
+    await expect(handle.connectControl()).resolves.toMatchObject({
+      liveUrl: "https://live/control/1", expiresAt: "2026-10-07T09:00:00Z", status: "active",
+    });
+    await expect(handle.refreshControl()).resolves.toMatchObject({ liveUrl: "https://live/control/2" });
+    await expect(handle.releaseControl()).resolves.toBeUndefined();
+  });
+});
+
+describe("login sessions follow the backend's session identity", () => {
+  function harness(sessions: string[]) {
+    let opened = 0;
+    return makeClient((call) => {
+      if (call.pathname === "/api/v3/eak/token-exchange") return jsonResponse({ data: { accessToken: PRODUCT_TOKEN, expiresIn: 3600 } });
+      if (call.pathname.endsWith("/do_anything/runs") && call.method === "POST") {
+        return jsonResponse({ data: { run_id: "run_1", session_id: "sess_1", status: "running" } });
+      }
+      if (call.pathname.endsWith("/profiles/login")) {
+        const session = sessions[Math.min(opened++, sessions.length - 1)];
+        return jsonResponse({ profile_id: "u-1", site_id: "amazon", session_id: session, live_url: `https://live/${session}` }, { status: 201 });
+      }
+      if (/\/profiles\/[^/]+\/confirm$/.test(call.pathname)) return jsonResponse({ profile_id: "u-1", state: "active", probe_result: "alive" });
+      return jsonResponse({ data: {} });
+    });
+  }
+  const saves = (calls: Captured[]) => calls.filter((call) => /\/profiles\/[^/]+\/confirm$/.test(call.pathname));
+
+  it("reopening the same backend session shares one save between the old result and confirmSignedIn()", async () => {
+    const { client, calls } = harness(["login_1"]);
+    const run = await client.doAnything.run({ token: DELEGATION_TOKEN, prompt: "buy" });
+    const handle = run.interactionHandle(normalizeInteraction(wireSiteLogin())!);
+    const first = await handle.openLogin();
+    await handle.openLogin();
+    await Promise.all([first.confirm(), handle.confirmSignedIn()]);
+    expect(saves(calls)).toHaveLength(1);
+  });
+
+  it("a result whose backend session was replaced can no longer save", async () => {
+    const { client, calls } = harness(["login_1", "login_2"]);
+    const run = await client.doAnything.run({ token: DELEGATION_TOKEN, prompt: "buy" });
+    const handle = run.interactionHandle(normalizeInteraction(wireSiteLogin())!);
+    const stale = await handle.openLogin();
+    await handle.openLogin();
+    await expect(stale.confirm()).rejects.toBeInstanceOf(QoniValidationError);
+    expect(saves(calls)).toEqual([]);
+    await handle.confirmSignedIn();
+    expect(saves(calls)).toHaveLength(1);
+  });
+});
+
+describe("long-lived handles keep their caches bounded", () => {
+  it("rememberBounded() keeps the newest entries and refreshes re-inserted keys", async () => {
+    const { rememberBounded } = await import("../src/interactions");
+    const map = new Map<string, number>();
+    rememberBounded(map, "a", 1, 2);
+    rememberBounded(map, "b", 2, 2);
+    rememberBounded(map, "a", 3, 2);
+    rememberBounded(map, "c", 4, 2);
+    expect([...map.entries()]).toEqual([["a", 3], ["c", 4]]);
   });
 });

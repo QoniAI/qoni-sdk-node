@@ -80,6 +80,7 @@ export type {
   OpenLoginResult,
   ConfirmLoginOptions,
   ConfirmLoginResult,
+  ControlSession,
 } from "./interactions";
 export { MonitorHandle } from "./track";
 export type {

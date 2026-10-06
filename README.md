@@ -683,11 +683,13 @@ async function handleInteraction(handle: InteractionHandle) {
       await handle.confirmSignedIn();           // saves the login, then the agent rechecks and continues
       break;
     }
-    case "take_control":
-      if (handle.can("connect_control")) await handle.connectControl();
-      await showToUser(request.payload.liveUrl);
+    case "take_control": {
+      // connectControl() resolves to the signed control URL, when the backend offers it
+      const control = handle.can("connect_control") ? await handle.connectControl() : undefined;
+      await showToUser(control?.liveUrl ?? request.payload.liveUrl);
       await handle.releaseControl();            // hand the browser back
       break;
+    }
     case "ask_user":                            // payload: { question, answerType, options? }
       await handle.answer(await askUser(request.payload));
       break;
@@ -703,12 +705,17 @@ const result = await run.wait({ onInteraction: handleInteraction });
 
 Interactions arrive one at a time: the run waits until the current one is
 handled. The same interaction calls back again on every status change and on
-reconnect replays, always with the same `id` and `type`; when the backend
-settles it with an empty shell, the card keeps its original `payload` — key your
-UI cards by `request.id`. Methods: `answer(value)`, `skip()`, `confirm()`,
+reconnect replays, always with the same `id` and `type` — key your UI cards by
+`request.id`. An update with content of its own replaces the card (a take-over
+that became `active` carries its new `liveUrl`); when the backend settles an
+interaction with an empty shell, the card keeps its original `payload`. A
+`take_control` that arrives already `active` was started by the user, for
+example from Console; show it if your UI offers control there. Methods: `answer(value)`, `skip()`, `confirm()`,
 `reject()`, `openLogin({ siteId?, profileId? })`, `confirmSignedIn()`,
 `connectControl()`, `refreshControl()`, `releaseControl()`, `retry()`,
-`switchProfile()`. `handle.can(kind)` reports whether the interaction currently
+`switchProfile()`. `connectControl()` and `refreshControl()` resolve to
+`{ liveUrl, expiresAt?, status?, raw }`: the signed URL of the browser the user
+now controls. `handle.can(kind)` reports whether the interaction currently
 offers that action; calling a method the backend did NOT declare throws (so a
 "recovery" button only exists when it actually works).
 

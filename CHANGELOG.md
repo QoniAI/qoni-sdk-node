@@ -47,17 +47,25 @@ system `wait`.
     (`probeResult: "release_failed"`), it throws a retryable `QoniError` coded
     `site_login.save_failed` and does not tell the agent to go on; calling it
     again saves again. Any other save failure is thrown as well.
-  - When `openLogin()` calls overlap, the latest call's session is the one
-    saved, whichever response arrives last.
+  - When `openLogin()` calls overlap, the latest call that succeeds owns the
+    session, whichever response arrives last.
+  - Reopening that returns the same backend session shares its save; when a
+    newer backend session replaces it, `confirm()` on the old result throws
+    `QoniValidationError` instead of saving.
   - Handles from the same `RunHandle` or `MonitorHandle` share the login
     session, so a handle from a later callback saves it too. A RunHandle from
     another `attach()` or process does not.
+- `connectControl()` and `refreshControl()` resolve to a `ControlSession`
+  (`{ liveUrl, expiresAt?, status?, raw }`, the signed URL of the browser the
+  user now controls) instead of `void`. Code that ignored the result is
+  unaffected.
 - `run.events()`, `wait({ onInteraction })` and `monitor.events()` keep an
   interaction's type and content when the backend settles it with an empty
   shell (a resolve labelled `clarification` with an empty question, or a
   `site_login` with one empty site): only `status`, `resolvedAt` and `actions`
   change. A settled update with content of its own, such as an expired
-  take-over with its reason, replaces the card as before.
+  take-over with its reason, replaces the card as before. Run and monitor
+  handles remember at most 256 interactions.
 
 ### Added
 
@@ -69,7 +77,8 @@ system `wait`.
   the scopes; requesting them does not by itself enable Profile, payment or
   mailbox access in a run.
 - Exported types `AskUserPayload`, `AskUserOption`, `AskUserAnswer`,
-  `AskUserAnswerType`, `InteractionBase` and `TypedInteraction`.
+  `AskUserAnswerType`, `InteractionBase`, `TypedInteraction` and
+  `ControlSession`.
 
 ### Fixed
 

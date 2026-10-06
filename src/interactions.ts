@@ -441,9 +441,13 @@ export interface OpenLoginResult {
    *   already ended on providers that report it this way, or the profile no
    *   longer exists for this user. Handle it like `no_session`: call
    *   `confirmSignedIn()`, and the agent asks again if it is still signed out.
+   * - `active: false` with `probeResult: "release_failed"` — the backend kept
+   *   the session but could not save it yet; call `confirm()` again.
    * - `active: false` with any other `probeResult` — the user was not signed
    *   in. Start a new session with `openLogin({ siteId, profileId })` and show
    *   its new `liveUrl`; the old one no longer works.
+   * - Throws `QoniValidationError` when a newer `openLogin()` replaced this
+   *   backend session; confirm the newer result instead.
    *
    * Requires `QoniScopes.SITE_LOGIN_CONFIRM`.
    */
@@ -473,13 +477,19 @@ export interface ConfirmLoginResult {
 export interface LoginSession {
   profileId: string;
   siteId: string;
+  /** The backend's login session; reopening may return the same one. */
+  sessionId: string;
+  /** Latest `openLogin()` call on the interaction that returned it (1, 2, …). */
+  call: number;
+  /** A newer backend session took over: this one can no longer be saved. */
+  replaced?: boolean;
   /** The save in flight or done; cleared when it fails so a retry saves again. */
   save?: Promise<ConfirmLoginResult>;
   /** `confirmSignedIn()` in flight or done: one save and one recheck per session. */
   done?: Promise<void>;
 }
 
-/** Per interaction: how many `openLogin()` calls were made, and the latest call's session. */
+/** Per interaction: how many `openLogin()` calls were made, and the session of the latest call that succeeded. */
 export interface LoginSessionSlot {
   calls: number;
   session?: LoginSession;
@@ -493,6 +503,45 @@ const SAVE_RETRY_PROBES = new Set(["release_failed"]);
 
 function isNoPendingLogin(err: unknown): boolean {
   return err instanceof QoniError && err.status === 409 && err.code === "no_pending_login";
+}
+
+/** How many interactions a long-lived handle remembers (cards, login sessions). */
+export const INTERACTION_MEMORY_LIMIT = 256;
+
+/**
+ * Set `key` as the newest entry and drop the oldest beyond `limit`, so caches
+ * on long-lived handles (a Track monitor never ends) stay bounded.
+ */
+export function rememberBounded<K, V>(map: Map<K, V>, key: K, value: V, limit = INTERACTION_MEMORY_LIMIT): void {
+  map.delete(key);
+  map.set(key, value);
+  while (map.size > limit) {
+    const oldest = map.keys().next();
+    if (oldest.done) break;
+    map.delete(oldest.value);
+  }
+}
+
+/** A control session returned by `connectControl()` / `refreshControl()`. */
+export interface ControlSession {
+  /** Signed URL of the browser the user now controls; show it only to that user. */
+  liveUrl: string;
+  /** When `liveUrl` stops working; call `refreshControl()` for a new one. */
+  expiresAt?: string;
+  status?: string;
+  /** Unmodified response body (escape hatch — shape may evolve with the API). */
+  raw: JsonObject;
+}
+
+function controlSession(response: unknown): ControlSession {
+  const raw = isJsonObject(response) ? response : {};
+  const fields = camelizeRecord(raw);
+  const session: ControlSession = { liveUrl: asString(fields.standaloneControlUrl) ?? asString(fields.liveUrl) ?? "", raw };
+  const expiresAt = asString(fields.controlTokenExpiresAt) ?? asString(fields.expiresAt);
+  const status = asString(fields.status);
+  if (expiresAt) session.expiresAt = expiresAt;
+  if (status) session.status = status;
+  return session;
 }
 
 function describeOptions(payload: AskUserPayload): string {
@@ -618,8 +667,8 @@ export class InteractionHandle<T extends InteractionType = InteractionType> {
       }
       body.profile_id = options.profileId;
     }
-    // Count the call before awaiting: when calls overlap, only the latest call's
-    // session becomes current, whichever response arrives last.
+    // Number the call before awaiting: when calls overlap, the latest call that
+    // succeeds owns the session, whichever response arrives last.
     const slot = this.#loginSlot();
     const call = ++slot.calls;
     const response = await this.invoke(ActionKinds.openLogin, body);
@@ -627,17 +676,36 @@ export class InteractionHandle<T extends InteractionType = InteractionType> {
     const fields = camelizeRecord(raw);
     const profileId = asString(fields.profileId) ?? "";
     const siteId = asString(fields.siteId) ?? String(body.site_id);
-    const session: LoginSession = { profileId, siteId };
-    if (profileId && slot.calls === call) slot.session = session;
+    const sessionId = asString(fields.sessionId) ?? "";
+    const current = slot.session;
+    // Reopening can hand back the very same backend session: share its save.
+    const reused =
+      current !== undefined && sessionId !== "" && current.sessionId === sessionId &&
+      current.profileId === profileId && current.siteId === siteId;
+    const session: LoginSession = reused ? current : { profileId, siteId, sessionId, call };
+    if (reused) {
+      current.call = Math.max(current.call, call);
+    } else if (profileId && (current?.call ?? 0) < call) {
+      if (current) current.replaced = true;
+      slot.session = session;
+    } else {
+      session.replaced = true; // an older call answered late: a newer session owns the interaction
+    }
     return {
       profileId,
       siteId,
-      sessionId: asString(fields.sessionId) ?? "",
+      sessionId,
       liveUrl: asString(fields.liveUrl) ?? "",
       raw,
       confirm: async (confirmOptions: ConfirmLoginOptions = {}) => {
         if (!profileId) {
           throw new QoniValidationError("openLogin response did not include a profileId to confirm");
+        }
+        if (session.replaced) {
+          throw new QoniValidationError(
+            "this login session was replaced by a newer openLogin(); confirm the newer one " +
+              "(or call confirmSignedIn(), which saves the current session)",
+          );
         }
         // Shares the save with confirmSignedIn(): never two saves for one session.
         return this.#saveOnce(session, confirmOptions);
@@ -667,13 +735,16 @@ export class InteractionHandle<T extends InteractionType = InteractionType> {
     });
     await session.done;
   }
-  /** Connect to the live browser for a take_control interaction. */
-  async connectControl(): Promise<void> {
-    await this.invoke(ActionKinds.connectControl);
+  /**
+   * Take over the live browser for a take_control interaction. Resolves to the
+   * signed control URL to show the user (`liveUrl`) and when it expires.
+   */
+  async connectControl(): Promise<ControlSession> {
+    return controlSession(await this.invoke(ActionKinds.connectControl));
   }
-  /** Refresh the live control surface / live url. */
-  async refreshControl(): Promise<void> {
-    await this.invoke(ActionKinds.refreshControl);
+  /** Get a fresh control URL when the current one expired. */
+  async refreshControl(): Promise<ControlSession> {
+    return controlSession(await this.invoke(ActionKinds.refreshControl));
   }
   /** Hand control back to the agent. */
   async releaseControl(): Promise<void> {
@@ -759,7 +830,7 @@ export class InteractionHandle<T extends InteractionType = InteractionType> {
     let slot = this.loginSessions.get(this.id);
     if (!slot) {
       slot = { calls: 0 };
-      this.loginSessions.set(this.id, slot);
+      rememberBounded(this.loginSessions, this.id, slot);
     }
     return slot;
   }

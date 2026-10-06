@@ -625,11 +625,13 @@ async function handleInteraction(handle: InteractionHandle) {
       await handle.confirmSignedIn();           // 保存登录状态，Agent 复查后继续
       break;
     }
-    case "take_control":
-      if (handle.can("connect_control")) await handle.connectControl();
-      await showToUser(request.payload.liveUrl);
+    case "take_control": {
+      // 服务端提供开始接管时，connectControl() 返回签名后的控制地址
+      const control = handle.can("connect_control") ? await handle.connectControl() : undefined;
+      await showToUser(control?.liveUrl ?? request.payload.liveUrl);
       await handle.releaseControl();            // 把浏览器交还给 Agent
       break;
+    }
     case "ask_user":                            // payload：{ question, answerType, options? }
       await handle.answer(await askUser(request.payload));
       break;
@@ -643,7 +645,7 @@ async function handleInteraction(handle: InteractionHandle) {
 const result = await run.wait({ onInteraction: handleInteraction });
 ```
 
-交互按顺序一个一个出现：当前这个处理完，run 才会继续。同一个交互在每次状态变化和断线回放时都会再次回调，`id` 和 `type` 始终不变；后端用空壳结束交互时，卡片保留原来的 `payload`——界面卡片请按 `request.id` 更新。方法：`answer(value)`、`skip()`、`confirm()`、`reject()`、`openLogin({ siteId?, profileId? })`、`confirmSignedIn()`、`connectControl()`、`refreshControl()`、`releaseControl()`、`retry()`、`switchProfile()`。`handle.can(kind)` 判断该交互当前是否提供这个动作；调用后端没声明的方法会抛错（所以「恢复」按钮只有在真能用时才出现）。
+交互按顺序一个一个出现：当前这个处理完，run 才会继续。同一个交互在每次状态变化和断线回放时都会再次回调，`id` 和 `type` 始终不变——界面卡片请按 `request.id` 更新。带有新内容的更新会替换卡片（例如接管变成 `active` 时带来新的 `liveUrl`）；后端用空壳结束交互时，卡片保留原来的 `payload`。直接以 `active` 出现的 `take_control` 是用户自己发起的接管（例如在 Console 里），界面提供接管入口时再展示它。方法：`answer(value)`、`skip()`、`confirm()`、`reject()`、`openLogin({ siteId?, profileId? })`、`confirmSignedIn()`、`connectControl()`、`refreshControl()`、`releaseControl()`、`retry()`、`switchProfile()`。`connectControl()` 和 `refreshControl()` 返回 `{ liveUrl, expiresAt?, status?, raw }`：用户正在控制的那个浏览器的签名地址。`handle.can(kind)` 判断该交互当前是否提供这个动作；调用后端没声明的方法会抛错（所以「恢复」按钮只有在真能用时才出现）。
 
 **`ask_user` 的回答是结构化的。** `answer()` 接收与 `payload.answerType` 对应的值：`text` → 字符串，`number` → 数字，`boolean` → 布尔，`single_choice` → 一个 `options[].value`，`multiple_choice` → 选项 value 数组；不匹配时在发送前就抛出 `QoniValidationError`。线上协议里这个类型仍叫 `clarification`，SDK 统一呈现为 `ask_user`（候选项是 `{ value, label }`）。
 

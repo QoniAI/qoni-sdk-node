@@ -154,11 +154,13 @@ describe("InteractionHandle.openLogin()", () => {
 
   it("confirm() surfaces 409 no_pending_login as a QoniError with that code instead of inventing a state", async () => {
     let confirmStatus = 409;
+    let opens = 0;
     const { client } = makeClient((call) => {
       if (call.pathname === "/api/v3/eak/token-exchange") return jsonResponse({ data: { accessToken: PRODUCT_TOKEN, expiresIn: 3600 } });
       if (call.pathname.endsWith("/do_anything/runs")) return jsonResponse({ data: { run_id: "run_1", status: "running" } });
       if (call.pathname.endsWith("/profiles/login")) {
-        return jsonResponse({ profile_id: "prof_1", site_id: "xiaohongshu", session_id: "s", live_url: "https://live" }, { status: 201 });
+        // A new backend session per open, so each result has its own save.
+        return jsonResponse({ profile_id: "prof_1", site_id: "xiaohongshu", session_id: `s${++opens}`, live_url: "https://live" }, { status: 201 });
       }
       if (call.pathname.endsWith("/profiles/prof_1/confirm")) {
         return confirmStatus === 409

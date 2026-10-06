@@ -219,11 +219,11 @@ for await (const event of run.events()) {
 
 When a run needs the user it pauses and emits one `interaction` event per request (`event.data` is a typed `Interaction`; `wait({ onInteraction })` hands you an `InteractionHandle`). Interactions are typed by what the user must do, never by business: `site_login`, `take_control`, `ask_user`, `confirmation`, plus the system `wait`. `switch (handle.interaction.type)` narrows `payload` per branch.
 
-- Act only on `status === "pending"` and dedupe by `interaction.id`: creation, status changes and reconnect replays all call back again with the same `id`, `type` and `payload`.
+- Act only on `status === "pending"` and dedupe by `interaction.id`: creation, status changes and reconnect replays all call back again with the same `id` and `type`. Updates with real content replace the card (an `active` take-over carries a new `liveUrl`); only empty settling shells keep the original `payload`.
 - Interactions arrive one at a time; the run resumes once the current one is handled.
 - `site_login`: `openLogin()` → show `liveUrl` → after the user signs in, `confirmSignedIn()` (it saves the login once, then the agent rechecks). Do NOT call the deprecated `login.confirm()` first. A `QoniError` coded `site_login.save_failed` is retryable: call `confirmSignedIn()` again. Delegate `webagent.site_login:request` and `webagent.site_login:confirm`.
 - `ask_user`: `answer(value)` with the type `payload.answerType` names (`text` string, `number`, `boolean`, `single_choice` option value, `multiple_choice` array of option values), or `skip()`. The wire's `clarification` arrives as `ask_user`; never switch on `"clarification"`.
-- `take_control`: `connectControl()` only when `handle.can("connect_control")` → user works in `payload.liveUrl` → `releaseControl()`.
+- `take_control`: `connectControl()` only when `handle.can("connect_control")`; it resolves to `{ liveUrl, expiresAt }` (show that URL, else `payload.liveUrl`) → `releaseControl()`. `refreshControl()` returns a fresh URL.
 - `confirmation`: `confirm()` or `reject()` after showing `payload.summary`.
 - Only call methods `handle.can(kind)` reports; an undeclared action throws.
 
