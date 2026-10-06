@@ -67,8 +67,8 @@ describe("normalizeInteraction", () => {
     expect(i.actions.map((a) => a.kind)).toEqual(["open_login", "confirm_signed_in"]);
   });
 
-  it("narrows the clarification / confirmation / take_control / wait payloads", () => {
-    const clar = normalizeInteraction({
+  it("narrows the ask_user (wire clarification) / confirmation / take_control / wait payloads", () => {
+    const ask = normalizeInteraction({
       id: "c",
       type: "clarification",
       status: "active",
@@ -76,9 +76,18 @@ describe("normalizeInteraction", () => {
       title: "?",
       question: "Which size?",
       input_type: "choice",
+      options: ["13-inch", "15-inch"],
       actions: [],
-    }) as Interaction<"clarification">;
-    expect(clar.payload).toEqual({ question: "Which size?", inputType: "choice" });
+    }) as Interaction<"ask_user">;
+    expect(ask.type).toBe("ask_user");
+    expect(ask.payload).toEqual({
+      question: "Which size?",
+      answerType: "single_choice",
+      options: [
+        { value: "13-inch", label: "13-inch" },
+        { value: "15-inch", label: "15-inch" },
+      ],
+    });
 
     const conf = normalizeInteraction({
       id: "cf",
@@ -170,14 +179,14 @@ describe("normalizeRunEvent → interaction", () => {
 describe("InteractionHandle", () => {
   function make(actions: Action[]) {
     const posted: Array<{ action: Action; body: unknown }> = [];
-    const interaction: Interaction<"clarification"> = {
+    const interaction: Interaction<"ask_user"> = {
       id: "ix",
-      type: "clarification",
+      type: "ask_user",
       status: "pending",
       createdAt: "t",
       title: "Pick",
       actions,
-      payload: { question: "?" },
+      payload: { question: "?", answerType: "text" },
     };
     const handle = new InteractionHandle(interaction, async (action, body) => {
       posted.push({ action, body });

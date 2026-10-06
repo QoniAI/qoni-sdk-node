@@ -1150,7 +1150,8 @@ describe("doAnything.run → RunHandle", () => {
     });
 
     expect(shots).toEqual([{ index: 0, bytes: IMAGE_BYTES.length }]);
-    expect(interactions).toEqual([{ id: "ix_1", type: "clarification", canAnswer: true }]);
+    // The wire's clarification is presented as the abstract ask_user type.
+    expect(interactions).toEqual([{ id: "ix_1", type: "ask_user", canAnswer: true }]);
     expect(result.status).toBe("succeeded");
     expect(result.output).toBe("the full answer"); // settled from detail, not the lean event
     expect(result.artifacts).toEqual([]);
@@ -1353,14 +1354,14 @@ describe("webSearch.run → RunHandle", () => {
     // surfaces a clean error rather than a confusing 404.
     const handle = run.interactionHandle({
       id: "ix_x",
-      type: "clarification",
+      type: "ask_user",
       status: "pending",
       createdAt: "2026-06-12T08:00:01+00:00",
       title: "t",
       actions: [
         { kind: "answer", label: "Answer", method: "POST", endpoint: "/web_search/runs/ws_1/x" },
       ],
-      payload: { question: "?" },
+      payload: { question: "?", answerType: "text" },
     });
     await expect(handle.answer("answer")).rejects.toBeInstanceOf(QoniError);
     expect(calls.length).toBe(before); // failed locally, no wire call

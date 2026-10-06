@@ -144,7 +144,7 @@ const run = await qoni.doAnything.run({
 
 const result = await run.wait({
   onScreenshot: (img, i) => fs.writeFileSync(`step-${i}.jpg`, img.bytes),
-  onInteraction: (i) => {                 // 登录 / 澄清 / 确认 / 接管
+  onInteraction: (i) => {                 // site_login / take_control / ask_user / confirmation
     if (i.can("confirm_signed_in")) return i.confirmSignedIn();
     if (i.can("confirm")) return i.confirm();
   },
@@ -325,7 +325,9 @@ await qoni.delegateToken({
 });
 ```
 
-scope 字符串在发请求前就会本地预检：漏掉服务前缀（比如写成 `do_anything:manage` 而不是 `webagent.do_anything:manage`）会立即抛出 `QoniValidationError`，错误消息里带正确写法。
+scope 字符串在发请求前就会本地预检：漏掉服务前缀（比如写成 `do_anything:manage` 而不是 `webagent.do_anything:manage`）会立即抛出 `QoniValidationError`，错误消息里带正确写法；短写法有歧义时列出全部候选（`profile:read` → `gumem.profile:read` 或 `user.profile:read`）。
+
+站点登录、用户 Profile、支付和 Agent 邮箱的 scope（`QoniScopes.SITE_LOGIN_*`、`USER_PROFILE_READ`、`USER_PROFILE_WRITE`、`USER_PAYMENT_USE`、`AGENT_MAIL_READ`、`AGENT_MAIL_SEND`）不属于任何产品：需要在 `scopes` 中显式申请，并在 AccessKey 权限策略中允许。
 
 需要让授权边界直接出现在业务代码里时，使用显式 scope 字符串。
 
@@ -337,6 +339,10 @@ scope 字符串在发请求前就会本地预检：漏掉服务前缀（比如�
 | 搜索公开网页 | `webagent.web_search:read`, `webagent.web_search:manage` | Agent 可以搜索公开网页并读取结果。 |
 | 执行网页任务 | `webagent.do_anything:read`, `webagent.do_anything:manage` | Agent 可以执行有边界的网页任务、读取进度、停止任务，并在需要时介入控制。 |
 | 创建长期监控 | `webagent.track:read`, `webagent.track:manage` | Agent 可以配置监控、读取事件、立即运行检查，并停止监控。 |
+| 在任务中登录网站 | `webagent.site_login:request`, `webagent.site_login:confirm` | 用户在实时浏览器里亲自登录，登录状态保存后供之后的任务复用。 |
+| 使用用户 Profile | `user.profile:read`, `user.profile:write` | Agent 可以读取用户保存的资料（姓名、手机号、收货地址、卡组织和后四位），并保存用户新提供的资料。 |
+| 用用户保存的卡支付 | `user.payment:use` | 用户允许一笔支付后，替用户填入已保存的信用卡。 |
+| 使用 Agent 自己的邮箱 | `agent.mail:read`, `agent.mail:send` | Agent 可以读取发到自己邮箱的邮件（例如验证码），并用它发送邮件。 |
 
 低风险能力通常可以静默授权，例如读取当前用户自己的 GUMem、写入本次会话摘要、搜索公开网页、读取普通任务结果。
 
@@ -589,55 +595,67 @@ interface RunResult {
 
 ### 交互（HITL）
 
-当 run 需要用户参与——登录某站、回答澄清、审批计划、接管浏览器、或等待——会发出一个 `interaction` 事件，`event.data` 是带类型的 `Interaction`（用 `type` 判别：`site_login` / `clarification` / `confirmation` / `take_control` / `wait`）。把它包成句柄再调动作方法即可；每个方法会 POST 到交互 `actions[]` 里后端声明的 endpoint，不需要写死路由：
+run 需要用户出手时会暂停，并发出一个 `interaction` 事件，`event.data` 是带类型的 `Interaction`。交互按「需要用户做什么」分类，和具体业务无关，所以一个处理函数就能覆盖所有任务：
+
+| `type` | 用户要做的事 | 方法 |
+| --- | --- | --- |
+| `site_login` | 在实时浏览器里亲自登录某个网站 | `openLogin()`、`confirmSignedIn()` |
+| `take_control` | 亲手操作浏览器（验证码、两步验证等） | `connectControl()`、`refreshControl()`、`releaseControl()` |
+| `ask_user` | 回答一个问题，答案结构由 `answerType` / `options` 描述 | `answer()`、`skip()` |
+| `confirmation` | 允许或拒绝一个操作 | `confirm()`、`reject()` |
+| `wait` | 不需要做决定：系统在等待（限流、外部事件） | `retry()` |
+
+`Interaction` 是按 `type` 分布的联合类型，`switch (request.type)` 之后每个分支里的 `request.payload` 会自动收窄。每个方法都 POST 到交互 `actions[]` 里后端声明的 endpoint，不需要写死路由：
 
 ```ts
-for await (const event of run.events()) {
-  if (event.type === "interaction") {
-    const i = run.interactionHandle(event.data);   // event.data 就是 Interaction
-    if (i.type === "clarification" && i.can("answer")) await i.answer("蓝色那个按钮");
-    else if (i.can("confirm")) await i.confirm();
-    else if (i.can("confirm_signed_in")) await i.confirmSignedIn();
-    else if (i.can("release_control")) await i.releaseControl();
+import type { InteractionHandle } from "@qoniai/qoni";
+
+const handled = new Set<string>();
+
+async function handleInteraction(handle: InteractionHandle) {
+  const request = handle.interaction;
+  // 创建、状态更新和断线回放都会回调：每个待处理的交互只处理一次
+  if (request.status !== "pending" || handled.has(request.id)) return;
+  handled.add(request.id);
+
+  switch (request.type) {
+    case "site_login": {
+      const login = await handle.openLogin();   // 打开受控登录浏览器，返回实时画面 login.liveUrl
+      await showToUser(login.liveUrl);          // 用户点「我已登录」后返回
+      await handle.confirmSignedIn();           // 保存登录状态，Agent 复查后继续
+      break;
+    }
+    case "take_control":
+      await handle.connectControl();
+      await showToUser(request.payload.liveUrl);
+      await handle.releaseControl();            // 把浏览器交还给 Agent
+      break;
+    case "ask_user":                            // payload：{ question, answerType, options? }
+      await handle.answer(await askUser(request.payload));
+      break;
+    case "confirmation":                        // payload：{ summary }
+      if (await approve(request.payload.summary)) await handle.confirm();
+      else await handle.reject();
+      break;
   }
 }
+
+const result = await run.wait({ onInteraction: handleInteraction });
 ```
 
-方法：`answer(text)`、`skip()`、`confirm()`、`reject()`、`openLogin({ siteId?, profileId? })`、`confirmSignedIn()`、`connectControl()`、`refreshControl()`、`releaseControl()`、`retry()`、`switchProfile()`。`i.can(kind)` 判断该交互当前是否提供这个动作；调用后端没声明的方法会抛错（所以「恢复」按钮只有在真能用时才出现）。
+交互按顺序一个一个出现：当前这个处理完，run 才会继续。同一个交互在每次状态变化和断线回放时都会再次回调，`id`、`type` 和 `payload` 始终不变——界面卡片请按 `request.id` 更新。方法：`answer(value)`、`skip()`、`confirm()`、`reject()`、`openLogin({ siteId?, profileId? })`、`confirmSignedIn()`、`connectControl()`、`refreshControl()`、`releaseControl()`、`retry()`、`switchProfile()`。`handle.can(kind)` 判断该交互当前是否提供这个动作；调用后端没声明的方法会抛错（所以「恢复」按钮只有在真能用时才出现）。
 
-`openLogin()` 为运行中的 `site_login` 交互开启一次交互式登录会话。传入 `siteId`（取自 `i.interaction.payload.sites[].siteId`），交互只列出一个站点时可以省略。把返回的 `liveUrl` 展示给用户；用户登录完成后，先用 `login.confirm()` 把登录态写入 Profile，再调用 `confirmSignedIn()` 通知 Agent：
+**`ask_user` 的回答是结构化的。** `answer()` 接收与 `payload.answerType` 对应的值：`text` → 字符串，`number` → 数字，`boolean` → 布尔，`single_choice` → 一个 `options[].value`，`multiple_choice` → 选项 value 数组；不匹配时在发送前就抛出 `QoniValidationError`。线上协议里这个类型仍叫 `clarification`，SDK 统一呈现为 `ask_user`（候选项是 `{ value, label }`）。
 
-```ts
-import { QoniError } from "@qoniai/qoni";
+**登录只需两步。** `openLogin()` 为 `site_login` 交互打开一个实时登录浏览器（`siteId` 取自 `payload.sites[].siteId`，只列出一个站点时可以省略）。用户登录完成后调用 `confirmSignedIn()`：SDK 先保存这次登录，之后的任务直接复用，再通知 Agent 复查站点并继续；如果用户其实没有登录成功，Agent 会再发起一次 `site_login`。同一个 run 的句柄共享登录会话，所以在之后回调拿到的句柄上调用 `confirmSignedIn()` 也有效。委托时需要申请 `QoniScopes.SITE_LOGIN_REQUEST` 和 `QoniScopes.SITE_LOGIN_CONFIRM`，并在 AccessKey 权限策略中允许这两个 scope。`openLogin()` 返回值上的 `confirm()` 仍然保留，供自己保存登录的调用方使用，已标记为弃用。
 
-const login = await i.openLogin();          // { profileId, siteId, sessionId, liveUrl }
-showToUser(login.liveUrl);                  // 用户在这里登录
-await waitForUserToFinish();
-let result;
-try {
-  result = await login.confirm();           // 结束这次会话；检测到登录态就写入 Profile
-} catch (error) {
-  // 409：该 Profile 没有待确认的登录（会话已结束，或 Profile 已不存在）。
-  if (!(error instanceof QoniError && error.code === "no_pending_login")) throw error;
-}
-if (!result || result.active || result.probeResult === "no_session") {
-  await i.confirmSignedIn();                // Agent 重新检查；仍未登录会再次请求
-} else {
-  // 用户没有登录成功，而 confirm() 已关闭这次会话的浏览器。
-  const retry = await i.openLogin({ siteId: login.siteId, profileId: login.profileId });
-  showToUser(retry.liveUrl);                // 同一个 Profile 的新登录会话
-}
-```
-
-`probeResult: "no_session"` 表示服务端已不再持有这次登录会话：它可能在检测到用户登录后已经自动保存了登录态，也可能已经重启。部分浏览器提供方会改为让 `confirm()` 抛出 `code` 为 `no_pending_login` 的 `QoniError`（HTTP 409），服务端在 Profile 已不属于当前用户或已删除时也会返回这个错误码；示例按同样方式处理，因为 Agent 会重新检查，如果站点仍未登录会再次请求。委托时需要申请 `QoniScopes.SITE_LOGIN_REQUEST` 和 `QoniScopes.SITE_LOGIN_CONFIRM`，并在 AccessKey 权限策略中允许这两个 scope。
-
-上面用到的判别字符串也都导出成了常量，避免裸写字面量：`InteractionTypes`（`site_login` / `clarification` / `confirmation` / `take_control` / `wait`）、`InteractionStatuses`、`ActionKinds`（`i.can(...)` 的动作名）。授权 scope 同样有：`QoniScopes`（每个单独 scope）、`QoniProductScopes`（`products` 语法糖展开成的 per-product `read`+`manage` 对）、`QoniScopeBundles`（精选 bundle）。用它们代替手写字符串：
+上面用到的判别字符串也都导出成了常量，避免裸写字面量：`InteractionTypes`（`SiteLogin` / `TakeControl` / `AskUser` / `Confirmation` / `Wait`；已弃用的 `Clarification` 现在等于 `AskUser`）、`InteractionStatuses`、`ActionKinds`（`handle.can(...)` 的动作名）。授权 scope 同样有：`QoniScopes`（每个单独 scope）、`QoniProductScopes`（`products` 语法糖展开成的 per-product `read`+`manage` 对）、`QoniScopeBundles`（精选 bundle）。用它们代替手写字符串：
 
 ```ts
 import { InteractionTypes, ActionKinds, QoniScopes } from "@qoniai/qoni";
 
-if (i.type === InteractionTypes.Clarification && i.can(ActionKinds.answer)) {
-  await i.answer("蓝色那个按钮");
+if (handle.type === InteractionTypes.AskUser && handle.can(ActionKinds.answer)) {
+  await handle.answer("蓝色那个按钮");
 }
 ```
 
@@ -647,7 +665,7 @@ if (i.type === InteractionTypes.Clarification && i.can(ActionKinds.answer)) {
 
 原始 wire 事件类型（`run.action.started` 这种内部传输名，命名是历史遗留、也不一致）**不作为公开导出**——开发者按上面那套精选 `event.type` 匹配即可；极少数要精确 wire 的场景，`event.raw.event` 是个原始字符串，直接比对。
 
-Browser Use 的 scope 已预留，但产品运行时 SDK 方法导出前不作为公开方法说明。Site Login 的 scope（`QoniScopes.SITE_LOGIN_REQUEST`、`QoniScopes.SITE_LOGIN_CONFIRM`）用于运行交互上的 `InteractionHandle.openLogin()` 和 `confirm()`。
+Browser Use 的 scope 已预留，但产品运行时 SDK 方法导出前不作为公开方法说明。Site Login 的 scope（`QoniScopes.SITE_LOGIN_REQUEST`、`QoniScopes.SITE_LOGIN_CONFIRM`）用于运行交互上的 `InteractionHandle.openLogin()` 和 `confirmSignedIn()`。
 
 ### 返回结构
 

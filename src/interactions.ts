@@ -1,10 +1,9 @@
-import { QoniValidationError } from "./errors";
+import { QoniError, QoniValidationError } from "./errors";
 import { camelizeRecord } from "./run-events";
 import {
   ActionKinds,
   type ActionKind,
   type InteractionStatus,
-  type InteractionType,
 } from "./generated/interaction-types";
 import { QoniScopes } from "./scopes";
 import { isJsonObject, type JsonObject } from "./types";
@@ -24,6 +23,31 @@ import { isJsonObject, type JsonObject } from "./types";
  * button/method only exists when the backend declared the action (structurally
  * closing off "dead recovery affordances").
  */
+
+/**
+ * The interaction types a consumer handles. DoAnything asks for the user in
+ * five abstract ways — by what the user has to do, never by business — plus
+ * the system `wait`:
+ *
+ * - `site_login`: sign in to a site in the live browser.
+ * - `take_control`: operate the browser by hand (captcha, 2FA, …).
+ * - `ask_user`: answer a question, shaped by `answerType` / `options`.
+ * - `confirmation`: allow or reject an action.
+ * - `wait`: the system is waiting (rate limit, external event); no decision.
+ *
+ * The wire may still say `clarification`; the SDK presents it as `ask_user`.
+ */
+export const InteractionTypes = {
+  SiteLogin: "site_login",
+  TakeControl: "take_control",
+  AskUser: "ask_user",
+  Confirmation: "confirmation",
+  Wait: "wait",
+  /** @deprecated `clarification` is presented as `ask_user`; use `InteractionTypes.AskUser`. */
+  Clarification: "ask_user",
+} as const;
+
+export type InteractionType = "site_login" | "take_control" | "ask_user" | "confirmation" | "wait";
 
 /** A declared action a consumer can take on an interaction. */
 export interface Action {
@@ -59,11 +83,30 @@ export interface SiteLoginPayload {
   monitorId?: string;
 }
 
-export interface ClarificationPayload {
-  question: string;
-  /** Hint for how the answer should be collected (e.g. "text", "choice"). */
-  inputType?: string;
+/** How an `ask_user` answer is shaped; decides which control the app renders. */
+export type AskUserAnswerType = "text" | "number" | "boolean" | "single_choice" | "multiple_choice";
+
+export interface AskUserOption {
+  /** What `answer()` submits. */
+  value: string;
+  /** What the user sees. */
+  label: string;
 }
+
+export interface AskUserPayload {
+  /** The question to show the user. */
+  question: string;
+  /** `text` → string, `number` → number, `boolean` → boolean, `single_choice` → one option value, `multiple_choice` → option values. */
+  answerType: AskUserAnswerType;
+  /** Candidates for `single_choice` / `multiple_choice`. */
+  options?: AskUserOption[];
+}
+
+/** An `ask_user` answer; its type follows the payload's `answerType`. */
+export type AskUserAnswer = string | number | boolean | string[];
+
+/** @deprecated `clarification` is presented as `ask_user`; use {@link AskUserPayload}. */
+export type ClarificationPayload = AskUserPayload;
 
 export interface ConfirmationPayload {
   summary: string;
@@ -87,22 +130,16 @@ export interface WaitPayload {
 /** Maps each interaction `type` to its narrowed payload shape. */
 export interface InteractionPayloadByType {
   site_login: SiteLoginPayload;
-  clarification: ClarificationPayload;
-  confirmation: ConfirmationPayload;
   take_control: TakeControlPayload;
+  ask_user: AskUserPayload;
+  confirmation: ConfirmationPayload;
   wait: WaitPayload;
 }
 
-/**
- * A typed interaction object. Generic over `type` so the `payload` narrows to
- * the matching shape; the bare `Interaction` (T = InteractionType) is the union
- * a consumer switches on.
- */
-export interface Interaction<T extends InteractionType = InteractionType> {
+/** Fields every interaction carries, whatever its type. */
+export interface InteractionBase {
   /** Stable identity across the interaction's lifecycle. */
   id: string;
-  /** The discriminator — the single field a consumer switches on. */
-  type: T;
   /** Backend-authoritative lifecycle status. */
   status: InteractionStatus;
   createdAt: string;
@@ -116,9 +153,24 @@ export interface Interaction<T extends InteractionType = InteractionType> {
   evidence?: InteractionEvidence | null;
   /** Declared actions — drives the typed methods + UI buttons. */
   actions: Action[];
-  /** Type-specific fields. */
-  payload: InteractionPayloadByType[T];
 }
+
+/**
+ * A typed interaction object, distributed over `type`: the bare `Interaction`
+ * is a union, so `switch (interaction.type)` narrows `payload` in each branch.
+ * `Interaction<"site_login">` picks one member.
+ */
+export type Interaction<T extends InteractionType = InteractionType> = T extends InteractionType
+  ? InteractionBase & {
+      /** The discriminator — the single field a consumer switches on. */
+      type: T;
+      /** Type-specific fields. */
+      payload: InteractionPayloadByType[T];
+    }
+  : never;
+
+/** The interaction union `onInteraction` hands out; same as the bare {@link Interaction}. */
+export type TypedInteraction = Interaction;
 
 function asString(value: unknown): string | undefined {
   return typeof value === "string" && value ? value : undefined;
@@ -156,7 +208,52 @@ function normalizeEvidence(c: JsonObject): InteractionEvidence | undefined {
   return artifactId ? { artifactId } : undefined;
 }
 
-function shapePayload(type: InteractionType, c: JsonObject): Interaction["payload"] {
+const ANSWER_TYPES = new Set<AskUserAnswerType>([
+  "text",
+  "number",
+  "boolean",
+  "single_choice",
+  "multiple_choice",
+]);
+
+/** Wire `options`: plain strings (today's clarification) or `{ value, label }` objects. */
+function normalizeOptions(value: unknown): AskUserOption[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((raw): AskUserOption[] => {
+    if (typeof raw === "string" && raw) return [{ value: raw, label: raw }];
+    if (!isJsonObject(raw)) return [];
+    const optionValue = asString(raw.value);
+    return optionValue ? [{ value: optionValue, label: asString(raw.label) ?? optionValue }] : [];
+  });
+}
+
+/**
+ * `ask_user` from either wire shape. A native `ask_user` names its
+ * `answer_type`; a `clarification` only hints with `input_type: "choice"` when
+ * it carries options. A choice without any option degrades to free text, so the
+ * app never renders an empty picker.
+ */
+function askUserPayload(c: JsonObject): AskUserPayload {
+  const options = normalizeOptions(c.options);
+  const declared = asString(c.answerType) ?? asString(c.inputType);
+  let answerType: AskUserAnswerType = "text";
+  if (declared && ANSWER_TYPES.has(declared as AskUserAnswerType)) answerType = declared as AskUserAnswerType;
+  else if (declared === "choice" || (!declared && options.length > 0)) answerType = "single_choice";
+  if ((answerType === "single_choice" || answerType === "multiple_choice") && options.length === 0) {
+    answerType = "text";
+  }
+  const payload: AskUserPayload = { question: asString(c.question) ?? "", answerType };
+  if (options.length > 0) payload.options = options;
+  return payload;
+}
+
+// Fields every interaction object carries; the rest belong to the payload.
+const BASE_FIELDS = new Set([
+  "id", "type", "status", "createdAt", "resolvedAt", "expiresAt", "title", "prompt",
+  "evidence", "evidenceArtifactId", "actions",
+]);
+
+function shapePayload(type: string, c: JsonObject): JsonObject {
   switch (type) {
     case "site_login": {
       const sites: InteractionSite[] = Array.isArray(c.sites)
@@ -174,14 +271,10 @@ function shapePayload(type: InteractionType, c: JsonObject): Interaction["payloa
       const payload: SiteLoginPayload = { sites };
       const monitorId = asString(c.monitorId);
       if (monitorId) payload.monitorId = monitorId;
-      return payload;
+      return { ...payload };
     }
-    case "clarification": {
-      const payload: ClarificationPayload = { question: asString(c.question) ?? "" };
-      const inputType = asString(c.inputType);
-      if (inputType) payload.inputType = inputType;
-      return payload;
-    }
+    case "ask_user":
+      return { ...askUserPayload(c) };
     case "confirmation":
       return { summary: asString(c.summary) ?? "" };
     case "take_control": {
@@ -190,7 +283,7 @@ function shapePayload(type: InteractionType, c: JsonObject): Interaction["payloa
       const reason = asString(c.reason);
       if (surface) payload.surface = surface;
       if (reason) payload.reason = reason;
-      return payload;
+      return { ...payload };
     }
     case "wait": {
       const payload: WaitPayload = {
@@ -200,6 +293,13 @@ function shapePayload(type: InteractionType, c: JsonObject): Interaction["payloa
       const retryable = asBool(c.retryable);
       if (until) payload.until = until;
       if (retryable !== undefined) payload.retryable = retryable;
+      return { ...payload };
+    }
+    default: {
+      // A type outside the five (a newer backend's addition): pass its own
+      // fields through untouched rather than inventing a shape for it.
+      const payload: JsonObject = {};
+      for (const [key, value] of Object.entries(c)) if (!BASE_FIELDS.has(key)) payload[key] = value;
       return payload;
     }
   }
@@ -209,12 +309,14 @@ function shapePayload(type: InteractionType, c: JsonObject): Interaction["payloa
  * Normalize a `run.interaction` wire payload into a curated {@link Interaction}.
  * `payload` is the camelized interaction object carried in the event envelope's
  * `data` field. Returns null when the object lacks a recognized `type`.
+ * A wire `clarification` comes out as `ask_user`.
  */
 export function normalizeInteraction(payload: unknown): Interaction | null {
   const c = camelizeRecord(payload);
-  const type = asString(c.type) as InteractionType | undefined;
-  if (!type) return null;
-  const interaction: Interaction = {
+  const wireType = asString(c.type);
+  if (!wireType) return null;
+  const type = wireType === "clarification" ? "ask_user" : wireType;
+  const interaction = {
     id: asString(c.id) ?? "",
     type,
     status: (asString(c.status) as InteractionStatus) ?? "pending",
@@ -222,7 +324,7 @@ export function normalizeInteraction(payload: unknown): Interaction | null {
     title: asString(c.title) ?? "",
     actions: normalizeActions(c.actions),
     payload: shapePayload(type, c),
-  };
+  } as unknown as Interaction;
   const resolvedAt = asString(c.resolvedAt);
   const expiresAt = asString(c.expiresAt);
   const prompt = asString(c.prompt);
@@ -232,6 +334,24 @@ export function normalizeInteraction(payload: unknown): Interaction | null {
   if (prompt) interaction.prompt = prompt;
   if (evidence) interaction.evidence = evidence;
   return interaction;
+}
+
+const SETTLED_INTERACTION_STATUSES = new Set<string>(["resolved", "expired", "canceled"]);
+
+/**
+ * Fold a lifecycle update onto the card already seen for the same `id`. A
+ * settling update (resolved / expired / canceled) carries no new card content
+ * — the backend sends a minimal shell, and today labels every resolve
+ * `clarification` — so it only moves `status`, `resolvedAt` and `actions`.
+ * The same holds for any update whose type disagrees with the original: an
+ * interaction never changes type, so a card keyed by `id` stays type-stable.
+ */
+export function foldInteraction(previous: Interaction | undefined, next: Interaction): Interaction {
+  if (!previous || previous.id !== next.id) return next;
+  if (previous.type === next.type && !SETTLED_INTERACTION_STATUSES.has(next.status)) return next;
+  const folded = { ...previous, status: next.status, actions: next.actions } as Interaction;
+  if (next.resolvedAt) folded.resolvedAt = next.resolvedAt;
+  return folded;
 }
 
 /**
@@ -279,6 +399,9 @@ export interface OpenLoginResult {
   /** Unmodified response body (escape hatch — shape may evolve with the API). */
   raw: JsonObject;
   /**
+   * @deprecated {@link InteractionHandle.confirmSignedIn} saves the login
+   * itself; call it once the user has signed in, without `confirm()`.
+   *
    * Persist the login into the profile after the user signs in
    * (`POST /profiles/{profileId}/confirm`). Confirming ends this login
    * session and closes its browser, whatever the outcome:
@@ -322,6 +445,54 @@ export interface ConfirmLoginResult {
   raw: JsonObject;
 }
 
+/** A login session `openLogin()` opened on one interaction. */
+export interface LoginSession {
+  profileId: string;
+  siteId: string;
+  /** Settles once the login is saved (or the session already ended). */
+  saving?: Promise<void>;
+}
+
+/** Login sessions by interaction id, shared by the handles of one run. */
+export type LoginSessionStore = Map<string, LoginSession>;
+
+function describeOptions(payload: AskUserPayload): string {
+  return (payload.options ?? []).map((option) => option.value).join(", ");
+}
+
+/**
+ * Check an answer against the question's answerType. Messages name what would
+ * fit, never the rejected value: answers can be personal.
+ */
+function checkAnswer(payload: AskUserPayload, value: unknown): void {
+  const fail = (expected: string): never => {
+    throw new QoniValidationError(`answer() for a ${payload.answerType} question expects ${expected}`);
+  };
+  const values = new Set((payload.options ?? []).map((option) => option.value));
+  switch (payload.answerType) {
+    case "text":
+      if (typeof value !== "string") fail("a string");
+      return;
+    case "number":
+      if (typeof value !== "number" || !Number.isFinite(value)) fail("a finite number");
+      return;
+    case "boolean":
+      if (typeof value !== "boolean") fail("a boolean");
+      return;
+    case "single_choice":
+      if (typeof value !== "string" || (values.size > 0 && !values.has(value))) {
+        fail(`one option value: ${describeOptions(payload)}`);
+      }
+      return;
+    case "multiple_choice":
+      if (!Array.isArray(value)) fail(`an array of option values: ${describeOptions(payload)}`);
+      if ((value as unknown[]).some((item) => typeof item !== "string" || (values.size > 0 && !values.has(item)))) {
+        fail(`option values only: ${describeOptions(payload)}`);
+      }
+      return;
+  }
+}
+
 /**
  * Typed wrapper over an {@link Interaction} that exposes one method per
  * action kind. Each method finds the matching declared action and posts to its
@@ -332,9 +503,16 @@ export interface ConfirmLoginResult {
 export class InteractionHandle<T extends InteractionType = InteractionType> {
   readonly interaction: Interaction<T>;
 
+  /**
+   * @param loginSessions Login sessions opened on this run's interactions, by
+   *   interaction id. A run shares one store across the handles it hands out,
+   *   so `confirmSignedIn()` finds the login `openLogin()` opened even on the
+   *   handle of a later event.
+   */
   constructor(
     interaction: Interaction<T>,
     private readonly post: InteractionActionPoster,
+    private readonly loginSessions: LoginSessionStore = new Map(),
   ) {
     this.interaction = interaction;
   }
@@ -343,7 +521,7 @@ export class InteractionHandle<T extends InteractionType = InteractionType> {
     return this.interaction.id;
   }
   get type(): T {
-    return this.interaction.type;
+    return this.interaction.type as T;
   }
   get status(): InteractionStatus {
     return this.interaction.status;
@@ -357,9 +535,18 @@ export class InteractionHandle<T extends InteractionType = InteractionType> {
     return this.interaction.actions.some((a) => a.kind === kind);
   }
 
-  /** Answer a clarification ask. */
-  async answer(text: string): Promise<void> {
-    await this.invoke(ActionKinds.answer, { response: text });
+  /**
+   * Answer an `ask_user` question. The value follows `payload.answerType`:
+   * `text` → string, `number` → number, `boolean` → boolean, `single_choice` →
+   * one option `value`, `multiple_choice` → an array of option values. A value
+   * that does not fit throws `QoniValidationError` before anything is sent.
+   */
+  async answer(value: AskUserAnswer): Promise<void> {
+    const action = this.#declaredAction(ActionKinds.answer);
+    if (this.interaction.type === "ask_user") {
+      checkAnswer(this.interaction.payload as AskUserPayload, value);
+    }
+    await this.post(action, { response: value });
   }
   /** Skip / dismiss the interaction (proceed without acting on it). */
   async skip(): Promise<void> {
@@ -377,8 +564,8 @@ export class InteractionHandle<T extends InteractionType = InteractionType> {
    * Start an interactive login session for a `site_login` interaction. The
    * backend needs the site to sign in to: pass `siteId`, or omit it when the
    * interaction lists exactly one site. Show `liveUrl` to the user; when they
-   * finish, call `confirm()` on the result to save the login, and act on its
-   * outcome (see {@link OpenLoginResult.confirm}) before {@link confirmSignedIn}.
+   * say they are signed in, call {@link confirmSignedIn}, which saves the login
+   * and lets the agent continue.
    * The delegation must include `QoniScopes.SITE_LOGIN_REQUEST` and
    * `QoniScopes.SITE_LOGIN_CONFIRM`; the AccessKey policy must allow both.
    */
@@ -397,6 +584,10 @@ export class InteractionHandle<T extends InteractionType = InteractionType> {
     const fields = camelizeRecord(raw);
     const profileId = asString(fields.profileId) ?? "";
     const siteId = asString(fields.siteId) ?? String(body.site_id);
+    // A new session replaces any earlier one on this interaction: only the
+    // latest live browser holds the login confirmSignedIn() should save.
+    const session: LoginSession = { profileId, siteId };
+    if (profileId) this.loginSessions.set(this.id, session);
     return {
       profileId,
       siteId,
@@ -407,36 +598,34 @@ export class InteractionHandle<T extends InteractionType = InteractionType> {
         if (!profileId) {
           throw new QoniValidationError("openLogin response did not include a profileId to confirm");
         }
-        const confirmBody: JsonObject = { site_id: siteId };
-        if (confirmOptions.displayLabel !== undefined) confirmBody.display_label = confirmOptions.displayLabel;
-        // The confirm route is not a declared interaction action; it belongs to
-        // the login session openLogin() started, on the same profiles router.
-        const response = await this.post(
-          {
-            kind: ActionKinds.openLogin,
-            label: "Confirm login",
-            method: "POST",
-            endpoint: `/profiles/${encodeURIComponent(profileId)}/confirm`,
-          },
-          confirmBody,
-          { requiredScopes: [QoniScopes.SITE_LOGIN_CONFIRM] },
-        );
-        const raw = isJsonObject(response) ? response : {};
-        const fields = camelizeRecord(raw);
-        const state = asString(fields.state) ?? "";
-        return {
-          profileId: asString(fields.profileId) ?? profileId,
-          active: state === "active",
-          state,
-          probeResult: asString(fields.probeResult) ?? "",
-          raw,
-        };
+        const result = await this.#confirmLogin(session, confirmOptions);
+        // Confirming ends the session whatever the outcome; confirmSignedIn()
+        // must not try to save it a second time.
+        session.saving = Promise.resolve();
+        return result;
       },
     };
   }
-  /** Tell the agent the user has finished signing in. */
+  /**
+   * The user finished signing in through the live browser `openLogin()`
+   * opened. Saves that login (so later tasks reuse it), then tells the agent
+   * to recheck the site and continue. If the user is not signed in after all,
+   * the agent raises a new `site_login` interaction.
+   *
+   * Saving needs `QoniScopes.SITE_LOGIN_CONFIRM` on the delegation; without
+   * `openLogin()` on this interaction, only the recheck is sent.
+   */
   async confirmSignedIn(): Promise<void> {
-    await this.invoke(ActionKinds.confirmSignedIn);
+    const action = this.#declaredAction(ActionKinds.confirmSignedIn);
+    const session = this.loginSessions.get(this.id);
+    if (session) {
+      session.saving ??= this.#saveLogin(session).catch((err: unknown) => {
+        session.saving = undefined; // let a retry save again
+        throw err;
+      });
+      await session.saving;
+    }
+    await this.post(action, undefined);
   }
   /** Connect to the live browser for a take_control interaction. */
   async connectControl(): Promise<void> {
@@ -457,6 +646,48 @@ export class InteractionHandle<T extends InteractionType = InteractionType> {
   /** Switch the profile a wait/login interaction is bound to. */
   async switchProfile(): Promise<void> {
     await this.invoke(ActionKinds.switchProfile);
+  }
+
+  /** `POST /profiles/{profileId}/confirm` — persist the login of `session`. */
+  async #confirmLogin(session: LoginSession, options: ConfirmLoginOptions = {}): Promise<ConfirmLoginResult> {
+    const confirmBody: JsonObject = { site_id: session.siteId };
+    if (options.displayLabel !== undefined) confirmBody.display_label = options.displayLabel;
+    // The confirm route is not a declared interaction action; it belongs to
+    // the login session openLogin() started, on the same profiles router.
+    const response = await this.post(
+      {
+        kind: ActionKinds.openLogin,
+        label: "Confirm login",
+        method: "POST",
+        endpoint: `/profiles/${encodeURIComponent(session.profileId)}/confirm`,
+      },
+      confirmBody,
+      { requiredScopes: [QoniScopes.SITE_LOGIN_CONFIRM] },
+    );
+    const raw = isJsonObject(response) ? response : {};
+    const fields = camelizeRecord(raw);
+    const state = asString(fields.state) ?? "";
+    return {
+      profileId: asString(fields.profileId) ?? session.profileId,
+      active: state === "active",
+      state,
+      probeResult: asString(fields.probeResult) ?? "",
+      raw,
+    };
+  }
+
+  /**
+   * Save the login for confirmSignedIn(). Whatever the probe says, the agent
+   * rechecks next, so only a failed request matters — except 409
+   * `no_pending_login`: the backend already saved or dropped the session.
+   */
+  async #saveLogin(session: LoginSession): Promise<void> {
+    try {
+      await this.#confirmLogin(session);
+    } catch (err) {
+      if (err instanceof QoniError && err.status === 409 && err.code === "no_pending_login") return;
+      throw err;
+    }
   }
 
   /** Resolve the site for `openLogin`: explicit, or the only listed site. */

@@ -27,8 +27,23 @@ export const QoniScopes = {
   // interaction). Not part of any product bundle: the AccessKey policy must
   // allow it, and the delegation must request it explicitly.
   SITE_LOGIN_REQUEST: "webagent.site_login:request",
-  // Persist that login into the browser profile (`OpenLoginResult.confirm()`).
+  // Persist that login into the browser profile (`InteractionHandle.confirmSignedIn()`
+  // after `openLogin()`).
   SITE_LOGIN_CONFIRM: "webagent.site_login:confirm",
+
+  // The delegating user's own data and the Agent's own mailbox (Personal
+  // Agent guide). Not part of any product bundle: request them explicitly;
+  // the AccessKey policy must allow them.
+  // Read the user's Profile (name, phone, shipping address, card brand + last 4).
+  USER_PROFILE_READ: "user.profile:read",
+  // Write answers back into the user's Profile.
+  USER_PROFILE_WRITE: "user.profile:write",
+  // Use the user's saved payment card once the user approves a payment.
+  USER_PAYMENT_USE: "user.payment:use",
+  // Read mail received by the Agent's own mailbox (for example verification codes).
+  AGENT_MAIL_READ: "agent.mail:read",
+  // Send mail from the Agent's own mailbox.
+  AGENT_MAIL_SEND: "agent.mail:send",
 } as const;
 
 export type QoniScope = (typeof QoniScopes)[keyof typeof QoniScopes];
@@ -59,7 +74,7 @@ export const QoniProductScopes: Record<QoniProduct, readonly QoniScope[]> = {
   ],
 } as const;
 
-/** Every scope string the SDK knows about (gumem + webagent). */
+/** Every scope string the SDK knows about (gumem + webagent + user + agent). */
 export const KNOWN_SCOPES: readonly string[] = Object.values(QoniScopes);
 
 export const QoniScopeBundles = {

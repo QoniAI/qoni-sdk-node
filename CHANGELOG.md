@@ -1,5 +1,67 @@
 # Changelog
 
+## 0.9.0 - 2026-10-07
+
+DoAnything interactions are now typed by what the user has to do, never by
+business: `site_login`, `take_control`, `ask_user`, `confirmation`, plus the
+system `wait`.
+
+### Changed
+
+- `Interaction` is a union distributed over `type`: `switch (interaction.type)`
+  narrows `payload` in each branch, including `handle.interaction` inside
+  `onInteraction`. `Interaction<"site_login">` still picks one member.
+  `TypedInteraction` names the union.
+- The wire's `clarification` is presented as `ask_user`, with payload
+  `{ question, answerType, options? }`. `answerType` is `text`, `number`,
+  `boolean`, `single_choice` or `multiple_choice`, and options are
+  `{ value, label }`. A clarification with choices becomes `single_choice`.
+  TypeScript code that compares `type` with `"clarification"` no longer
+  compiles; compare with `"ask_user"`. `InteractionTypes.Clarification` is
+  deprecated and now equals `InteractionTypes.AskUser`, so code using the
+  constant keeps working. `ClarificationPayload` is a deprecated alias of
+  `AskUserPayload`.
+- `InteractionHandle.answer(value)` accepts the structured value its
+  `answerType` names (string, number, boolean, one option value, or an array of
+  option values) and throws `QoniValidationError` before sending a value that
+  does not fit.
+- `InteractionHandle.confirmSignedIn()` saves the login opened by `openLogin()`
+  on the same interaction (`POST /profiles/{profileId}/confirm`, scope
+  `webagent.site_login:confirm`), then tells the agent to recheck. Sign-in is
+  `openLogin()` → `confirmSignedIn()`. If the backend no longer holds the
+  login (409 `no_pending_login`), or the user turns out not to be signed in,
+  the agent still rechecks and raises a new `site_login` when needed; any other
+  save failure is thrown. Handles of one run share the login session, so a
+  handle from a later callback saves it too. `OpenLoginResult.confirm()` is
+  deprecated; calling it first no longer causes a second save.
+- An interaction keeps its `type`, `payload`, `title` and `createdAt` across its
+  lifecycle on `run.events()` and `wait({ onInteraction })`. Resolve events from
+  the backend carry a minimal shell typed `clarification`; the run handle now
+  folds them onto the original card, updating only `status`, `resolvedAt` and
+  `actions`.
+
+### Added
+
+- `QoniScopes.USER_PROFILE_READ` (`user.profile:read`), `USER_PROFILE_WRITE`
+  (`user.profile:write`), `USER_PAYMENT_USE` (`user.payment:use`),
+  `AGENT_MAIL_READ` (`agent.mail:read`) and `AGENT_MAIL_SEND`
+  (`agent.mail:send`). They belong to no product bundle: request them
+  explicitly, and allow them in the AccessKey policy.
+- Exported types `AskUserPayload`, `AskUserOption`, `AskUserAnswer`,
+  `AskUserAnswerType`, `InteractionBase` and `TypedInteraction`.
+
+### Fixed
+
+- A scope written without its service prefix names every matching scope:
+  `profile:read` suggests both `gumem.profile:read` and `user.profile:read`.
+
+### Deprecated
+
+- `user` / `userId` on interactive delegation input: the authorization page
+  identifies the signed-in user, and the delegation service ignores them.
+- `DelegateTokenResponse.grantedScopes`: the delegation service does not return
+  it. Read `qoni.genauth.introspectDelegationToken({ token }).data.scope`.
+
 ## 0.8.0 - 2026-10-04
 
 ### Added

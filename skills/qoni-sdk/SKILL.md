@@ -66,7 +66,7 @@ const run = await qoni.doAnything.run({
 });
 const result = await run.wait({
   onScreenshot: (img, i) => saveImage(`step-${i}.jpg`, img.bytes),
-  onInputRequest: (req) => openForUser(req.liveUrl),
+  onInteraction: (handle) => handleInteraction(handle), // see "Do Anything Interactions"
 });
 console.log(result.output);
 ```
@@ -153,7 +153,7 @@ const run = await qoni.doAnything.run({
 run.id;
 run.sessionRef;                            // pass back to run({ session })
 await run.status();                        // refresh current state
-await run.respond(requestId, response?);   // HITL answer; omit response to skip
+run.interactionHandle(event.data);         // wrap an interaction event; answer via its methods
 await run.cancel(reason?);                 // idempotent — safe on a finished run
 
 const result = await run.wait({
@@ -161,7 +161,7 @@ const result = await run.wait({
   onEvent: (e) => console.log(e.type),
   onWireEvent: (e) => appendRawEvidence(e), // every SSE frame before semantic filtering
   onReconnect: (info) => logReconnect(info.attempt, info.lastEventId),
-  onInputRequest: (req) => openForUser(req.liveUrl),
+  onInteraction: (handle) => handleInteraction(handle), // typed InteractionHandle
   onScreenshot: (img, i) => saveImage(`step-${i}.jpg`, img.bytes),
 });
 // result: { runId, status: "succeeded"|"failed"|"canceled", output?, artifacts,
@@ -215,18 +215,38 @@ for await (const event of run.events()) {
 
 `qoni.doAnything.api.events({ token, sessionId, runId, signal?, lastEventId?, onlyTopLevel? })` yields raw `{ id?, event, data }` wire events: the type is a raw string on `event.event` (e.g. `"run.status_changed"`), the payload is `event.data.data` (snake_case), and `event.data.task_id` identifies the run. `run.status_changed` payloads carry the new status in `.to` (NOT `.status`). Terminal detection is `event.event === "run.completed"`. Wire names are internal and may evolve — prefer the high-level `run.events()` + `event.type` instead.
 
-## Do Anything Login Wall (human handoff)
+## Do Anything Interactions (human handoff)
 
-A web task often hits a page only the end user can log in to. The agent parks and emits an **`inputRequest`** event. The live-browser URL arrives on the request payload (`event.data.liveUrl`; live-url changes also stream as `progress` events with `data.liveUrl`). The client's ONLY job is to surface that URL so the human can sign in — login detection is the BACKEND's job; it re-probes and resumes the run automatically.
+When a run needs the user it pauses and emits one `interaction` event per request (`event.data` is a typed `Interaction`; `wait({ onInteraction })` hands you an `InteractionHandle`). Interactions are typed by what the user must do, never by business: `site_login`, `take_control`, `ask_user`, `confirmation`, plus the system `wait`. `switch (handle.interaction.type)` narrows `payload` per branch.
 
-- Open `liveUrl` ONCE in a real browser when you see `inputRequest`. Do NOT poll, do NOT call `respond`, do NOT wait on the window closing.
-- Keep iterating (or stay inside `wait()`); the run progresses past the wall and reaches its terminal event on its own once the user is signed in.
-- The first login is unavoidable; later runs reuse persisted login state and never reach this wall.
+- Act only on `status === "pending"` and dedupe by `interaction.id`: creation, status changes and reconnect replays all call back again with the same `id`, `type` and `payload`.
+- Interactions arrive one at a time; the run resumes once the current one is handled.
+- `site_login`: `openLogin()` → show `liveUrl` → after the user signs in, `confirmSignedIn()` (it saves the login, then the agent rechecks). Do NOT call the deprecated `login.confirm()` first. Delegate `webagent.site_login:request` and `webagent.site_login:confirm`.
+- `ask_user`: `answer(value)` with the type `payload.answerType` names (`text` string, `number`, `boolean`, `single_choice` option value, `multiple_choice` array of option values), or `skip()`. The wire's `clarification` arrives as `ask_user`; never switch on `"clarification"`.
+- `take_control`: `connectControl()` → user works in `payload.liveUrl` → `releaseControl()`.
+- `confirmation`: `confirm()` or `reject()` after showing `payload.summary`.
+- Only call methods `handle.can(kind)` reports; an undeclared action throws.
 
 ```ts
 const result = await run.wait({
-  onInputRequest: (req) => {
-    if (req.liveUrl) openBrowserForUser(String(req.liveUrl)); // pop once; the backend resumes by itself
+  onInteraction: async (handle) => {
+    const request = handle.interaction;
+    if (request.status !== "pending" || handled.has(request.id)) return;
+    handled.add(request.id);
+    switch (request.type) {
+      case "site_login": {
+        const login = await handle.openLogin();
+        await showToUser(login.liveUrl);       // resolves when the user says "I'm signed in"
+        await handle.confirmSignedIn();
+        break;
+      }
+      case "ask_user":
+        await handle.answer(await askUser(request.payload));
+        break;
+      case "confirmation":
+        await handle.confirm();
+        break;
+    }
   },
 });
 ```
@@ -248,12 +268,9 @@ pending → running → (running ⇄ awaiting_input)* → succeeded | failed | c
   `terminal_reason` / `is_task_successful`).
 
 **Client action is event-driven, not status-driven.** The only thing that needs
-you is the `inputRequest` event (surface `liveUrl` so a human can log in /
-confirm — see Login Wall). Everything else, including login walls, the backend
-re-probes and resumes on its own. A run flapping `running ⇄ awaiting_input`
-(e.g. `waiting_reason=confirmation_required` during internal pacing) is
-expected — do NOT poll or call `respond`. Only call `respond` to answer an
-actual `inputRequest`.
+you is an `interaction` event (see Do Anything Interactions). A run flapping
+`running ⇄ awaiting_input` (e.g. `waiting_reason=confirmation_required` during
+internal pacing) is expected — do NOT poll; act only on pending interactions.
 
 ### Parent & sub-tasks
 

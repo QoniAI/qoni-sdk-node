@@ -118,8 +118,15 @@ export interface DelegateTokenInteractiveInput extends DelegateTokenBaseInput {
   mode: "interactive";
   redirectUri: string;
   state: string;
+  /**
+   * @deprecated The authorization page identifies the signed-in user; the
+   * delegation service ignores a user sent with an interactive request.
+   */
   user?: UserRef;
-  /** Alternative to user.id; optional for interactive authorization. */
+  /**
+   * @deprecated The authorization page identifies the signed-in user; the
+   * delegation service ignores a user id sent with an interactive request.
+   */
   userId?: string;
 }
 
@@ -150,6 +157,10 @@ export interface DelegateTokenResponse {
   expiresIn: number;
   grantId: string;
   auditId: string;
+  /**
+   * @deprecated The delegation service does not return the granted scopes.
+   * Read them from `qoni.genauth.introspectDelegationToken({ token }).data.scope`.
+   */
   grantedScopes?: string[];
 }
 

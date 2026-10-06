@@ -1,8 +1,10 @@
 import { QoniError, QoniTimeoutError } from "./errors";
 import {
   InteractionHandle,
+  foldInteraction,
   type Action,
   type Interaction,
+  type LoginSessionStore,
 } from "./interactions";
 import {
   isTerminalRunStatus,
@@ -142,6 +144,10 @@ export class RunHandle<E extends RunEvent = RunEvent> {
   /** Pass back to `run({ session })` to reuse the same backend session. */
   sessionRef?: SessionRef;
   private readonly capture: CaptureOptions;
+  /** Login sessions opened on this run's interactions — see {@link interactionHandle}. */
+  readonly #loginSessions: LoginSessionStore = new Map();
+  /** Latest card per interaction id, so lifecycle updates fold onto it. */
+  readonly #interactions = new Map<string, Interaction>();
 
   constructor(
     private readonly ops: RunWireOps,
@@ -166,8 +172,13 @@ export class RunHandle<E extends RunEvent = RunEvent> {
   async *events(opts: RunEventsOptions = {}): AsyncIterable<E> {
     for await (const wire of this.ops.streamEvents(opts)) {
       await opts.onWireEvent?.(wire);
-      const event = normalizeRunEvent(wire, { topRunId: this.id });
+      let event = normalizeRunEvent(wire, { topRunId: this.id });
       if (!event) continue;
+      if (event.type === "interaction") {
+        const card = foldInteraction(this.#interactions.get(event.data.id), event.data);
+        this.#interactions.set(card.id, card);
+        event = { ...event, data: card };
+      }
       if (event.type === "screenshot" && !this.capture.screenshots) continue;
       if (isVideoFrame(wire) && !this.capture.videoFrames) continue;
       // The normalizer yields the full RunEvent union; this product handle only
@@ -258,11 +269,15 @@ export class RunHandle<E extends RunEvent = RunEvent> {
    * Wrap an {@link Interaction} (from `event.data` of an `interaction` event)
    * in a typed {@link InteractionHandle} bound to this run. The handle's action
    * methods (`answer` / `confirmSignedIn` / `releaseControl` / …) post to the
-   * endpoint the backend declared for that action.
+   * endpoint the backend declared for that action. Handles of one run share
+   * the login sessions `openLogin()` opens, so `confirmSignedIn()` on the
+   * handle of a later event still saves that login.
    */
   interactionHandle(interaction: Interaction): InteractionHandle {
-    return new InteractionHandle(interaction, (action, body, options) =>
-      this.ops.postAction(action, body, options),
+    return new InteractionHandle(
+      interaction,
+      (action, body, options) => this.ops.postAction(action, body, options),
+      this.#loginSessions,
     );
   }
 

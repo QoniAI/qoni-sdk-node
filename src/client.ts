@@ -1080,11 +1080,13 @@ function validateScopeFormat(scope: string): void {
     );
   }
   if (KNOWN_SCOPES.includes(scope)) return;
-  // A known scope minus its service prefix — the most common mistake.
-  const prefixed = KNOWN_SCOPES.find((known) => known.endsWith(`.${scope}`) || known === `webagent.${scope}`);
-  if (prefixed) {
+  // A known scope minus its service prefix — the most common mistake. Name
+  // every match: "profile:read" fits both gumem.profile:read and user.profile:read.
+  const prefixed = KNOWN_SCOPES.filter((known) => known.endsWith(`.${scope}`));
+  if (prefixed.length > 0) {
     throw new QoniValidationError(
-      `delegateToken: scope "${scope}" is missing its service prefix — write "${prefixed}"`,
+      `delegateToken: scope "${scope}" is missing its service prefix — write ` +
+        prefixed.map((known) => `"${known}"`).join(" or "),
     );
   }
   // Unknown scopes are allowed if well-formed (the server is the authority on

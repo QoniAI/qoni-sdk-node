@@ -46,23 +46,30 @@ export type {
   RunDoneData,
 } from "./run-events";
 // --- Interaction model (axis B) — the typed HITL surface (run.interaction). ---
-export { InteractionHandle } from "./interactions";
+// InteractionTypes / InteractionType are the curated five abstract types +
+// wait; the wire's `clarification` is presented as `ask_user`.
+export { InteractionHandle, InteractionTypes } from "./interactions";
 export {
-  InteractionTypes,
   InteractionStatuses,
   ActionKinds,
 } from "./generated/interaction-types";
 export type {
-  InteractionType,
   InteractionStatus,
   ActionKind,
 } from "./generated/interaction-types";
 export type {
+  InteractionType,
   Interaction,
+  InteractionBase,
+  TypedInteraction,
   Action,
   InteractionEvidence,
   InteractionSite,
   SiteLoginPayload,
+  AskUserPayload,
+  AskUserOption,
+  AskUserAnswer,
+  AskUserAnswerType,
   ClarificationPayload,
   ConfirmationPayload,
   TakeControlPayload,

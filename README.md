@@ -151,7 +151,7 @@ const run = await qoni.doAnything.run({
 
 const result = await run.wait({
   onScreenshot: (img, i) => fs.writeFileSync(`step-${i}.jpg`, img.bytes),
-  onInteraction: (i) => {                 // login / clarify / confirm / take-control
+  onInteraction: (i) => {                 // site_login / take_control / ask_user / confirmation
     if (i.can("confirm_signed_in")) return i.confirmSignedIn();
     if (i.can("confirm")) return i.confirm();
   },
@@ -357,7 +357,9 @@ await qoni.delegateToken({
 });
 ```
 
-Scope strings are validated locally before any request: a scope missing its service prefix (e.g. `do_anything:manage` instead of `webagent.do_anything:manage`) throws `QoniValidationError` immediately with the correct form in the message.
+Scope strings are validated locally before any request: a scope missing its service prefix (e.g. `do_anything:manage` instead of `webagent.do_anything:manage`) throws `QoniValidationError` immediately with the correct form in the message — every candidate when the short form is ambiguous (`profile:read` → `gumem.profile:read` or `user.profile:read`).
+
+The site-login, user Profile, payment and Agent mailbox scopes (`QoniScopes.SITE_LOGIN_*`, `USER_PROFILE_READ`, `USER_PROFILE_WRITE`, `USER_PAYMENT_USE`, `AGENT_MAIL_READ`, `AGENT_MAIL_SEND`) belong to no product: request them explicitly in `scopes`, and allow them in the AccessKey policy.
 
 Use explicit scope strings when the requested permission boundary should be visible in code.
 
@@ -369,6 +371,10 @@ Use explicit scope strings when the requested permission boundary should be visi
 | Search public web | `webagent.web_search:read`, `webagent.web_search:manage` | Agent can search public pages and read search results. |
 | Run a bounded web task | `webagent.do_anything:read`, `webagent.do_anything:manage` | Agent can run a visible web task, read progress, stop it, and intervene when needed. |
 | Create a monitor | `webagent.track:read`, `webagent.track:manage` | Agent can configure monitors, read events, run checks, and stop monitors. |
+| Sign in to sites during a run | `webagent.site_login:request`, `webagent.site_login:confirm` | The user signs in through a live browser; the login is saved for later tasks. |
+| Use the user's Profile | `user.profile:read`, `user.profile:write` | Agent can read the user's saved details (name, phone, shipping address, card brand and last 4) and save new ones the user provides. |
+| Pay with the user's saved card | `user.payment:use` | After the user approves a payment, the saved card is filled in for them. |
+| Use the Agent's own mailbox | `agent.mail:read`, `agent.mail:send` | Agent can read mail sent to its own address (such as verification codes) and send mail from it. |
 
 Silent mode is usually appropriate for low-risk actions such as reading current-user memory, writing a confirmed summary, or searching public web pages.
 
@@ -643,81 +649,100 @@ the backend contract.
 
 ### Interactions (HITL)
 
-When a run needs the user — sign in to a site, answer a clarification, approve a
-plan, take over the browser, or wait — it emits an `interaction` event whose
-`event.data` is a typed `Interaction` (discriminated by `type`: `site_login` /
-`clarification` / `confirmation` / `take_control` / `wait`). Wrap it in a handle
-and call the action methods; each posts to the endpoint the backend declared in
-the interaction's `actions[]`, so you never hard-code a route:
+When a run needs the user, it pauses and emits an `interaction` event whose
+`event.data` is a typed `Interaction`. Interactions are typed by what the user
+has to do, never by business, so one handler covers every task:
+
+| `type` | The user… | Methods |
+| --- | --- | --- |
+| `site_login` | signs in to a site in the live browser | `openLogin()`, `confirmSignedIn()` |
+| `take_control` | operates the browser by hand (captcha, 2FA, …) | `connectControl()`, `refreshControl()`, `releaseControl()` |
+| `ask_user` | answers a question shaped by `answerType` / `options` | `answer()`, `skip()` |
+| `confirmation` | allows or rejects an action | `confirm()`, `reject()` |
+| `wait` | nothing — the system is waiting (rate limit, external event) | `retry()` |
+
+`Interaction` is a union distributed over `type`, so `switch (request.type)`
+narrows `request.payload` in each branch. Each method posts to the endpoint the
+backend declared in the interaction's `actions[]`, so you never hard-code a route:
 
 ```ts
-for await (const event of run.events()) {
-  if (event.type === "interaction") {
-    const i = run.interactionHandle(event.data);   // event.data is the Interaction
-    if (i.type === "clarification" && i.can("answer")) await i.answer("the blue button");
-    else if (i.can("confirm")) await i.confirm();
-    else if (i.can("confirm_signed_in")) await i.confirmSignedIn();
-    else if (i.can("release_control")) await i.releaseControl();
+import type { InteractionHandle } from "@qoniai/qoni";
+
+const handled = new Set<string>();
+
+async function handleInteraction(handle: InteractionHandle) {
+  const request = handle.interaction;
+  // Creation, status updates and replays all call back: act once per pending id.
+  if (request.status !== "pending" || handled.has(request.id)) return;
+  handled.add(request.id);
+
+  switch (request.type) {
+    case "site_login": {
+      const login = await handle.openLogin();   // { liveUrl, ... } of a live login browser
+      await showToUser(login.liveUrl);          // resolves when the user clicks "I'm signed in"
+      await handle.confirmSignedIn();           // saves the login, then the agent rechecks and continues
+      break;
+    }
+    case "take_control":
+      await handle.connectControl();
+      await showToUser(request.payload.liveUrl);
+      await handle.releaseControl();            // hand the browser back
+      break;
+    case "ask_user":                            // payload: { question, answerType, options? }
+      await handle.answer(await askUser(request.payload));
+      break;
+    case "confirmation":                        // payload: { summary }
+      if (await approve(request.payload.summary)) await handle.confirm();
+      else await handle.reject();
+      break;
   }
 }
+
+const result = await run.wait({ onInteraction: handleInteraction });
 ```
 
-Methods: `answer(text)`, `skip()`, `confirm()`, `reject()`, `openLogin({ siteId?, profileId? })`,
-`confirmSignedIn()`, `connectControl()`, `refreshControl()`, `releaseControl()`,
-`retry()`, `switchProfile()`. `i.can(kind)` reports whether the interaction
-currently offers that action; calling a method the backend did NOT declare
-throws (so a "recovery" button only exists when it actually works).
+Interactions arrive one at a time: the run waits until the current one is
+handled. The same interaction calls back again on every status change and on
+reconnect replays, always with the same `id`, `type` and `payload` — key your UI
+cards by `request.id`. Methods: `answer(value)`, `skip()`, `confirm()`,
+`reject()`, `openLogin({ siteId?, profileId? })`, `confirmSignedIn()`,
+`connectControl()`, `refreshControl()`, `releaseControl()`, `retry()`,
+`switchProfile()`. `handle.can(kind)` reports whether the interaction currently
+offers that action; calling a method the backend did NOT declare throws (so a
+"recovery" button only exists when it actually works).
 
-`openLogin()` starts an interactive login session for a `site_login`
-interaction of a run. Pass `siteId` (one of
-`i.interaction.payload.sites[].siteId`), or omit it when exactly one site is
-listed. Show the returned `liveUrl` to the user; after they sign in, persist the
-login with `login.confirm()`, then tell the agent with `confirmSignedIn()`:
+**`ask_user` answers are structured.** `answer()` takes the value matching
+`payload.answerType` — `text` → string, `number` → number, `boolean` → boolean,
+`single_choice` → one `options[].value`, `multiple_choice` → an array of option
+values — and throws `QoniValidationError` before sending anything that does not
+fit. The wire still calls this type `clarification`; the SDK presents it as
+`ask_user` (choices arrive as `{ value, label }` options).
 
-```ts
-import { QoniError } from "@qoniai/qoni";
-
-const login = await i.openLogin();          // { profileId, siteId, sessionId, liveUrl }
-showToUser(login.liveUrl);                  // the user signs in there
-await waitForUserToFinish();
-let result;
-try {
-  result = await login.confirm();           // ends the session; saves the login if found
-} catch (error) {
-  // 409: no pending login for this profile (session already ended, or profile gone).
-  if (!(error instanceof QoniError && error.code === "no_pending_login")) throw error;
-}
-if (!result || result.active || result.probeResult === "no_session") {
-  await i.confirmSignedIn();                // the agent rechecks; it asks again if still signed out
-} else {
-  // The user was not signed in, and confirm() closed that session's browser.
-  const retry = await i.openLogin({ siteId: login.siteId, profileId: login.profileId });
-  showToUser(retry.liveUrl);                // a new session for the same profile
-}
-```
-
-`probeResult: "no_session"` means the backend no longer holds the login session —
-it may already have saved the login on its own once it detected the sign-in, or
-it restarted. Some browser providers instead reject `confirm()` with a
-`QoniError` coded `no_pending_login` (HTTP 409), which the backend also uses when
-the profile no longer exists for this user; the example handles it the same way,
-because the agent rechecks and asks again if the site is still signed out. Delegate
+**Sign-in takes two calls.** `openLogin()` opens a live login browser for the
+`site_login` interaction (pass `siteId` from `payload.sites[].siteId`, or omit it
+when exactly one site is listed). Once the user is signed in, `confirmSignedIn()`
+saves the login so later tasks reuse it, then tells the agent to recheck the site
+and continue; if the user turns out not to be signed in, the agent raises a new
+`site_login`. The handles of one run share the login session, so
+`confirmSignedIn()` also works on the handle of a later callback. Delegate
 `QoniScopes.SITE_LOGIN_REQUEST` and `QoniScopes.SITE_LOGIN_CONFIRM`, and allow
-both in the AccessKey policy.
+both in the AccessKey policy. `openLogin()`'s result still offers `confirm()` for
+callers that save the login themselves; it is deprecated.
 
-The discriminant strings used above are also exported as constants so you can
-avoid bare literals: `InteractionTypes` (`site_login` / `clarification` /
-`confirmation` / `take_control` / `wait`), `InteractionStatuses`, and
-`ActionKinds` (the `i.can(...)` action names). Authorization scope strings have
-the same treatment — `QoniScopes` (every individual scope), `QoniProductScopes`
-(the per-product `read`+`manage` pairs the `products` sugar expands to), and
-`QoniScopeBundles` (curated bundles). Use them in place of hand-typed strings:
+The discriminant strings are also exported as constants so you can avoid bare
+literals: `InteractionTypes` (`SiteLogin` / `TakeControl` / `AskUser` /
+`Confirmation` / `Wait`; the deprecated `Clarification` now equals `AskUser`),
+`InteractionStatuses`, and `ActionKinds` (the `handle.can(...)` action names).
+Authorization scope strings have the same treatment — `QoniScopes` (every
+individual scope), `QoniProductScopes` (the per-product `read`+`manage` pairs the
+`products` sugar expands to), and `QoniScopeBundles` (curated bundles). Use them in
+place of hand-typed strings:
 
 ```ts
 import { InteractionTypes, ActionKinds, QoniScopes } from "@qoniai/qoni";
 
-if (i.type === InteractionTypes.Clarification && i.can(ActionKinds.answer)) {
-  await i.answer("the blue button");
+if (handle.type === InteractionTypes.AskUser && handle.can(ActionKinds.answer)) {
+  await handle.answer("the blue button");
 }
 ```
 
@@ -727,7 +752,7 @@ The 1:1 low-level methods live under `qoni.<product>.api.*` (e.g. `qoni.doAnythi
 
 `event.raw.event` is the **raw wire event type** — an internal transport name (`run.action.started`, `run.section_completed`, …) whose naming is historical and inconsistent, exposed as a plain string. This is an implementation detail, not the product API: developers match on the curated `event.type` above. The full wire-type catalog is intentionally NOT exported — reach for `event.raw.event` (a string) only when you need an exact wire match the curated layer folds into `progress` (e.g. telling a specific browser action apart).
 
-Browser Use scopes are reserved until their product runtime SDK methods are exported. Site Login scopes (`QoniScopes.SITE_LOGIN_REQUEST`, `QoniScopes.SITE_LOGIN_CONFIRM`) back `InteractionHandle.openLogin()` and `confirm()` on run interactions.
+Browser Use scopes are reserved until their product runtime SDK methods are exported. Site Login scopes (`QoniScopes.SITE_LOGIN_REQUEST`, `QoniScopes.SITE_LOGIN_CONFIRM`) back `InteractionHandle.openLogin()` and `confirmSignedIn()` on run interactions.
 
 ### Response Shape
 
