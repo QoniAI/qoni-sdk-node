@@ -7,8 +7,8 @@ import { Qoni, QoniScopes, QoniValidationError } from "../src";
 //     the scope the backend's /profiles/login route enforces.
 //  2. wait() survives a transient failure of its settle reads (run detail and
 //     artifact list) after the run already finished.
-//  3. track.create() normalizes `schedule`, and monitor/tick reads keep
-//     user-defined keys (extraction schema fields, extracted values) verbatim.
+//  3. Track schedules now map to the fixed WA tracks contract; the historical
+//     extraction/DSL monitor surface has no backend equivalent (see gray-track-contract).
 
 function jwt(payload: Record<string, unknown>): string {
   const encode = (value: unknown) => Buffer.from(JSON.stringify(value)).toString("base64url");
@@ -350,93 +350,12 @@ describe("RunHandle.wait() settle reads", () => {
   });
 });
 
-describe("track schedule and user-keyed fields", () => {
-  function trackClient() {
-    return makeClient((call) => {
-      if (call.pathname.endsWith("/track/monitors") && call.method === "POST") {
-        return jsonResponse({ data: { id: "mon_1", status: "active" } });
-      }
-      if (call.pathname.endsWith("/monitors/mon_1/runs/tick_1")) {
-        return jsonResponse({ data: {
-          run_id: "tick_1", tick_n: 1, state: "completed", is_first_tick: true,
-          extracted: { source_url: "https://example.com/policy", page_title: "Policy" },
-          diffs: [
-            { kind: "field_diff", changed_fields: ["page_title"],
-              before: { page_title: "Old" }, after: { page_title: "Policy" } },
-            { kind: "list_diff", field: "news_items", key: "item_url", added: [{ item_url: "https://example.com/a" }],
-              removed: [], unchanged_count: 1, sample_unchanged: [{ item_url: "https://example.com/b" }] },
-            { kind: "fingerprint_diff", before_hash: "h1", after_hash: "h2", similarity_score: 0.9 },
-          ],
-        } });
-      }
-      return jsonResponse({ data: {
-        id: "mon_1", status: "active", status_reason: null,
-        schedule: { kind: "interval", interval_seconds: 3600 },
-        extraction_schema: { source_url: "string", page_title: "string" },
-        baseline_extracted: { source_url: "https://example.com/policy", page_title: "Policy" },
-        trigger_dsl: { on: "change", throttle: { max_per_hour: 1 } },
-      } });
-    });
-  }
-
-  it("create() sends interval schedules as interval_seconds, like refine()", async () => {
-    const { client, calls } = trackClient();
-    await client.track.create({
-      token: TOKEN, prompt: "watch the policy page",
-      targetUrls: ["https://example.com/policy"],
-      extractionSchema: { source_url: "string" },
-      schedule: { kind: "interval", intervalSeconds: 3600 },
-    });
-    expect(calls[0].body).toEqual({
-      intent: "watch the policy page",
-      target_urls: ["https://example.com/policy"],
-      extraction_schema: { source_url: "string" },
-      schedule: { kind: "interval", interval_seconds: 3600 },
-    });
-  });
-
-  it("schedule normalization keeps every other field, such as tz, for create() and refine()", async () => {
-    const { client, calls } = trackClient();
-    const monitor = await client.track.create({ token: TOKEN, prompt: "p",
-      schedule: { kind: "cron", expr: "0 9 * * *", tz: "Asia/Shanghai" } });
-    expect((calls[0].body as { schedule: unknown }).schedule).toEqual({ kind: "cron", expr: "0 9 * * *", tz: "Asia/Shanghai" });
-    await monitor.refine({ schedule: { kind: "interval", intervalSeconds: 600, tz: "UTC" } });
-    expect(calls.at(-1)!.body).toEqual({ action: "refine", patch: { schedule: { kind: "interval", interval_seconds: 600, tz: "UTC" } } });
-    await client.track.create({ token: TOKEN, prompt: "p", schedule: { kind: "interval", interval_seconds: 120 } });
-    expect((calls.at(-1)!.body as { schedule: unknown }).schedule).toEqual({ kind: "interval", interval_seconds: 120 });
-  });
-
-  it("create() keeps cron schedules and rejects malformed ones before any request", async () => {
-    const { client, calls } = trackClient();
-    await client.track.create({ token: TOKEN, prompt: "p", schedule: { kind: "cron", expr: "0 * * * *" } });
-    expect((calls[0].body as { schedule: unknown }).schedule).toEqual({ kind: "cron", expr: "0 * * * *" });
-    const before = calls.length;
-    await expect(client.track.create({ token: TOKEN, prompt: "p", schedule: { kind: "interval", intervalSeconds: 0 } }))
-      .rejects.toBeInstanceOf(QoniValidationError);
-    await expect(client.track.create({ token: TOKEN, prompt: "p", schedule: { kind: "cron", expr: " " } }))
-      .rejects.toBeInstanceOf(QoniValidationError);
-    expect(calls.length).toBe(before);
-  });
-
-  it("get() and run() keep user-defined keys while camelizing protocol fields", async () => {
-    const { client } = trackClient();
-    const monitor = await client.track.create({ token: TOKEN, prompt: "p" });
-    const detail = await monitor.get();
-    expect(detail.statusReason).toBeNull();
-    expect(detail.schedule).toEqual({ kind: "interval", intervalSeconds: 3600 });
-    expect(detail.extractionSchema).toEqual({ source_url: "string", page_title: "string" });
-    expect(detail.baselineExtracted).toEqual({ source_url: "https://example.com/policy", page_title: "Policy" });
-    expect(detail.triggerDsl).toEqual({ on: "change", throttle: { maxPerHour: 1 } });
-
-    const tick = await monitor.run("tick_1");
-    expect(tick).toMatchObject({ id: "tick_1", tickN: 1, isFirstTick: true });
-    expect(tick.extracted).toEqual({ source_url: "https://example.com/policy", page_title: "Policy" });
-    // changedFields names the user's field; before/after must be readable by that same name.
-    expect(tick.diffs).toEqual([
-      { kind: "field_diff", changedFields: ["page_title"], before: { page_title: "Old" }, after: { page_title: "Policy" } },
-      { kind: "list_diff", field: "news_items", key: "item_url", added: [{ item_url: "https://example.com/a" }],
-        removed: [], unchangedCount: 1, sampleUnchanged: [{ item_url: "https://example.com/b" }] },
-      { kind: "fingerprint_diff", beforeHash: "h1", afterHash: "h2", similarityScore: 0.9 },
-    ]);
+describe("Track schedule aliases", () => {
+  it("normalizes legacy interval_seconds to the actual every_seconds wire field", async () => {
+    const { client, calls } = makeClient(() => jsonResponse({ id: "track_1", status: "active" }));
+    await client.track.create({ token: TOKEN, prompt: "Watch policy",
+      schedule: { kind: "interval", interval_seconds: 600 } as unknown as import("../src").MonitorSchedule });
+    expect(calls[0].pathname).toBe("/api/v1/projects/tenant_1/track/tracks");
+    expect(calls[0].body).toEqual({ instructions: "Watch policy", schedule: { every_seconds: 600 } });
   });
 });

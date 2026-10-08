@@ -75,7 +75,7 @@ Tuning: `QONI_LIVE_EVIDENCE_MAX_BODY_CHARS` (default 4000) and
 | Do Anything | create/status/events/wait, real browser content, screenshots, attach, cancel, wire escape hatch | `do-anything.test.ts` |
 | Web Search | create/status/events/wait, real domain-filtered results, attach, cancel, wire escape hatch | `web-search.test.ts` |
 | Deep Research | create/status/events/wait, substantive report/artifact, attach, cancel, feedback escape hatch | `deep-research.test.ts` |
-| Track | create/get/refine/pause/resume/events/run-now, recurring scheduler cadence, run history/detail, attach, delete | `track.test.ts` |
+| Track | create/get/refine/pause/resume/run-now task references, recent 50 checks, attach, soft delete; no SSE/cadence coverage claim | `track.test.ts` |
 | Wire escape hatch | every `<product>.api.*` method: snake_case create/read envelopes, raw SSE streams, tick history, session artifacts/recording, report artifacts, and the documented refusal codes for state-illegal calls | `wire-api.test.ts` |
 | Delegation | silent delegation via both entry points and both `qoni.*` aliases, token claims, interactive authorization grant, and the exchange route's refusal without a human-approved code | `delegation.test.ts` |
 | Interactions (HITL) | a backend-emitted `run.interaction` reaching `wait({ onInteraction })`, `run.interactionHandle()`, `can()`, and the dead-affordance guard on all 11 action methods | `interactions.test.ts` |
@@ -187,7 +187,7 @@ public SDK entry functions:
 | `doAnything.run` | `prompt`, `capture`, `limits`, and other documented run options | status/wait/attach/cancel, complete raw + semantic streams, Agent messages, tool parameters/results, Browser Harness authored code + execution, screenshots, recording, output |
 | `webSearch.run` | `prompt`, `maxResultsPerQuery`, site allow/deny lists | status/wait/attach/cancel, raw + semantic streams, complete result items |
 | `deepResearch.run` | `prompt`, depth, output format, audience, domain lists, limits | status/wait/attach/cancel, raw + semantic streams, final report and downloaded artifacts; set `requireComplete` to reject declared partial sections |
-| `track.create` | `prompt`, schedule, extraction schema, tick instructions, trigger/notification options | create/get/attach/runNow/events/runs/run/delete and the completed tick detail |
+| `track.create` | `prompt`, required interval/daily schedule, optional title | create/get/attach/runNow/runs/run/delete and the exact completed check; old DSL/URL fields are local unsupported errors |
 
 Use only public HTTPS pages in `publicSources`. A minimal shape is shown below;
 placeholders are intentional so repository history never contains a deployment
@@ -235,3 +235,5 @@ Each batch is written to
 pass/fail by SDK function; every child directory contains the exact local Case,
 actual invocation result, raw SSE frames, semantic events, function touchpoints,
 and any screenshots/artifacts. None of these files belong in a commit.
+
+Track mapping uses WA 596310a3 fixtures for local checks. Updated live suites have not been run by this remediation task. Deprecated Track SSE/interaction and snapshot read entries have no live positive coverage; local unsupported errors are GUARD_ONLY.

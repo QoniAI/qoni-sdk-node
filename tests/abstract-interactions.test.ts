@@ -668,19 +668,15 @@ describe("confirmSignedIn(): one save, one recheck, honest failures", () => {
     expect(saves(calls).map((call) => call.pathname)).toEqual(["/api/v1/projects/tenant_1/profiles/u-1/confirm"]);
   });
 
-  it("Track monitor handles share the login session across interactionHandle() calls", async () => {
+  it("Track interactionHandle rejects declared DoAnything actions without using their authority", async () => {
     const { client, calls } = makeClient((call) => {
       if (call.pathname === "/api/v3/eak/token-exchange") return jsonResponse({ data: { accessToken: PRODUCT_TOKEN, expiresIn: 3600 } });
-      if (call.pathname.endsWith("/profiles/login")) {
-        return jsonResponse({ profile_id: "u-1", site_id: "amazon", session_id: "login_1", live_url: "https://live/1" }, { status: 201 });
-      }
-      if (/\/profiles\/[^/]+\/confirm$/.test(call.pathname)) return SAVED();
-      return jsonResponse({ data: { id: "mon_1", monitor_id: "mon_1", status: "active" } });
+      return jsonResponse({ id: "mon_1", status: "active" });
     });
     const monitor = await client.track.attach("mon_1", { token: DELEGATION_TOKEN });
-    await monitor.interactionHandle(normalizeInteraction(wireSiteLogin())!).openLogin();
-    await monitor.interactionHandle(normalizeInteraction(wireSiteLogin())!).confirmSignedIn();
-    expect(saves(calls)).toHaveLength(1);
+    const before = calls.length;
+    expect(() => monitor.interactionHandle(normalizeInteraction(wireSiteLogin())!)).toThrow(/unsupported/);
+    expect(calls).toHaveLength(before);
   });
 });
 

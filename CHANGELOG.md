@@ -1,5 +1,51 @@
 # Changelog
 
+## Unreleased — next version: 0.10.0
+
+These public API changes require **0.10.0**, not a 0.9.x patch. This work does
+not bump the packaged version, publish, or release it.
+
+### Breaking
+
+- `track.create` requires an explicit schedule. Migrate to an integer
+  `{ kind: "interval", intervalSeconds: 600..2592000 }` or an explicit
+  `{ kind: "daily", at: "HH:MM", tz }`; daily starts up to 30 minutes early.
+  Cron is locally unsupported and is never automatically converted.
+- Interval `tz` and old targetUrls/extractionSchema/triggerDsl/
+  stopConditionDsl/notifyChannel/url fields have no wire equivalent. Remove
+  them; put watched URLs explicitly in prompt instructions. Optional undefined
+  fields are still omitted; defined unsupported fields raise typed local errors.
+- `refine` accepts title/schedule only. Create a new Track to change the original
+  prompt/intent; the raw updateMonitor wire API supports explicit instructions.
+- `runNow` returns only `{ trackId, sessionId, runId }`, a 202 acceptance
+  reference. TrackTaskRef is a type alias and remains assignable to JsonObject.
+  Read the exact recent check for its real `done/failed/expired/canceled`
+  status; this differs from RunResult's `succeeded`. Create already starts a
+  first look: wait for the original lastTaskId before one explicit runNow.
+- `runs` and `run(id)` search only the newest 50 checks; no extracted/diffs/
+  snapshot fields are synthesized. Replace old tick/snapshot consumers with
+  the actual check fields; a missing run raises local not_found with its range.
+- Track events/interactionHandle/api.events/api.intervene and DoAnything
+  readArtifacts now raise local QoniUnsupportedError with zero HTTP. Their
+  deprecated exports remain; use Track checks, separately authorized DoAnything
+  interactions, real file artifacts(), or captured screenshot events instead.
+- Pause/delete stop future scheduling and keep an in-flight check running.
+
+### Changed
+
+- Track now maps supported operations to `/track/tracks`: prompt → instructions,
+  explicit integer intervals of 600–2592000 seconds or daily at/tz (starts
+  0–30 minutes before target), real status PATCH, empty DELETE204, recent 50
+  checks with local pagination, and runNow task references. Refine is limited
+  to title/schedule. Deletion does not cancel a running task.
+- Cron, old extraction/DSL/URL/channel options, Track events/intervene and
+  interactionHandle fail locally. Deprecated methods/types remain exported.
+- `doAnything.api.readArtifacts` and snapshot types are deprecated with local
+  `QoniUnsupportedError` (`unsupported.operation`), zero HTTP. Use actual file
+  artifacts or captured screenshot events. File APIs are unchanged.
+- Live coverage metadata retires old monitor/snapshot success claims; current
+  Track mapping is locally verified, with live acceptance pending.
+
 ## 0.9.0 - 2026-10-07
 
 DoAnything interactions are now typed by what the user has to do, never by

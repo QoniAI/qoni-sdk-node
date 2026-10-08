@@ -9,6 +9,7 @@ export {
   QoniTimeoutError,
   QoniTokenExpiredError,
   QoniUpstreamError,
+  QoniUnsupportedError,
   QoniValidationError,
 } from "./errors";
 export type { QoniErrorCode, QoniErrorOptions } from "./errors";
@@ -88,6 +89,9 @@ export type {
   MonitorRunsOptions,
   TrackAttachOptions,
   TrackCreateOptions,
+  MonitorSchedule,
+  MonitorRefinePatch,
+  TrackTaskRef,
 } from "./track";
 export type {
   DoAnythingAttachOptions,

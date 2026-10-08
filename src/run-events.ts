@@ -143,7 +143,7 @@ export type WebSearchEvent = CoreRunEvent | Extract<RunEvent, { type: "resultsRe
 export type DeepResearchEvent =
   | CoreRunEvent
   | Extract<RunEvent, { type: "phase" | "sectionReady" }>;
-/** Track monitor — core + `monitorCreated` / `triggered` / `checkCompleted`. */
+/** @deprecated Historical Track event shape. The current Track API has no SSE endpoint. */
 export type MonitorEvent =
   | CoreRunEvent
   | Extract<RunEvent, { type: "monitorCreated" | "triggered" | "checkCompleted" }>;
