@@ -1,3 +1,4 @@
+import { memoryRunLifecycle, type MemoryRunLifecycle } from "./memory-run-lifecycle";
 export type JsonPrimitive = string | number | boolean | null;
 export type JsonValue = JsonPrimitive | JsonObject | JsonValue[];
 export type JsonObject = Record<string, unknown>;
@@ -76,6 +77,8 @@ export interface UserRef {
 }
 
 interface DelegateTokenBaseInput {
+  /** Canonical personal IAM Agent UUID. Explicit interactive consent; mutually exclusive with audit labels. */
+  agentId?: string;
   /** Audit label for this delegation. Defaults to "sdk". */
   agent?: string;
   /** Compatibility alias for agent. Supplying conflicting labels is an error. */
@@ -99,6 +102,7 @@ export type QoniProductName = "doAnything" | "webSearch" | "deepResearch" | "tra
 
 export type DelegateTokenSilentInput = DelegateTokenBaseInput & {
   mode?: "silent";
+  agentId?: never;
   redirectUri?: string;
   state?: string;
 } & (
@@ -203,6 +207,8 @@ export interface RawRequestInput extends TokenInput {
 }
 
 export interface RequestPayload {
+  /** @internal Only runWithMemory installs this request-local observer. */
+  [memoryRunLifecycle]?: MemoryRunLifecycle;
   signal?: AbortSignal;
   query?: JsonObject;
   body?: JsonObject | BodyInit;

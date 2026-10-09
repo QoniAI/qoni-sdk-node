@@ -500,8 +500,7 @@ describe("complete public method coverage matrix", () => {
             method: "POST",
             query: { query: "hello", details: "true" },
             body: {
-              recall_config: { topK: 3 },
-              metadata_filters: { source: "coverage" },
+              recall_config: { topK: 3, metadata_filters: { source: "coverage" } },
             },
           },
           {

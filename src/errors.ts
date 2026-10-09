@@ -17,6 +17,8 @@ export type QoniErrorCode =
   | "rate_limit.exceeded"
   | "upstream.failed"
   | "timeout"
+  | "task.submit_unknown"
+  | "request.aborted"
   | "not_found"
   | "conflict"
   | "eak.delegation.user_not_bound"
@@ -29,7 +31,12 @@ export type QoniErrorCode =
   // eslint-disable-next-line @typescript-eslint/ban-types
   | (string & {});
 
+/** Failure stage of the opt-in runWithMemory operation. */
+export type QoniMemoryRunPhase = "recall" | "task_permission" | "task_submit";
+
 export interface QoniErrorOptions {
+  phase?: QoniMemoryRunPhase;
+  submissionUnknown?: boolean;
   code?: QoniErrorCode;
   status?: number;
   requestId?: string;
@@ -41,6 +48,8 @@ export interface QoniErrorOptions {
 }
 
 export class QoniError extends Error {
+  declare readonly phase?: QoniMemoryRunPhase;
+  declare readonly submissionUnknown?: boolean;
   readonly code: QoniErrorCode;
   readonly status?: number;
   readonly requestId?: string;
@@ -59,9 +68,26 @@ export class QoniError extends Error {
     this.auditId = options.auditId;
     this.retryable = options.retryable ?? false;
     this.body = options.body;
+    if (options.phase !== undefined) this.phase = options.phase;
+    if (options.submissionUnknown !== undefined) this.submissionUnknown = options.submissionUnknown;
     if (options.cause !== undefined) {
       (this as Error & { cause?: unknown }).cause = options.cause;
     }
+  }
+}
+
+/** A Task POST was dispatched but its result could not be established. Never auto-retry. */
+export class QoniTaskSubmissionUnknownError extends QoniError {
+  declare readonly code: "task.submit_unknown";
+  declare readonly phase: "task_submit";
+  declare readonly submissionUnknown: true;
+  declare readonly retryable: false;
+
+  constructor() {
+    super("Task submission outcome is unknown. Do not resubmit automatically; reconcile the original request with the server.", {
+      code: "task.submit_unknown", phase: "task_submit", submissionUnknown: true, retryable: false,
+    });
+    this.name = "QoniTaskSubmissionUnknownError";
   }
 }
 

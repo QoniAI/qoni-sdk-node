@@ -1,3 +1,5 @@
+import { memoryRunLifecycle } from "./memory-run-lifecycle";
+import { performJsonRequest, readBody, readJson, urlWithBasePath, normalizePath, isConnectTimeoutError } from "./json-transport";
 import { buildSignedHeaders } from "./auth";
 import { createDeepResearchNamespace } from "./deep-research";
 import { createDoAnythingNamespace } from "./do-anything";
@@ -85,6 +87,7 @@ export class Qoni {
     this.genauth = createGenAuthNamespace(transport, {
       adminTokenFor: () => this.genauthAdminTokenFor(),
       delegateTokenFor: (input) => this.delegateToken(input),
+      signedPost: (pathname, body) => this.signedPost(pathname, body),
     });
     this.qoni = createQoniNamespace(
       transport,
@@ -239,7 +242,7 @@ export class Qoni {
     token?: string,
     payload: RequestPayload = {},
   ): Promise<QoniResponse<T>> {
-    const runtimeToken = await this.productTokenFor("gumem", token, payload.requiredScopes);
+    const runtimeToken = await this.productTokenFor("gumem", token, payload.requiredScopes, payload.signal);
     const baseUrl = await this.baseUrlFor("gumem");
     return this.jsonRequest<T>(baseUrl, path, {
       ...payload,
@@ -272,7 +275,7 @@ export class Qoni {
     payload: RequestPayload = {},
   ): Promise<QoniResponse<T>> {
     payload.signal?.throwIfAborted();
-    const runtimeToken = await this.productTokenFor("webagent", token, payload.requiredScopes);
+    const runtimeToken = await this.productTokenFor("webagent", token, payload.requiredScopes, payload.signal);
     payload.signal?.throwIfAborted();
     const baseUrl = await this.baseUrlFor("webagent");
     return this.jsonRequest<T>(
@@ -352,7 +355,7 @@ export class Qoni {
     }
   }
 
-  private async signedPost<T>(pathname: string, body: object): Promise<QoniResponse<T>> {
+  private async signedPost<T>(pathname: string, body: object, signal?: AbortSignal): Promise<QoniResponse<T>> {
     const payload = toRecord(body);
     const headers = buildSignedHeaders(
       {
@@ -369,6 +372,7 @@ export class Qoni {
       headers,
       service: "qoni",
       signed: true,
+      signal,
     });
   }
 
@@ -382,32 +386,10 @@ export class Qoni {
       signed?: boolean;
     },
   ): Promise<QoniResponse<T>> {
-    const { response, payload } = await this.fetchWithTimeout(
-      urlWithBasePath(baseUrl, pathname, options.query),
-      {
-        method: options.method,
-        headers: requestHeaders(options),
-        body: requestBody(options.body),
-      },
-      async (response, signal) => ({ response, payload: await readJson(response, signal) }),
-      options.signal,
-    );
-    if (!response.ok) {
-      throw errorFromPayload(
-        response.status,
-        payload,
-        `Qoni request failed with HTTP ${response.status}`,
-      );
-    }
-    const envelopeStatus = errorEnvelopeStatus(payload);
-    if (envelopeStatus !== undefined) {
-      throw errorFromPayload(
-        envelopeStatus,
-        payload,
-        `Qoni request failed with statusCode ${envelopeStatus}`,
-      );
-    }
-    return normalizeResponse<T>(payload, options.service);
+    return performJsonRequest<T>(baseUrl, pathname, options,
+      (url, init, consume, signal) => this.fetchWithTimeout(url, init, consume, signal, {
+        beforeFetch: options[memoryRunLifecycle]?.onDispatch,
+      }));
   }
 
   // Reconnecting wrapper: yields events from a fresh connection, and on a
@@ -545,7 +527,7 @@ export class Qoni {
     init: RequestInit,
     consume: (response: Response, signal: AbortSignal) => Promise<T>,
     signal?: AbortSignal,
-    opts?: { streamCleanup?: (dispose: () => void) => void },
+    opts?: { streamCleanup?: (dispose: () => void) => void; beforeFetch?: () => void },
   ): Promise<T> {
     if (signal?.aborted) throw signal.reason || new DOMException("Aborted", "AbortError");
     const controller = new AbortController();
@@ -570,6 +552,7 @@ export class Qoni {
         controller.signal.addEventListener("abort", onAbort, { once: true });
         Promise.resolve().then(() => {
           controller.signal.throwIfAborted();
+          opts?.beforeFetch?.();
           return this.fetchImpl(resolved.url, { ...requestInit, signal: controller.signal });
         }).then((response) => {
           if (controller.signal.aborted) {
@@ -694,7 +677,9 @@ export class Qoni {
     service: "gumem" | "webagent",
     token: string | undefined,
     requiredScopes: readonly string[] | undefined,
+    signal?: AbortSignal,
   ): Promise<string> {
+    signal?.throwIfAborted();
     const runtimeToken = requiredRuntimeToken(token);
     if (!isQoniDelegationToken(runtimeToken)) return runtimeToken;
 
@@ -706,7 +691,8 @@ export class Qoni {
       subjectToken: runtimeToken,
       resource: service === "gumem" ? "gumem" : "webagent",
       scopes,
-    });
+    }, signal);
+    signal?.throwIfAborted();
     const payload = response.data;
     const accessToken = readAccessToken(payload);
     if (!accessToken) {
@@ -757,19 +743,6 @@ interface ResolvedRuntimeConfig {
   webAgentBaseUrl?: string;
 }
 
-function requestHeaders(
-  options: RequestPayload & { token?: string; signed?: boolean },
-): Record<string, string> {
-  const headers: Record<string, string> = {
-    accept: "application/json",
-    ...(options.headers || {}),
-  };
-  if (options.token) headers.authorization = `Bearer ${options.token}`;
-  if (options.body !== undefined && !isBodyInit(options.body) && !headers["content-type"]) {
-    headers["content-type"] = "application/json";
-  }
-  return headers;
-}
 
 function nonSignatureHeaders(
   headers: Record<string, string> | undefined,
@@ -787,111 +760,13 @@ function nonSignatureHeaders(
   );
 }
 
-function requestBody(body: RequestPayload["body"]): BodyInit | undefined {
-  if (body === undefined) return undefined;
-  if (isBodyInit(body)) return body;
-  return JSON.stringify(body);
-}
 
-function isBodyInit(value: unknown): value is BodyInit {
-  return (
-    typeof value === "string" ||
-    value instanceof ArrayBuffer ||
-    value instanceof Blob ||
-    value instanceof FormData ||
-    value instanceof URLSearchParams
-  );
-}
 
-async function readBody(response: Response, signal: AbortSignal): Promise<Uint8Array> {
-  if (!response.body) {
-    signal.throwIfAborted();
-    return new Uint8Array();
-  }
-  const reader = response.body.getReader();
-  const onAbort = () => { void reader.cancel(signal.reason).catch(() => undefined); };
-  signal.addEventListener("abort", onAbort, { once: true });
-  try {
-    const chunks: Uint8Array[] = [];
-    let size = 0;
-    for (;;) {
-      signal.throwIfAborted();
-      const { done, value } = await reader.read();
-      signal.throwIfAborted();
-      if (done) break;
-      chunks.push(value);
-      size += value.byteLength;
-    }
-    const bytes = new Uint8Array(size);
-    let offset = 0;
-    for (const chunk of chunks) {
-      bytes.set(chunk, offset);
-      offset += chunk.byteLength;
-    }
-    return bytes;
-  } finally {
-    signal.removeEventListener("abort", onAbort);
-    void reader.cancel().catch(() => undefined);
-    reader.releaseLock();
-  }
-}
 
-async function readJson(response: Response, signal: AbortSignal): Promise<unknown> {
-  const contentType = response.headers.get("content-type")?.toLowerCase() || "";
-  const body = new TextDecoder().decode(await readBody(response, signal));
-  try {
-    if (contentType.includes("ndjson") || contentType.includes("jsonl")) {
-      if (!body.trim()) return [];
-      return body
-        .split(/\r?\n/)
-        .filter((line) => line.trim().length > 0)
-        .map((line) => JSON.parse(line));
-    }
-    return JSON.parse(body);
-  } catch {
-    return undefined;
-  }
-}
 
-function normalizeResponse<T>(payload: unknown, _service: QoniService): QoniResponse<T> {
-  if (isJsonObject(payload) && ("data" in payload || "meta" in payload)) {
-    return {
-      data: ("data" in payload ? payload.data : payload) as T,
-      meta: {
-        ...(isJsonObject(payload.meta) ? payload.meta : {}),
-        ...topLevelMeta(payload),
-      },
-    };
-  }
-  return { data: payload as T, meta: {} };
-}
 
-function topLevelMeta(payload: JsonObject): JsonObject {
-  const meta: JsonObject = {};
-  for (const key of ["requestId", "traceId", "auditId"]) {
-    if (typeof payload[key] === "string") meta[key] = payload[key];
-  }
-  return meta;
-}
 
-function urlWithQuery(baseUrl: string, pathname: string, query?: JsonObject): URL {
-  const url = new URL(normalizePath(pathname), baseUrl);
-  for (const [key, value] of Object.entries(query || {})) {
-    if (value !== undefined && value !== null) url.searchParams.set(key, String(value));
-  }
-  return url;
-}
 
-function urlWithBasePath(baseUrl: string, pathname: string, query?: JsonObject): URL {
-  const base = new URL(baseUrl);
-  const basePath = base.pathname === "/" ? "" : base.pathname.replace(/\/+$/, "");
-  const normalizedPath = normalizePath(pathname);
-  const fullPath =
-    basePath && (normalizedPath === basePath || normalizedPath.startsWith(`${basePath}/`))
-      ? normalizedPath
-      : `${basePath}${normalizedPath}`;
-  return urlWithQuery(base.origin, fullPath, query);
-}
 
 function resolveLocalGenauthRequest(input: URL): { url: URL; hostHeader?: string } {
   const url = new URL(input.toString());
@@ -917,9 +792,6 @@ function withHostHeader(headers: HeadersInit | undefined, hostHeader: string): R
   return out;
 }
 
-function normalizePath(path: string): string {
-  return path.startsWith("/") ? path : `/${path}`;
-}
 
 function normalizeBaseUrl(host: string): string {
   const withProtocol = /^https?:\/\//i.test(host) ? host : `https://${host}`;
@@ -992,6 +864,9 @@ function toRecord(value: object): JsonObject {
 
 function normalizeDelegateTokenInput(input: DelegateTokenInput): JsonObject {
   const body = toRecord(input);
+  if (input.agentId !== undefined && (!(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/).test(input.agentId) || input.agent !== undefined || input.agentKey !== undefined || input.mode !== 'interactive')) {
+    throw new QoniValidationError('delegateToken: formal agentId requires interactive mode and cannot be combined with an audit label');
+  }
   if (input.deniedScopes !== undefined) {
     throw new QoniValidationError(
       "delegateToken: deniedScopes is not supported by the delegation service. " +
@@ -1017,10 +892,11 @@ function normalizeDelegateTokenInput(input: DelegateTokenInput): JsonObject {
         "does not need one.",
     );
   }
-  body.agent = input.agent ?? input.agentKey ?? "sdk";
+  if (input.agentId === undefined) body.agent = input.agent ?? input.agentKey ?? "sdk";
   delete body.agentKey;
   if (input.expiresIn !== undefined) body.expiresIn = delegationDurationSeconds(input.expiresIn);
   body.scopes = resolveDelegationScopes(input.scopes, input.products);
+  if (input.agentId === undefined && (body.scopes as string[]).some(scope => scope.startsWith('agent.mail:'))) throw new QoniValidationError('delegateToken: personal mailbox scopes require a verified formal agentId');
   delete body.products;
   return body;
 }
@@ -1099,13 +975,6 @@ function validateScopeFormat(scope: string): void {
   }
 }
 
-function errorEnvelopeStatus(payload: unknown): number | undefined {
-  if (!isJsonObject(payload)) return undefined;
-  const statusCode = payload.statusCode;
-  if (typeof statusCode !== "number" || statusCode < 400) return undefined;
-  if ("data" in payload && payload.data !== undefined) return undefined;
-  return statusCode;
-}
 
 function decodeJwtPayload(token: string): JsonObject {
   const [, payload] = token.split(".");
@@ -1331,32 +1200,9 @@ function normalizeDelegateAgentTokenResponse<T extends DelegateAgentResponse>(
   };
 }
 
-function isConnectTimeoutError(error: unknown): boolean {
-  const cause = errorCause(error);
-  return (
-    errorCode(cause) === "UND_ERR_CONNECT_TIMEOUT" ||
-    errorName(cause) === "ConnectTimeoutError"
-  );
-}
 
 function isFetchNetworkError(error: unknown): boolean {
   if (!(error instanceof TypeError)) return false;
   const message = error.message.toLowerCase();
   return message.includes("fetch failed") || message.includes("network");
-}
-
-function errorCause(error: unknown): unknown {
-  return error && typeof error === "object" ? (error as { cause?: unknown }).cause : undefined;
-}
-
-function errorCode(error: unknown): string | undefined {
-  return error && typeof error === "object" && typeof (error as { code?: unknown }).code === "string"
-    ? (error as { code: string }).code
-    : undefined;
-}
-
-function errorName(error: unknown): string | undefined {
-  return error && typeof error === "object" && typeof (error as { name?: unknown }).name === "string"
-    ? (error as { name: string }).name
-    : undefined;
 }
