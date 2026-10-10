@@ -613,11 +613,11 @@ describe("complete public method coverage matrix", () => {
           runId: "run_matrix",
           reason: "cleanup",
         });
-        await h.client.doAnything.api.readArtifacts({
+        await expect(h.client.doAnything.api.readArtifacts({
           token,
           sessionId: "sess_matrix",
           artifactId: "artifact_matrix",
-        });
+        })).rejects.toMatchObject({ code: "unsupported.operation" });
         await h.client.doAnything.api.readRecording({ token, sessionId: "sess_matrix" });
 
         expect(observed).toContain("event");
@@ -639,7 +639,6 @@ describe("complete public method coverage matrix", () => {
             "GET /api/v1/projects/tenant_matrix/do_anything/runs/run_matrix",
             "POST /api/v1/projects/tenant_matrix/do_anything/runs/run_matrix/intervene",
             "POST /api/v1/projects/tenant_matrix/do_anything/runs/run_matrix/cancel",
-            "GET /api/v1/projects/tenant_matrix/do_anything/sessions/sess_matrix/artifacts/artifact_matrix",
             "GET /api/v1/projects/tenant_matrix/do_anything/sessions/sess_matrix/recording",
           ]),
         );
@@ -656,42 +655,34 @@ describe("complete public method coverage matrix", () => {
     });
 
     describe("track.createMonitor/getMonitor/runNow/events/updateMonitor/deleteMonitor", () => {
-      it("covers the full Track monitor lifecycle", async () => {
+      it("covers supported Track resource operations", async () => {
         const h = createHarness();
         const token = delegationToken();
 
-        await h.client.track.api.createMonitor({ token, url: "https://eazo.ai", instructions: "watch" });
+        await h.client.track.api.createMonitor({ token, instructions: "watch", schedule: { every_seconds: 600 } });
         await h.client.track.api.getMonitor({ token, monitorId: "monitor_matrix" });
         await h.client.track.api.runNow({ token, monitorId: "monitor_matrix" });
-        for await (const _event of h.client.track.api.events({ token, monitorId: "monitor_matrix", lastEventId: "1" })) {
-          break;
-        }
         await h.client.track.api.updateMonitor({
           token,
           monitorId: "monitor_matrix",
-          schedule: "0 9 * * *",
+          schedule: { daily_at: "09:00", tz: "UTC" },
         });
         await h.client.track.api.deleteMonitor({ token, monitorId: "monitor_matrix" });
 
         expect(h.calls.filter((call) => call.pathname.includes("/track/"))).toMatchObject([
           {
-            pathname: "/api/v1/projects/tenant_matrix/track/monitors",
+            pathname: "/api/v1/projects/tenant_matrix/track/tracks",
             method: "POST",
-            body: { url: "https://eazo.ai", instructions: "watch" },
+            body: { instructions: "watch", schedule: { every_seconds: 600 } },
           },
-          { pathname: "/api/v1/projects/tenant_matrix/track/monitors/monitor_matrix", method: "GET" },
-          { pathname: "/api/v1/projects/tenant_matrix/track/monitors/monitor_matrix/run_now", method: "POST", body: {} },
+          { pathname: "/api/v1/projects/tenant_matrix/track/tracks/monitor_matrix", method: "GET" },
+          { pathname: "/api/v1/projects/tenant_matrix/track/tracks/monitor_matrix/run_now", method: "POST", body: {} },
           {
-            pathname: "/api/v1/projects/tenant_matrix/track/monitors/monitor_matrix/events",
-            method: "GET",
-            headers: expect.objectContaining({ "last-event-id": "1" }),
-          },
-          {
-            pathname: "/api/v1/projects/tenant_matrix/track/monitors/monitor_matrix",
+            pathname: "/api/v1/projects/tenant_matrix/track/tracks/monitor_matrix",
             method: "PATCH",
-            body: { schedule: "0 9 * * *" },
+            body: { schedule: { daily_at: "09:00", tz: "UTC" } },
           },
-          { pathname: "/api/v1/projects/tenant_matrix/track/monitors/monitor_matrix", method: "DELETE" },
+          { pathname: "/api/v1/projects/tenant_matrix/track/tracks/monitor_matrix", method: "DELETE" },
         ]);
       });
     });

@@ -10,7 +10,7 @@ description: Use when building, testing, debugging, or documenting Node.js integ
 > This guide documents the semantic-layer
 > surface: `run()`/`create()` return handles (`RunHandle` / `MonitorHandle`),
 > events are normalized (`event.type`, camelCase `data`, decoded screenshots),
-> and the 1:1 wire methods live under `qoni.<product>.api.*`. If the consumer
+> and supported 1:1 wire methods live under `qoni.<product>.api.*`. If the consumer
 > resolves an older version from npm, install this repo's local build instead
 > (`npm install <path-to-qoni-sdk-node>` or a `pnpm pack` tarball) — otherwise
 > the code below will not match the installed SDK.
@@ -262,6 +262,101 @@ for await (const event of run.events()) {
 ### Wire-level stream (escape hatch)
 
 `qoni.doAnything.api.events({ token, sessionId, runId, signal?, lastEventId?, onlyTopLevel? })` yields raw `{ id?, event, data }` wire events: the type is a raw string on `event.event` (e.g. `"run.status_changed"`), the payload is `event.data.data` (snake_case), and `event.data.task_id` identifies the run. `run.status_changed` payloads carry the new status in `.to` (NOT `.status`). Terminal detection is `event.event === "run.completed"`. Wire names are internal and may evolve — prefer the high-level `run.events()` + `event.type` instead.
+
+## Track and deprecated snapshot reads
+
+Use `track.create({ token, prompt, schedule, title? })` with an explicit
+`{ kind: "interval", intervalSeconds: N }` (integer 600–2592000 seconds) or
+`{ kind: "daily", at: "HH:MM", tz: "Area/City" }`. Daily starts 0–30 minutes
+before the target. Prompt maps to instructions; include URLs there. No default
+schedule is inferred, and arbitrary cron is rejected with a daily alternative.
+
+The historical `MonitorHandle` name remains. `get()` normalizes the real Track
+record: known schedule shapes convert without write-bound/Intl revalidation;
+unknown/incomplete wire schedules stay verbatim. Input validation remains strict.
+`pause()`/`resume()` PATCH status; pause keeps any started check running.
+`refine()` accepts title/schedule only and cannot change instructions.
+`runNow()` returns `{ trackId, sessionId, runId }` (202 acceptance); it can
+surface 409 task_in_progress. `runs({ limit?, offset? })` slices the newest 50
+checks locally; `run(id)` searches that exact window and reports its range on
+not_found. Keep real status/outcome/headline/answer/failure, never invent
+extracted/diffs/snapshotId. `delete()` soft-deletes without cancelling a running task.
+
+Create starts a first_look immediately. Capture the original initial lastTaskId,
+wait for that exact check to terminate, then call runNow once; never retry 409
+implicitly or substitute another check. Checks keep `running/done/failed/expired/
+canceled`; success is done, distinct from RunResult.status succeeded. A missing
+check in the recent window is local not_found without an HTTP status; a missing
+Track is backend 404 track_not_found.
+
+The example uses the reusable qoni client and delegated token from Core Contract:
+
+```ts
+import type { MonitorSchedule } from "@qoniai/qoni";
+
+const monitor = await qoni.track.create({
+  token,
+  prompt: "Watch https://example.com/policy and report changes.",
+  title: "Policy changes",
+  schedule: { kind: "interval", intervalSeconds: 3600 },
+}); // create immediately starts a first_look check
+const initial = await monitor.get();
+const firstRunId = initial.lastTaskId; // capture this original ID once
+if (typeof firstRunId !== "string" || !firstRunId) throw new Error("Missing initial lastTaskId");
+const sameMonitor = await qoni.track.attach(monitor.id, { token });
+
+async function waitForCheck(runId: string) {
+  const deadline = Date.now() + 300_000;
+  do {
+    const check = await monitor.run(runId); // exact ID in the recent 50 checks
+    if (["done", "failed", "expired", "canceled"].includes(String(check.status))) {
+      if (check.status !== "done") throw new Error(`Check ${runId} ${String(check.status)}: ${String(check.failure ?? "")}`);
+      return check;
+    }
+    await new Promise(resolve => setTimeout(resolve, Math.min(1000, Math.max(0, deadline - Date.now()))));
+  } while (Date.now() < deadline);
+  throw new Error(`Check ${runId} timed out`);
+}
+
+try {
+  await monitor.pause(); // pause future scheduling; the first look continues
+  await waitForCheck(firstRunId);
+  await monitor.refine({ schedule: initial.schedule as MonitorSchedule }); // our known, validated input roundtrips
+  await monitor.refine({ schedule: { kind: "daily", at: "09:00", tz: "Asia/Singapore" } });
+  const task = await monitor.runNow(); // one explicit manual check while scheduling is paused
+  const check = await waitForCheck(task.runId); // 202 acceptance is not completion
+  const checks = await monitor.runs({ limit: 10, offset: 0 });
+  await monitor.resume();
+} finally {
+  await monitor.delete(); // soft-delete; any in-flight check continues
+}
+```
+
+Wire API mapping (all supported routes use `/track/tracks`, not `/monitors`):
+
+| Method | Contract |
+| --- | --- |
+| createMonitor / getMonitor | POST / GET Track; create uses instructions/title and wire schedule every_seconds or daily_at/tz. |
+| updateMonitor | PATCH title/instructions/schedule/status; raw instructions is supported, high-level refine is stricter. |
+| runNow / deleteMonitor | POST run_now returns track_id/session_id/run_id; DELETE returns empty 204. |
+| listRuns / getRun | GET checks, local pagination/exact lookup within the recent 50. |
+| api.events / api.intervene / MonitorHandle.events / interactionHandle | Deprecated; local QoniUnsupportedError, zero HTTP and zero token exchange. No Track scope authorizes DoAnything actions. |
+
+Legacy targetUrls/extractionSchema/triggerDsl/stopConditionDsl/notifyChannel
+(including snake_case) and url are unsupported local errors, never folded into
+instructions. Cron and legacy event/option types remain exported, deprecated.
+Invalid or missing input schedules raise QoniValidationError before HTTP.
+Optional undefined keys keep their original omission behavior; defined
+unsupported values (including null) are still local errors. Interval tz, when
+specified, is an invalid schedule and raises QoniValidationError.
+
+`doAnything.api.readArtifacts` and DoAnythingSnapshot/SnapshotImage/SnapshotAction
+are deprecated: no backend snapshot route/source exists. The method raises
+local QoniUnsupportedError (`unsupported.operation`), zero HTTP. Read actual
+files with `qoni.doAnything.artifacts({ token, runId })` / api.listArtifacts and download via
+artifact.content()/api.artifactDownloadUrl. For images, enable
+capture.screenshots and consume screenshot events. A text artifact is not a
+snapshot. Deprecated unsupported negatives never count as positive capability coverage.
 
 ## Do Anything Interactions (human handoff)
 

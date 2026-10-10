@@ -14,6 +14,7 @@ export type QoniErrorCode =
   | "permission_denied"
   | "token.expired"
   | "validation.failed"
+  | "unsupported.operation"
   | "rate_limit.exceeded"
   | "upstream.failed"
   | "timeout"
@@ -123,6 +124,14 @@ export class QoniValidationError extends QoniError {
   constructor(message: string, options: QoniErrorOptions = {}) {
     super(message, { code: "validation.failed", ...options });
     this.name = "QoniValidationError";
+  }
+}
+
+/** A retained SDK surface with no corresponding backend operation; no HTTP is issued. */
+export class QoniUnsupportedError extends QoniError {
+  constructor(message: string, options: QoniErrorOptions = {}) {
+    super(message, { code: "unsupported.operation", ...options });
+    this.name = "QoniUnsupportedError";
   }
 }
 

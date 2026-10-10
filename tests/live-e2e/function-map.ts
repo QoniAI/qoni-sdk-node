@@ -1,5 +1,5 @@
 /**
- * 公开函数 → 覆盖它的 live e2e 测试。**由 evidence_tools.py map 生成，勿手改。**
+ * 公开函数 → 覆盖它的 live e2e 测试。**本轮按 TypeScript AST 刷新测试位置，保留非 Track 历史层级。**
  *
  * 这里不做任何字符串猜测：每条 `tests[]` 都来自 coverage-map.json 的调用点
  * （文件:行号）反查出的那个 `it(...)` 块，`name` 就是 vitest
@@ -119,14 +119,8 @@ export const FUNCTION_TEST_MAP: readonly FunctionMapEntry[] = [
     "id": "qoni-current-user",
     "name": "qoni.currentUser",
     "tier": "VERIFIED",
-    "tests": [
-      {
-        "file": "auth-gumem.test.ts",
-        "name": "live e2e: auth and GUMem > currentUser({ accessToken }) resolves a logged-in user",
-        "line": 78,
-        "endLine": 82
-      }
-    ]
+    "tests": [],
+    "noLiveTest": "Historical Track/snapshot live reference retired; no current live test mapped to this function."
   },
   {
     "id": "qoni-resolve-any-bound-user",
@@ -145,27 +139,15 @@ export const FUNCTION_TEST_MAP: readonly FunctionMapEntry[] = [
     "id": "qoni-request",
     "name": "qoni.request",
     "tier": "VERIFIED",
-    "tests": [
-      {
-        "file": "auth-gumem.test.ts",
-        "name": "live e2e: auth and GUMem > request({ method, path }) executes a configured signed request",
-        "line": 94,
-        "endLine": 98
-      }
-    ]
+    "tests": [],
+    "noLiveTest": "Historical Track/snapshot live reference retired; no current live test mapped to this function."
   },
   {
     "id": "qoni-unstable-request",
     "name": "qoni.unstableRequest",
     "tier": "VERIFIED",
-    "tests": [
-      {
-        "file": "auth-gumem.test.ts",
-        "name": "live e2e: auth and GUMem > unstableRequest({ method, path }) remains a working alias",
-        "line": 100,
-        "endLine": 104
-      }
-    ]
+    "tests": [],
+    "noLiveTest": "Historical Track/snapshot live reference retired; no current live test mapped to this function."
   },
   {
     "id": "qoni-qoni-delegate-token",
@@ -223,14 +205,8 @@ export const FUNCTION_TEST_MAP: readonly FunctionMapEntry[] = [
     "id": "qoni-genauth-user-info",
     "name": "qoni.genauth.userInfo",
     "tier": "VERIFIED",
-    "tests": [
-      {
-        "file": "auth-gumem.test.ts",
-        "name": "live e2e: auth and GUMem > genauth.userInfo({ accessToken }) resolves the same login",
-        "line": 84,
-        "endLine": 88
-      }
-    ]
+    "tests": [],
+    "noLiveTest": "Historical Track/snapshot live reference retired; no current live test mapped to this function."
   },
   {
     "id": "qoni-genauth-jwks",
@@ -570,14 +546,14 @@ export const FUNCTION_TEST_MAP: readonly FunctionMapEntry[] = [
       {
         "file": "interactions.test.ts",
         "name": "live e2e: interactions (InteractionHandle + run.interactionHandle) > a real backend interaction reaches run.wait({ onInteraction }) as an InteractionHandle",
-        "line": 81,
-        "endLine": 145
+        "line": 80,
+        "endLine": 144
       },
       {
         "file": "interactions.test.ts",
         "name": "live e2e: interactions (InteractionHandle + run.interactionHandle) > induction attempt: no PENDING interaction with declared actions is reachable here",
-        "line": 211,
-        "endLine": 258
+        "line": 210,
+        "endLine": 257
       }
     ]
   },
@@ -602,8 +578,8 @@ export const FUNCTION_TEST_MAP: readonly FunctionMapEntry[] = [
       {
         "file": "wire-api.test.ts",
         "name": "live e2e: wire escape hatch — doAnything.api > api.createSession() creates a do_anything session shell",
-        "line": 526,
-        "endLine": 545
+        "line": 314,
+        "endLine": 333
       }
     ]
   },
@@ -615,8 +591,8 @@ export const FUNCTION_TEST_MAP: readonly FunctionMapEntry[] = [
       {
         "file": "wire-api.test.ts",
         "name": "live e2e: wire escape hatch — doAnything.api > api.createRun() creates the run and its session in one call",
-        "line": 547,
-        "endLine": 569
+        "line": 335,
+        "endLine": 357
       }
     ]
   },
@@ -634,8 +610,8 @@ export const FUNCTION_TEST_MAP: readonly FunctionMapEntry[] = [
       {
         "file": "wire-api.test.ts",
         "name": "live e2e: wire escape hatch — doAnything.api > api.getRun() addresses the run by run_id alone",
-        "line": 571,
-        "endLine": 586
+        "line": 359,
+        "endLine": 374
       }
     ]
   },
@@ -647,8 +623,8 @@ export const FUNCTION_TEST_MAP: readonly FunctionMapEntry[] = [
       {
         "file": "wire-api.test.ts",
         "name": "live e2e: wire escape hatch — doAnything.api > api.events() streams the raw browser-harness envelopes to run.completed",
-        "line": 605,
-        "endLine": 666
+        "line": 393,
+        "endLine": 454
       }
     ]
   },
@@ -660,14 +636,14 @@ export const FUNCTION_TEST_MAP: readonly FunctionMapEntry[] = [
       {
         "file": "interactions.test.ts",
         "name": "live e2e: interactions (InteractionHandle + run.interactionHandle) > a real backend interaction reaches run.wait({ onInteraction }) as an InteractionHandle",
-        "line": 81,
-        "endLine": 145
+        "line": 80,
+        "endLine": 144
       },
       {
         "file": "wire-api.test.ts",
         "name": "live e2e: wire escape hatch — doAnything.api > api.intervene() posts an answer through the run's intervene route",
-        "line": 588,
-        "endLine": 603
+        "line": 376,
+        "endLine": 391
       }
     ]
   },
@@ -679,8 +655,8 @@ export const FUNCTION_TEST_MAP: readonly FunctionMapEntry[] = [
       {
         "file": "wire-api.test.ts",
         "name": "live e2e: wire escape hatch — doAnything.api > api.cancel() on a settled run returns its terminal wire state",
-        "line": 709,
-        "endLine": 717
+        "line": 468,
+        "endLine": 476
       }
     ]
   },
@@ -688,14 +664,8 @@ export const FUNCTION_TEST_MAP: readonly FunctionMapEntry[] = [
     "id": "qoni-do-anything-api-read-artifacts",
     "name": "qoni.doAnything.api.readArtifacts",
     "tier": "GUARD_ONLY",
-    "tests": [
-      {
-        "file": "wire-api.test.ts",
-        "name": "live e2e: wire escape hatch — doAnything.api > api.readArtifacts() reaches the session artifact route and 404s an unknown id",
-        "line": 677,
-        "endLine": 707
-      }
-    ]
+    "tests": [],
+    "noLiveTest": "Deprecated unsupported surface: local QoniUnsupportedError with zero HTTP. No backend route/source and no positive live capability coverage; see gray-track-contract.test.ts."
   },
   {
     "id": "qoni-do-anything-api-read-recording",
@@ -725,14 +695,14 @@ export const FUNCTION_TEST_MAP: readonly FunctionMapEntry[] = [
       {
         "file": "wire-api.test.ts",
         "name": "live e2e: wire escape hatch — doAnything.api > api.createSession() creates a do_anything session shell",
-        "line": 526,
-        "endLine": 545
+        "line": 314,
+        "endLine": 333
       },
       {
         "file": "wire-api.test.ts",
         "name": "live e2e: wire escape hatch — doAnything.api > api.readRecording() reads the session recording envelope",
-        "line": 668,
-        "endLine": 675
+        "line": 456,
+        "endLine": 463
       }
     ]
   },
@@ -932,8 +902,8 @@ export const FUNCTION_TEST_MAP: readonly FunctionMapEntry[] = [
       {
         "file": "wire-api.test.ts",
         "name": "live e2e: wire escape hatch — deepResearch.api > api.run() posts the wire create body and returns the run envelope",
-        "line": 743,
-        "endLine": 761
+        "line": 502,
+        "endLine": 520
       }
     ]
   },
@@ -951,8 +921,8 @@ export const FUNCTION_TEST_MAP: readonly FunctionMapEntry[] = [
       {
         "file": "wire-api.test.ts",
         "name": "live e2e: wire escape hatch — deepResearch.api > api.get() addresses the run by id",
-        "line": 763,
-        "endLine": 768
+        "line": 522,
+        "endLine": 527
       }
     ]
   },
@@ -964,8 +934,8 @@ export const FUNCTION_TEST_MAP: readonly FunctionMapEntry[] = [
       {
         "file": "wire-api.test.ts",
         "name": "live e2e: wire escape hatch — deepResearch.api > api.events() streams the research pipeline to run.completed",
-        "line": 781,
-        "endLine": 809
+        "line": 540,
+        "endLine": 568
       }
     ]
   },
@@ -977,14 +947,14 @@ export const FUNCTION_TEST_MAP: readonly FunctionMapEntry[] = [
       {
         "file": "wire-api.test.ts",
         "name": "live e2e: wire escape hatch — deepResearch.api > api.followUp() is refused with task_in_progress while the run is live",
-        "line": 770,
-        "endLine": 779
+        "line": 529,
+        "endLine": 538
       },
       {
         "file": "wire-api.test.ts",
         "name": "live e2e: wire escape hatch — deepResearch.api > api.followUp() is accepted once the run is terminal",
-        "line": 848,
-        "endLine": 856
+        "line": 607,
+        "endLine": 615
       }
     ]
   },
@@ -996,8 +966,8 @@ export const FUNCTION_TEST_MAP: readonly FunctionMapEntry[] = [
       {
         "file": "wire-api.test.ts",
         "name": "live e2e: wire escape hatch — deepResearch.api > api.cancel() on a settled run returns its terminal wire state",
-        "line": 858,
-        "endLine": 862
+        "line": 617,
+        "endLine": 621
       }
     ]
   },
@@ -1022,8 +992,8 @@ export const FUNCTION_TEST_MAP: readonly FunctionMapEntry[] = [
       {
         "file": "wire-api.test.ts",
         "name": "live e2e: wire escape hatch — deepResearch.api > api.listArtifacts() lists the report deliverables",
-        "line": 811,
-        "endLine": 826
+        "line": 570,
+        "endLine": 585
       }
     ]
   },
@@ -1035,283 +1005,150 @@ export const FUNCTION_TEST_MAP: readonly FunctionMapEntry[] = [
       {
         "file": "wire-api.test.ts",
         "name": "live e2e: wire escape hatch — deepResearch.api > api.getArtifact() reads a single artifact by id",
-        "line": 828,
-        "endLine": 846
+        "line": 587,
+        "endLine": 605
       }
     ]
   },
   {
     "id": "qoni-track-create",
     "name": "qoni.track.create",
-    "tier": "VERIFIED",
+    "tier": "MOCK_ONLY",
     "tests": [
       {
         "file": "track.test.ts",
-        "name": "live e2e: Track (semantic surface) > track.create({ token, intent, schedule, ... }) returns a monitor monitor",
-        "line": 59,
-        "endLine": 63,
-        "via": "ensureMonitor()"
-      },
-      {
-        "file": "track.test.ts",
-        "name": "live e2e: Track (semantic surface) > monitor.get() returns the normalized monitor definition",
-        "line": 65,
-        "endLine": 74,
-        "via": "ensureMonitor()"
-      },
-      {
-        "file": "track.test.ts",
-        "name": "live e2e: Track (semantic surface) > track.attach() reconnects to the monitor",
-        "line": 76,
-        "endLine": 83,
-        "via": "ensureMonitor()"
-      },
-      {
-        "file": "track.test.ts",
-        "name": "live e2e: Track (semantic surface) > monitor.refine() is observable on monitor.events()",
-        "line": 85,
-        "endLine": 99,
-        "via": "ensureMonitor()"
-      },
-      {
-        "file": "track.test.ts",
-        "name": "live e2e: Track (semantic surface) > monitor.pause() / resume() control scheduled execution",
-        "line": 101,
-        "endLine": 108,
-        "via": "ensureMonitor()"
-      },
-      {
-        "file": "track.test.ts",
-        "name": "live e2e: Track (semantic surface) > monitor.runNow() triggers an immediate tick",
-        "line": 110,
-        "endLine": 114,
-        "via": "ensureMonitor()"
-      },
-      {
-        "file": "track.test.ts",
-        "name": "live e2e: Track (semantic surface) > records a RECURRING scheduler-driven cadence to disk via event.raw",
-        "line": 131,
-        "endLine": 219,
-        "via": "ensureMonitor()"
-      },
-      {
-        "file": "track.test.ts",
-        "name": "live e2e: Track (semantic surface) > monitor.runs() / monitor.run() expose tick runs read-only",
-        "line": 221,
-        "endLine": 231,
-        "via": "ensureMonitor()"
-      },
-      {
-        "file": "track.test.ts",
-        "name": "live e2e: Track (semantic surface) > escape hatch: api.getMonitor({ token, monitorId }) still speaks wire",
-        "line": 235,
-        "endLine": 240,
-        "via": "ensureMonitor()"
-      },
-      {
-        "file": "track.test.ts",
-        "name": "live e2e: Track (semantic surface) > monitor.delete() removes the monitor",
-        "line": 242,
-        "endLine": 247,
-        "via": "ensureMonitor()"
+        "name": "live e2e: Track (semantic surface) > track.create returns an active Track from explicit prompt/schedule",
+        "line": 39,
+        "endLine": 47
       }
-    ]
+    ],
+    "noLiveTest": "Current WA 596310a3 mapping verified against local HTTP fixtures only; these updated live tests have not run. Historical monitor live results do not verify this contract."
   },
   {
     "id": "qoni-track-attach",
     "name": "qoni.track.attach",
-    "tier": "VERIFIED",
+    "tier": "MOCK_ONLY",
     "tests": [
       {
         "file": "track.test.ts",
-        "name": "live e2e: Track (semantic surface) > track.attach() reconnects to the monitor",
-        "line": 76,
-        "endLine": 83
+        "name": "live e2e: Track (semantic surface) > track.attach reconnects to the real Track",
+        "line": 54,
+        "endLine": 57
       }
-    ]
+    ],
+    "noLiveTest": "Current WA 596310a3 mapping verified against local HTTP fixtures only; these updated live tests have not run. Historical monitor live results do not verify this contract."
   },
   {
     "id": "qoni-track-api-create-monitor",
     "name": "qoni.track.api.createMonitor",
-    "tier": "VERIFIED",
+    "tier": "MOCK_ONLY",
     "tests": [
       {
-        "file": "interactions.test.ts",
-        "name": "live e2e: interactions — Track's clarification is not an Interaction > a monitor asking for input emits monitor.alignment_progress, not run.interaction",
-        "line": 293,
-        "endLine": 337
-      },
-      {
         "file": "wire-api.test.ts",
-        "name": "live e2e: wire escape hatch — track.api > api.createMonitor() returns the snake_case monitor definition",
-        "line": 231,
-        "endLine": 254
-      },
-      {
-        "file": "wire-api.test.ts",
-        "name": "live e2e: wire escape hatch — track.api > api.intervene() answers a real alignment question and drives the monitor to active",
-        "line": 358,
-        "endLine": 473
+        "name": "live e2e: wire escape hatch — track.api > api.createMonitor creates a real Track with instructions and a wire schedule",
+        "line": 240,
+        "endLine": 255
       }
-    ]
+    ],
+    "noLiveTest": "Current WA 596310a3 mapping verified against local HTTP fixtures only; these updated live tests have not run. Historical monitor live results do not verify this contract."
   },
   {
     "id": "qoni-track-api-get-monitor",
     "name": "qoni.track.api.getMonitor",
-    "tier": "VERIFIED",
+    "tier": "MOCK_ONLY",
     "tests": [
       {
-        "file": "track.test.ts",
-        "name": "live e2e: Track (semantic surface) > escape hatch: api.getMonitor({ token, monitorId }) still speaks wire",
-        "line": 235,
-        "endLine": 240
-      },
-      {
         "file": "wire-api.test.ts",
-        "name": "live e2e: wire escape hatch — track.api > api.getMonitor() re-reads the monitor by id",
+        "name": "live e2e: wire escape hatch — track.api > api.getMonitor reads the real Track by id",
         "line": 256,
-        "endLine": 260
-      },
-      {
-        "file": "wire-api.test.ts",
-        "name": "live e2e: wire escape hatch — track.api > api.intervene() answers a real alignment question and drives the monitor to active",
-        "line": 358,
-        "endLine": 473
-      },
-      {
-        "file": "wire-api.test.ts",
-        "name": "live e2e: wire escape hatch — track.api > api.deleteMonitor() retires the monitor",
-        "line": 475,
-        "endLine": 494
+        "endLine": 258
       }
-    ]
+    ],
+    "noLiveTest": "Current WA 596310a3 mapping verified against local HTTP fixtures only; these updated live tests have not run. Historical monitor live results do not verify this contract."
   },
   {
     "id": "qoni-track-api-run-now",
     "name": "qoni.track.api.runNow",
-    "tier": "VERIFIED",
+    "tier": "MOCK_ONLY",
     "tests": [
       {
         "file": "wire-api.test.ts",
-        "name": "live e2e: wire escape hatch — track.api > api.runNow() fires an immediate tick and returns the tick record",
-        "line": 265,
-        "endLine": 273
-      },
-      {
-        "file": "wire-api.test.ts",
-        "name": "live e2e: wire escape hatch — track.api > api.deleteMonitor() retires the monitor",
-        "line": 475,
-        "endLine": 494
+        "name": "live e2e: wire escape hatch — track.api > api.runNow returns only a real task reference and waits for its exact check",
+        "line": 264,
+        "endLine": 270
       }
-    ]
+    ],
+    "noLiveTest": "Current WA 596310a3 mapping verified against local HTTP fixtures only; these updated live tests have not run. Historical monitor live results do not verify this contract."
   },
   {
     "id": "qoni-track-api-events",
     "name": "qoni.track.api.events",
-    "tier": "VERIFIED",
-    "tests": [
-      {
-        "file": "interactions.test.ts",
-        "name": "live e2e: interactions — Track's clarification is not an Interaction > a monitor asking for input emits monitor.alignment_progress, not run.interaction",
-        "line": 293,
-        "endLine": 337
-      },
-      {
-        "file": "wire-api.test.ts",
-        "name": "live e2e: wire escape hatch — track.api > api.events() streams the monitor's raw lifecycle envelopes",
-        "line": 317,
-        "endLine": 336
-      },
-      {
-        "file": "wire-api.test.ts",
-        "name": "live e2e: wire escape hatch — track.api > api.intervene() answers a real alignment question and drives the monitor to active",
-        "line": 358,
-        "endLine": 473
-      }
-    ]
+    "tier": "GUARD_ONLY",
+    "tests": [],
+    "noLiveTest": "Deprecated unsupported surface: local QoniUnsupportedError with zero HTTP. No backend route/source and no positive live capability coverage; see gray-track-contract.test.ts."
   },
   {
     "id": "qoni-track-api-intervene",
     "name": "qoni.track.api.intervene",
-    "tier": "VERIFIED",
-    "tests": [
-      {
-        "file": "wire-api.test.ts",
-        "name": "live e2e: wire escape hatch — track.api > api.intervene() is refused with monitor_not_in_alignment on an active monitor",
-        "line": 338,
-        "endLine": 356
-      },
-      {
-        "file": "wire-api.test.ts",
-        "name": "live e2e: wire escape hatch — track.api > api.intervene() answers a real alignment question and drives the monitor to active",
-        "line": 358,
-        "endLine": 473
-      }
-    ]
+    "tier": "GUARD_ONLY",
+    "tests": [],
+    "noLiveTest": "Deprecated unsupported surface: local QoniUnsupportedError with zero HTTP. No backend route/source and no positive live capability coverage; see gray-track-contract.test.ts."
   },
   {
     "id": "qoni-track-api-list-runs",
     "name": "qoni.track.api.listRuns",
-    "tier": "VERIFIED",
+    "tier": "MOCK_ONLY",
     "tests": [
       {
         "file": "wire-api.test.ts",
-        "name": "live e2e: wire escape hatch — track.api > api.listRuns() / api.getRun() expose the tick runs at wire level",
-        "line": 293,
-        "endLine": 315
+        "name": "live e2e: wire escape hatch — track.api > api.listRuns and getRun return recent checks without snapshot fields",
+        "line": 271,
+        "endLine": 277
       }
-    ]
+    ],
+    "noLiveTest": "Current WA 596310a3 mapping verified against local HTTP fixtures only; these updated live tests have not run. Historical monitor live results do not verify this contract."
   },
   {
     "id": "qoni-track-api-get-run",
     "name": "qoni.track.api.getRun",
-    "tier": "VERIFIED",
+    "tier": "MOCK_ONLY",
     "tests": [
       {
         "file": "wire-api.test.ts",
-        "name": "live e2e: wire escape hatch — track.api > api.listRuns() / api.getRun() expose the tick runs at wire level",
-        "line": 293,
-        "endLine": 315
+        "name": "live e2e: wire escape hatch — track.api > api.listRuns and getRun return recent checks without snapshot fields",
+        "line": 271,
+        "endLine": 277
       }
-    ]
+    ],
+    "noLiveTest": "Current WA 596310a3 mapping verified against local HTTP fixtures only; these updated live tests have not run. Historical monitor live results do not verify this contract."
   },
   {
     "id": "qoni-track-api-update-monitor",
     "name": "qoni.track.api.updateMonitor",
-    "tier": "VERIFIED",
+    "tier": "MOCK_ONLY",
     "tests": [
       {
         "file": "wire-api.test.ts",
-        "name": "live e2e: wire escape hatch — track.api > api.updateMonitor() applies pause/resume through the PATCH route",
-        "line": 275,
-        "endLine": 291
-      },
-      {
-        "file": "wire-api.test.ts",
-        "name": "live e2e: wire escape hatch — track.api > api.events() streams the monitor's raw lifecycle envelopes",
-        "line": 317,
-        "endLine": 336
+        "name": "live e2e: wire escape hatch — track.api > api.updateMonitor PATCHes real paused and active statuses",
+        "line": 259,
+        "endLine": 263
       }
-    ]
+    ],
+    "noLiveTest": "Current WA 596310a3 mapping verified against local HTTP fixtures only; these updated live tests have not run. Historical monitor live results do not verify this contract."
   },
   {
     "id": "qoni-track-api-delete-monitor",
     "name": "qoni.track.api.deleteMonitor",
-    "tier": "VERIFIED",
+    "tier": "MOCK_ONLY",
     "tests": [
       {
         "file": "wire-api.test.ts",
-        "name": "live e2e: wire escape hatch — track.api > api.intervene() answers a real alignment question and drives the monitor to active",
-        "line": 358,
-        "endLine": 473
-      },
-      {
-        "file": "wire-api.test.ts",
-        "name": "live e2e: wire escape hatch — track.api > api.deleteMonitor() retires the monitor",
-        "line": 475,
-        "endLine": 494
+        "name": "live e2e: wire escape hatch — track.api > api.deleteMonitor accepts empty 204 and the deleted Track reads as 404",
+        "line": 278,
+        "endLine": 281
       }
-    ]
+    ],
+    "noLiveTest": "Current WA 596310a3 mapping verified against local HTTP fixtures only; these updated live tests have not run. Historical monitor live results do not verify this contract."
   },
   {
     "id": "run-handle-status",
@@ -1388,24 +1225,6 @@ export const FUNCTION_TEST_MAP: readonly FunctionMapEntry[] = [
         "endLine": 163
       },
       {
-        "file": "interactions.test.ts",
-        "name": "live e2e: interactions — Track's clarification is not an Interaction > a monitor asking for input emits monitor.alignment_progress, not run.interaction",
-        "line": 293,
-        "endLine": 337
-      },
-      {
-        "file": "track.test.ts",
-        "name": "live e2e: Track (semantic surface) > monitor.refine() is observable on monitor.events()",
-        "line": 85,
-        "endLine": 99
-      },
-      {
-        "file": "track.test.ts",
-        "name": "live e2e: Track (semantic surface) > records a RECURRING scheduler-driven cadence to disk via event.raw",
-        "line": 131,
-        "endLine": 219
-      },
-      {
         "file": "web-search.test.ts",
         "name": "live e2e: Web Search (semantic surface) > run.events() yields normalized semantic events",
         "line": 125,
@@ -1419,27 +1238,15 @@ export const FUNCTION_TEST_MAP: readonly FunctionMapEntry[] = [
       },
       {
         "file": "wire-api.test.ts",
-        "name": "live e2e: wire escape hatch — track.api > api.events() streams the monitor's raw lifecycle envelopes",
-        "line": 317,
-        "endLine": 336
-      },
-      {
-        "file": "wire-api.test.ts",
-        "name": "live e2e: wire escape hatch — track.api > api.intervene() answers a real alignment question and drives the monitor to active",
-        "line": 358,
-        "endLine": 473
-      },
-      {
-        "file": "wire-api.test.ts",
         "name": "live e2e: wire escape hatch — doAnything.api > api.events() streams the raw browser-harness envelopes to run.completed",
-        "line": 605,
-        "endLine": 666
+        "line": 393,
+        "endLine": 454
       },
       {
         "file": "wire-api.test.ts",
         "name": "live e2e: wire escape hatch — deepResearch.api > api.events() streams the research pipeline to run.completed",
-        "line": 781,
-        "endLine": 809
+        "line": 540,
+        "endLine": 568
       }
     ]
   },
@@ -1486,14 +1293,14 @@ export const FUNCTION_TEST_MAP: readonly FunctionMapEntry[] = [
       {
         "file": "interactions.test.ts",
         "name": "live e2e: interactions (InteractionHandle + run.interactionHandle) > a real backend interaction reaches run.wait({ onInteraction }) as an InteractionHandle",
-        "line": 81,
-        "endLine": 145
+        "line": 80,
+        "endLine": 144
       },
       {
         "file": "interactions.test.ts",
         "name": "live e2e: interactions (InteractionHandle + run.interactionHandle) > induction attempt: no PENDING interaction with declared actions is reachable here",
-        "line": 211,
-        "endLine": 258
+        "line": 210,
+        "endLine": 257
       },
       {
         "file": "web-search.test.ts",
@@ -1519,26 +1326,26 @@ export const FUNCTION_TEST_MAP: readonly FunctionMapEntry[] = [
       {
         "file": "interactions.test.ts",
         "name": "live e2e: interactions (InteractionHandle + run.interactionHandle) > a real backend interaction reaches run.wait({ onInteraction }) as an InteractionHandle",
-        "line": 81,
-        "endLine": 145
+        "line": 80,
+        "endLine": 144
       },
       {
         "file": "interactions.test.ts",
         "name": "live e2e: interactions (InteractionHandle + run.interactionHandle) > run.interactionHandle() wraps the backend's Interaction with matching identity",
-        "line": 147,
-        "endLine": 157
+        "line": 146,
+        "endLine": 156
       },
       {
         "file": "interactions.test.ts",
         "name": "live e2e: interactions (InteractionHandle + run.interactionHandle) > can() reports exactly the actions the backend declared",
-        "line": 159,
-        "endLine": 169
+        "line": 158,
+        "endLine": 168
       },
       {
         "file": "interactions.test.ts",
         "name": "live e2e: interactions (InteractionHandle + run.interactionHandle) > every action method refuses an action the backend did not declare",
-        "line": 171,
-        "endLine": 209
+        "line": 170,
+        "endLine": 208
       }
     ]
   },
@@ -1562,8 +1369,8 @@ export const FUNCTION_TEST_MAP: readonly FunctionMapEntry[] = [
       {
         "file": "interactions.test.ts",
         "name": "live e2e: interactions (InteractionHandle + run.interactionHandle) > induction attempt: no PENDING interaction with declared actions is reachable here",
-        "line": 211,
-        "endLine": 258
+        "line": 210,
+        "endLine": 257
       },
       {
         "file": "web-search.test.ts",
@@ -1580,244 +1387,142 @@ export const FUNCTION_TEST_MAP: readonly FunctionMapEntry[] = [
       {
         "file": "wire-api.test.ts",
         "name": "live e2e: wire escape hatch — doAnything.api > api.cancel() on a settled run returns its terminal wire state",
-        "line": 709,
-        "endLine": 717
+        "line": 468,
+        "endLine": 476
       },
       {
         "file": "wire-api.test.ts",
         "name": "live e2e: wire escape hatch — deepResearch.api > api.cancel() on a settled run returns its terminal wire state",
-        "line": 858,
-        "endLine": 862
+        "line": 617,
+        "endLine": 621
       }
     ]
   },
   {
     "id": "monitor-handle-get",
     "name": "MonitorHandle.get",
-    "tier": "VERIFIED",
+    "tier": "MOCK_ONLY",
     "tests": [
       {
-        "file": "query-matrix.test.ts",
-        "name": "live e2e: local public Query matrix > $id [$function]",
-        "line": 79,
-        "endLine": 100,
-        "dynamic": true,
-        "via": "tokenFor()"
-      },
-      {
         "file": "track.test.ts",
-        "name": "live e2e: Track (semantic surface) > monitor.get() returns the normalized monitor definition",
-        "line": 65,
-        "endLine": 74
-      },
-      {
-        "file": "track.test.ts",
-        "name": "live e2e: Track (semantic surface) > track.attach() reconnects to the monitor",
-        "line": 76,
-        "endLine": 83
-      },
-      {
-        "file": "track.test.ts",
-        "name": "live e2e: Track (semantic surface) > records a RECURRING scheduler-driven cadence to disk via event.raw",
-        "line": 131,
-        "endLine": 219
-      },
-      {
-        "file": "wire-api.test.ts",
-        "name": "live e2e: wire escape hatch — webSearch.api > api.get() addresses the run by id and returns the same wire envelope",
-        "line": 143,
-        "endLine": 150
-      },
-      {
-        "file": "wire-api.test.ts",
-        "name": "live e2e: wire escape hatch — track.api > api.createMonitor() returns the snake_case monitor definition",
-        "line": 231,
-        "endLine": 254
-      },
-      {
-        "file": "wire-api.test.ts",
-        "name": "live e2e: wire escape hatch — deepResearch.api > api.get() addresses the run by id",
-        "line": 763,
-        "endLine": 768
+        "name": "live e2e: Track (semantic surface) > monitor.get returns real instructions and a roundtrippable schedule",
+        "line": 48,
+        "endLine": 53
       }
-    ]
+    ],
+    "noLiveTest": "Current WA 596310a3 mapping verified against local HTTP fixtures only; these updated live tests have not run. Historical monitor live results do not verify this contract."
   },
   {
     "id": "monitor-handle-pause",
     "name": "MonitorHandle.pause",
-    "tier": "VERIFIED",
+    "tier": "MOCK_ONLY",
     "tests": [
       {
         "file": "track.test.ts",
-        "name": "live e2e: Track (semantic surface) > monitor.pause() / resume() control scheduled execution",
-        "line": 101,
-        "endLine": 108
+        "name": "live e2e: Track (semantic surface) > monitor.pause and resume persist the actual statuses",
+        "line": 63,
+        "endLine": 68
       }
-    ]
+    ],
+    "noLiveTest": "Current WA 596310a3 mapping verified against local HTTP fixtures only; these updated live tests have not run. Historical monitor live results do not verify this contract."
   },
   {
     "id": "monitor-handle-resume",
     "name": "MonitorHandle.resume",
-    "tier": "VERIFIED",
+    "tier": "MOCK_ONLY",
     "tests": [
       {
         "file": "track.test.ts",
-        "name": "live e2e: Track (semantic surface) > monitor.pause() / resume() control scheduled execution",
-        "line": 101,
-        "endLine": 108
+        "name": "live e2e: Track (semantic surface) > monitor.pause and resume persist the actual statuses",
+        "line": 63,
+        "endLine": 68
       }
-    ]
+    ],
+    "noLiveTest": "Current WA 596310a3 mapping verified against local HTTP fixtures only; these updated live tests have not run. Historical monitor live results do not verify this contract."
   },
   {
     "id": "monitor-handle-refine",
     "name": "MonitorHandle.refine",
-    "tier": "VERIFIED",
+    "tier": "MOCK_ONLY",
     "tests": [
       {
         "file": "track.test.ts",
-        "name": "live e2e: Track (semantic surface) > monitor.refine() is observable on monitor.events()",
-        "line": 85,
-        "endLine": 99
-      },
-      {
-        "file": "track.test.ts",
-        "name": "live e2e: Track (semantic surface) > records a RECURRING scheduler-driven cadence to disk via event.raw",
-        "line": 131,
-        "endLine": 219
+        "name": "live e2e: Track (semantic surface) > monitor.refine updates title and preserves instructions",
+        "line": 58,
+        "endLine": 62
       }
-    ]
+    ],
+    "noLiveTest": "Current WA 596310a3 mapping verified against local HTTP fixtures only; these updated live tests have not run. Historical monitor live results do not verify this contract."
   },
   {
     "id": "monitor-handle-run-now",
     "name": "MonitorHandle.runNow",
-    "tier": "VERIFIED",
+    "tier": "MOCK_ONLY",
     "tests": [
       {
         "file": "track.test.ts",
-        "name": "live e2e: Track (semantic surface) > monitor.runNow() triggers an immediate tick",
-        "line": 110,
-        "endLine": 114
-      },
-      {
-        "file": "wire-api.test.ts",
-        "name": "live e2e: wire escape hatch — track.api > api.runNow() fires an immediate tick and returns the tick record",
-        "line": 265,
-        "endLine": 273
-      },
-      {
-        "file": "wire-api.test.ts",
-        "name": "live e2e: wire escape hatch — track.api > api.deleteMonitor() retires the monitor",
-        "line": 475,
-        "endLine": 494
+        "name": "live e2e: Track (semantic surface) > monitor.runNow returns a task reference whose exact check reaches a successful terminal state",
+        "line": 69,
+        "endLine": 77
       }
-    ]
+    ],
+    "noLiveTest": "Current WA 596310a3 mapping verified against local HTTP fixtures only; these updated live tests have not run. Historical monitor live results do not verify this contract."
   },
   {
     "id": "monitor-handle-events",
     "name": "MonitorHandle.events",
-    "tier": "VERIFIED",
-    "tests": [
-      {
-        "file": "track.test.ts",
-        "name": "live e2e: Track (semantic surface) > monitor.refine() is observable on monitor.events()",
-        "line": 85,
-        "endLine": 99
-      },
-      {
-        "file": "track.test.ts",
-        "name": "live e2e: Track (semantic surface) > records a RECURRING scheduler-driven cadence to disk via event.raw",
-        "line": 131,
-        "endLine": 219
-      },
-      {
-        "file": "wire-api.test.ts",
-        "name": "live e2e: wire escape hatch — webSearch.api > api.events() streams raw SSE envelopes through to search.results_ready",
-        "line": 152,
-        "endLine": 194
-      },
-      {
-        "file": "wire-api.test.ts",
-        "name": "live e2e: wire escape hatch — track.api > api.events() streams the monitor's raw lifecycle envelopes",
-        "line": 317,
-        "endLine": 336
-      },
-      {
-        "file": "wire-api.test.ts",
-        "name": "live e2e: wire escape hatch — track.api > api.intervene() answers a real alignment question and drives the monitor to active",
-        "line": 358,
-        "endLine": 473
-      },
-      {
-        "file": "wire-api.test.ts",
-        "name": "live e2e: wire escape hatch — doAnything.api > api.events() streams the raw browser-harness envelopes to run.completed",
-        "line": 605,
-        "endLine": 666
-      },
-      {
-        "file": "wire-api.test.ts",
-        "name": "live e2e: wire escape hatch — deepResearch.api > api.events() streams the research pipeline to run.completed",
-        "line": 781,
-        "endLine": 809
-      }
-    ]
+    "tier": "GUARD_ONLY",
+    "tests": [],
+    "noLiveTest": "Deprecated unsupported surface: local QoniUnsupportedError with zero HTTP. No backend route/source and no positive live capability coverage; see gray-track-contract.test.ts."
   },
   {
     "id": "monitor-handle-interaction-handle",
     "name": "MonitorHandle.interactionHandle",
-    "tier": "MOCK_ONLY",
+    "tier": "GUARD_ONLY",
     "tests": [],
-    "noLiveTest": "仅 mock 覆盖（status=MOCK_ONLY）"
+    "noLiveTest": "Deprecated unsupported surface: local QoniUnsupportedError with zero HTTP. No backend route/source and no positive live capability coverage; see gray-track-contract.test.ts."
   },
   {
     "id": "monitor-handle-runs",
     "name": "MonitorHandle.runs",
-    "tier": "VERIFIED",
+    "tier": "MOCK_ONLY",
     "tests": [
       {
         "file": "track.test.ts",
-        "name": "live e2e: Track (semantic surface) > monitor.runs() / monitor.run() expose tick runs read-only",
-        "line": 221,
-        "endLine": 231
+        "name": "live e2e: Track (semantic surface) > monitor.runs and run read only real recent check fields",
+        "line": 78,
+        "endLine": 84
       }
-    ]
+    ],
+    "noLiveTest": "Current WA 596310a3 mapping verified against local HTTP fixtures only; these updated live tests have not run. Historical monitor live results do not verify this contract."
   },
   {
     "id": "monitor-handle-run",
     "name": "MonitorHandle.run",
-    "tier": "VERIFIED",
+    "tier": "MOCK_ONLY",
     "tests": [
       {
         "file": "track.test.ts",
-        "name": "live e2e: Track (semantic surface) > monitor.runs() / monitor.run() expose tick runs read-only",
-        "line": 221,
-        "endLine": 231
-      },
-      {
-        "file": "wire-api.test.ts",
-        "name": "live e2e: wire escape hatch — webSearch.api > api.run() posts the wire create body and returns the snake_case run envelope",
-        "line": 121,
-        "endLine": 141
-      },
-      {
-        "file": "wire-api.test.ts",
-        "name": "live e2e: wire escape hatch — deepResearch.api > api.run() posts the wire create body and returns the run envelope",
-        "line": 743,
-        "endLine": 761
+        "name": "live e2e: Track (semantic surface) > monitor.runs and run read only real recent check fields",
+        "line": 78,
+        "endLine": 84
       }
-    ]
+    ],
+    "noLiveTest": "Current WA 596310a3 mapping verified against local HTTP fixtures only; these updated live tests have not run. Historical monitor live results do not verify this contract."
   },
   {
     "id": "monitor-handle-delete",
     "name": "MonitorHandle.delete",
-    "tier": "VERIFIED",
+    "tier": "MOCK_ONLY",
     "tests": [
       {
         "file": "track.test.ts",
-        "name": "live e2e: Track (semantic surface) > monitor.delete() removes the monitor",
-        "line": 242,
-        "endLine": 247
+        "name": "live e2e: Track (semantic surface) > monitor.delete soft-deletes and later reads return not found",
+        "line": 90,
+        "endLine": 93
       }
-    ]
+    ],
+    "noLiveTest": "Current WA 596310a3 mapping verified against local HTTP fixtures only; these updated live tests have not run. Historical monitor live results do not verify this contract."
   },
   {
     "id": "interaction-handle-can",
@@ -1827,8 +1532,8 @@ export const FUNCTION_TEST_MAP: readonly FunctionMapEntry[] = [
       {
         "file": "interactions.test.ts",
         "name": "live e2e: interactions (InteractionHandle + run.interactionHandle) > can() reports exactly the actions the backend declared",
-        "line": 159,
-        "endLine": 169
+        "line": 158,
+        "endLine": 168
       }
     ]
   },
@@ -1840,8 +1545,8 @@ export const FUNCTION_TEST_MAP: readonly FunctionMapEntry[] = [
       {
         "file": "interactions.test.ts",
         "name": "live e2e: interactions (InteractionHandle + run.interactionHandle) > every action method refuses an action the backend did not declare",
-        "line": 171,
-        "endLine": 209
+        "line": 170,
+        "endLine": 208
       }
     ]
   },
@@ -1853,8 +1558,8 @@ export const FUNCTION_TEST_MAP: readonly FunctionMapEntry[] = [
       {
         "file": "interactions.test.ts",
         "name": "live e2e: interactions (InteractionHandle + run.interactionHandle) > every action method refuses an action the backend did not declare",
-        "line": 171,
-        "endLine": 209
+        "line": 170,
+        "endLine": 208
       }
     ]
   },
@@ -1866,8 +1571,8 @@ export const FUNCTION_TEST_MAP: readonly FunctionMapEntry[] = [
       {
         "file": "interactions.test.ts",
         "name": "live e2e: interactions (InteractionHandle + run.interactionHandle) > every action method refuses an action the backend did not declare",
-        "line": 171,
-        "endLine": 209
+        "line": 170,
+        "endLine": 208
       }
     ]
   },
@@ -1879,8 +1584,8 @@ export const FUNCTION_TEST_MAP: readonly FunctionMapEntry[] = [
       {
         "file": "interactions.test.ts",
         "name": "live e2e: interactions (InteractionHandle + run.interactionHandle) > every action method refuses an action the backend did not declare",
-        "line": 171,
-        "endLine": 209
+        "line": 170,
+        "endLine": 208
       }
     ]
   },
@@ -1892,8 +1597,8 @@ export const FUNCTION_TEST_MAP: readonly FunctionMapEntry[] = [
       {
         "file": "interactions.test.ts",
         "name": "live e2e: interactions (InteractionHandle + run.interactionHandle) > every action method refuses an action the backend did not declare",
-        "line": 171,
-        "endLine": 209
+        "line": 170,
+        "endLine": 208
       }
     ]
   },
@@ -1905,8 +1610,8 @@ export const FUNCTION_TEST_MAP: readonly FunctionMapEntry[] = [
       {
         "file": "interactions.test.ts",
         "name": "live e2e: interactions (InteractionHandle + run.interactionHandle) > every action method refuses an action the backend did not declare",
-        "line": 171,
-        "endLine": 209
+        "line": 170,
+        "endLine": 208
       }
     ]
   },
@@ -1918,8 +1623,8 @@ export const FUNCTION_TEST_MAP: readonly FunctionMapEntry[] = [
       {
         "file": "interactions.test.ts",
         "name": "live e2e: interactions (InteractionHandle + run.interactionHandle) > every action method refuses an action the backend did not declare",
-        "line": 171,
-        "endLine": 209
+        "line": 170,
+        "endLine": 208
       }
     ]
   },
@@ -1931,8 +1636,8 @@ export const FUNCTION_TEST_MAP: readonly FunctionMapEntry[] = [
       {
         "file": "interactions.test.ts",
         "name": "live e2e: interactions (InteractionHandle + run.interactionHandle) > every action method refuses an action the backend did not declare",
-        "line": 171,
-        "endLine": 209
+        "line": 170,
+        "endLine": 208
       }
     ]
   },
@@ -1944,8 +1649,8 @@ export const FUNCTION_TEST_MAP: readonly FunctionMapEntry[] = [
       {
         "file": "interactions.test.ts",
         "name": "live e2e: interactions (InteractionHandle + run.interactionHandle) > every action method refuses an action the backend did not declare",
-        "line": 171,
-        "endLine": 209
+        "line": 170,
+        "endLine": 208
       }
     ]
   },
@@ -1957,8 +1662,8 @@ export const FUNCTION_TEST_MAP: readonly FunctionMapEntry[] = [
       {
         "file": "interactions.test.ts",
         "name": "live e2e: interactions (InteractionHandle + run.interactionHandle) > every action method refuses an action the backend did not declare",
-        "line": 171,
-        "endLine": 209
+        "line": 170,
+        "endLine": 208
       }
     ]
   },
@@ -1970,8 +1675,8 @@ export const FUNCTION_TEST_MAP: readonly FunctionMapEntry[] = [
       {
         "file": "interactions.test.ts",
         "name": "live e2e: interactions (InteractionHandle + run.interactionHandle) > every action method refuses an action the backend did not declare",
-        "line": 171,
-        "endLine": 209
+        "line": 170,
+        "endLine": 208
       }
     ]
   }

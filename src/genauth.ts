@@ -3,7 +3,8 @@ import type {
   DelegateTokenSilentInput, DelegateTokenInteractiveInput,
   DelegateTokenSilentResponse, InteractiveDelegationResponse, DelegateAgentResponse,
 } from "./types";
-import { QoniUpstreamError, QoniValidationError } from "./errors";
+import { QoniError, QoniTimeoutError, QoniUpstreamError, QoniValidationError } from "./errors";
+import { randomUUID } from "node:crypto";
 import { isJsonObject as isPlainJsonObject } from "./types";
 
 /** Qoni 托管注册/登录页地址入参。state 由 App 自己生成并在回调时核对。 */
@@ -46,10 +47,42 @@ export type LoginSession = {
 export type AgentProvisioning = {
   provisioningId:string;state:'creating'|'mail_pending'|'ready'|'bound'|'compensating'|'compensated'|'reclaiming'|'reclaimed'|'archived_external';ready:boolean;
   agentId:string|null;readyAt:number|null;unboundExpiresAt:number|null;boundUserId:string|null;boundAt:number|null;mailboxResourceId:string|null;errorCode:string|null;
+  /** Present only on the current Personal receipt contract; never synthesized for legacy responses. */
+  mailboxAddress?:string|null;bindingId?:string|null;userId?:string|null;
 };
 export type CreatePersonalAgentInput = {displayName:string;idempotencyKey:string;mailboxLocalPart?:string};
+export type CreatePersonalAgentPageInput = {
+  displayName:string;description?:string;channels:{email:string};idempotencyKey?:string;mailboxLocalPart?:never;
+};
+export type GetPersonalAgentInput = ((
+  {provisioningId:string;agentId?:never;idempotencyKey?:never} |
+  {agentId:string;provisioningId?:never;idempotencyKey?:never}
+) & {readOnly?:boolean}) | {idempotencyKey:string;readOnly:true;provisioningId?:never;agentId?:never};
+export type PersonalAgentProvisioning = AgentProvisioning & {mailboxAddress:string|null;bindingId:string|null;userId:string|null};
+export type PersonalAgentReady = PersonalAgentProvisioning & {
+  state:'ready'|'bound';ready:true;agentId:string;id:string;email:string;idempotencyKey:string;
+};
+export type BindPersonalAgentUserInput = {agentId:string;userAccessToken:string;relation:'owner'};
+export type PersonalAgentBinding = PersonalAgentProvisioning & {state:'bound';ready:true;agentId:string;bindingId:string;userId:string};
 
-type SignedPost = <T>(pathname: string, body: JsonObject) => Promise<QoniResponse<T>>;
+/** Original request identity, not a retry instruction. App must persist an explicit key for crash recovery. */
+export class PersonalAgentCreateError extends QoniError {
+  readonly idempotencyKey:string;
+  readonly provisioningId?:string;
+  readonly recovery:Readonly<{idempotencyKey:string;readOnly:true}>;
+  constructor(cause:unknown,idempotencyKey:string,provisioningId?:string) {
+    const original=cause instanceof QoniError?cause:undefined;
+    super(cause instanceof Error?cause.message:'Personal Agent creation outcome is unknown',{
+      code:original?.code??'upstream.failed',status:original?.status,body:original?.body,
+      requestId:original?.requestId,traceId:original?.traceId,auditId:original?.auditId,retryable:false,cause,
+    });
+    this.name='PersonalAgentCreateError';this.idempotencyKey=idempotencyKey;
+    if(provisioningId!==undefined)this.provisioningId=provisioningId;
+    this.recovery=Object.freeze({idempotencyKey,readOnly:true});
+  }
+}
+
+type SignedPost = <T>(pathname: string, body: JsonObject, signal?:AbortSignal) => Promise<QoniResponse<T>>;
 
 const LOGIN_URL_PATH = "/api/v3/eak/genauth/auth/login-url";
 const EXCHANGE_LOGIN_CODE_PATH = "/api/v3/eak/genauth/auth/exchange-login-code";
@@ -133,25 +166,48 @@ export function createGenAuthNamespace(
     }
     return (await options.delegateTokenFor(input)).data;
   }
+  function createAgent(input:CreatePersonalAgentInput):Promise<AgentProvisioning>;
+  function createAgent(input:CreatePersonalAgentPageInput):Promise<PersonalAgentReady>;
+  async function createAgent(input:CreatePersonalAgentInput|CreatePersonalAgentPageInput):Promise<AgentProvisioning|PersonalAgentReady> {
+    if(isPlainJsonObject(input)&&Object.prototype.hasOwnProperty.call(input,'channels')) {
+      const body=personalPageBody(input);
+      return createReadyPersonalAgent(requiredSignedPost(options.signedPost),body);
+    }
+    // Legacy branch keeps its mandatory key, parser, errors and single-request behavior.
+    const body=assertDeclaredFields('genauth.agents.create',input,['displayName','idempotencyKey','mailboxLocalPart']);
+    opaqueField('genauth.agents.create','displayName',body.displayName);opaqueField('genauth.agents.create','idempotencyKey',body.idempotencyKey);
+    if(body.mailboxLocalPart!==undefined)opaqueField('genauth.agents.create','mailboxLocalPart',body.mailboxLocalPart);
+    return parseProvisioning((await requiredSignedPost(options.signedPost)<unknown>('/api/v3/eak/agents/create',body as JsonObject)).data);
+  }
   return {
     delegateAgent,
     auth,
     agents: {
-      /** Receipts are not success until ready=true. Unknown results: repeat the original request key, never create a replacement. */
-      create: async(input:CreatePersonalAgentInput):Promise<AgentProvisioning>=>{
-        const body=assertDeclaredFields('genauth.agents.create',input,['displayName','idempotencyKey','mailboxLocalPart']);
-        opaqueField('genauth.agents.create','displayName',body.displayName);opaqueField('genauth.agents.create','idempotencyKey',body.idempotencyKey);
-        if(body.mailboxLocalPart!==undefined)opaqueField('genauth.agents.create','mailboxLocalPart',body.mailboxLocalPart);
-        return parseProvisioning((await requiredSignedPost(options.signedPost)<unknown>('/api/v3/eak/agents/create',body as JsonObject)).data);
-      },
-      get: async(input:{provisioningId:string}):Promise<AgentProvisioning>=>{
-        const body=assertDeclaredFields('genauth.agents.get',input,['provisioningId']);opaqueField('genauth.agents.get','provisioningId',body.provisioningId);
-        return parseProvisioning((await requiredSignedPost(options.signedPost)<unknown>('/api/v3/eak/agents/get',body as JsonObject)).data);
+      /** Page input returns proven ready id/email; UNKNOWN exposes the original key, never auto-recreates. */
+      create:createAgent,
+      get: async(input:GetPersonalAgentInput):Promise<AgentProvisioning>=>{
+        const body=personalGetBody(input);
+        const current=body.readOnly!==undefined||body.agentId!==undefined||body.idempotencyKey!==undefined;
+        try {
+          const result=(await requiredSignedPost(options.signedPost)<unknown>('/api/v3/eak/agents/get',body)).data;
+          return current?parsePersonalReceipt(result):parseProvisioning(result);
+        } catch(cause) {throw current?personalNoRetry(cause):cause;}
       },
       bind: async(input:{provisioningId:string;accessToken:string}):Promise<AgentProvisioning>=>{
         const body=assertDeclaredFields('genauth.agents.bind',input,['provisioningId','accessToken']);opaqueField('genauth.agents.bind','provisioningId',body.provisioningId);if(typeof body.accessToken!=='string'||!body.accessToken||body.accessToken.length>16384||CONTROL_CHARACTERS.test(body.accessToken))throw new QoniValidationError('genauth.agents.bind: accessToken must be a current user token');
         const result=parseProvisioning((await requiredSignedPost(options.signedPost)<unknown>('/api/v3/eak/agents/bind',body as JsonObject)).data);
         if(result.state!=='bound'||!result.boundUserId||!result.boundAt)throw new QoniUpstreamError('Agent binding result is unknown',{retryable:false});return result;
+      },
+      bindUser:async(input:BindPersonalAgentUserInput):Promise<PersonalAgentBinding>=>{
+        const body=assertDeclaredFields('genauth.agents.bindUser',input,['agentId','userAccessToken','relation']);
+        if(!personalCanonicalUuid(body.agentId)||body.relation!=='owner')throw new QoniValidationError('genauth.agents.bindUser: canonical formal agentId and owner relation are required');
+        if(typeof body.userAccessToken!=='string'||!body.userAccessToken||body.userAccessToken.length>16384||CONTROL_CHARACTERS.test(body.userAccessToken))throw new QoniValidationError('genauth.agents.bindUser: a current user token is required');
+        try {
+          const data=(await requiredSignedPost(options.signedPost)<unknown>('/api/v3/eak/agents/bind',{agentId:body.agentId,accessToken:body.userAccessToken,relation:'owner'})).data;
+          const result=parsePersonalReceipt(data);
+          if(result.state!=='bound'||!result.ready||result.agentId!==body.agentId||!personalUuid(result.bindingId)||!result.userId||result.userId!==result.boundUserId||!result.boundAt)throw personalReceiptError(data,'Agent binding result is unknown');
+          return result as PersonalAgentBinding;
+        } catch(cause) {throw personalNoRetry(cause);}
       },
     },
     userInfo: <T = unknown>(input: GenAuthAccessTokenInput): Promise<QoniResponse<T>> =>
@@ -415,4 +471,166 @@ function parseProvisioning(value:unknown):AgentProvisioning{
  for(const key of ['agentId','boundUserId','mailboxResourceId','errorCode'])if(value[key]!==null&&typeof value[key]!=='string')throw new QoniUpstreamError('Agent provisioning response is unknown',{retryable:false});
  if((value.boundUserId===null)!==(value.boundAt===null)||(value.readyAt===null?(value.unboundExpiresAt!==null||value.boundUserId!==null):(value.boundUserId===null?value.unboundExpiresAt!==(value.readyAt as number)+604800000:value.unboundExpiresAt!==null))||(value.state==='ready'&&(value.readyAt===null||value.boundUserId!==null))||(value.state==='bound'&&(value.readyAt===null||value.boundUserId===null||!value.boundUserId)))throw new QoniUpstreamError('Agent provisioning response is unknown',{retryable:false});
  return {provisioningId:value.provisioningId,state:value.state,ready:value.ready,agentId:value.agentId,readyAt:value.readyAt,unboundExpiresAt:value.unboundExpiresAt,boundUserId:value.boundUserId,boundAt:value.boundAt,mailboxResourceId:value.mailboxResourceId,errorCode:value.errorCode} as AgentProvisioning;
+}
+
+function personalUuid(value:unknown):value is string {
+  return typeof value==='string'&&/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+}
+
+function personalCanonicalUuid(value:unknown):value is string {
+  return personalUuid(value)&&value===value.toLowerCase();
+}
+
+function personalKey(value:unknown):string {
+  if(typeof value!=='string'||!/^[\x21-\x7e]{1,128}$/.test(value))throw new QoniValidationError('genauth.agents: idempotencyKey must be 1–128 printable ASCII characters');
+  return value;
+}
+
+function goWhiteSpace(code:number):boolean {
+  return code>=0x09&&code<=0x0d||code===0x20||code===0x85||code===0xa0||code===0x1680||
+    code>=0x2000&&code<=0x200a||code===0x2028||code===0x2029||code===0x202f||code===0x205f||code===0x3000;
+}
+
+function trimGoWhiteSpace(value:string):string {
+  let start=0,end=value.length;
+  while(start<end&&goWhiteSpace(value.charCodeAt(start)))start++;
+  while(end>start&&goWhiteSpace(value.charCodeAt(end-1)))end--;
+  return value.slice(start,end);
+}
+
+function personalPageBody(input:unknown):JsonObject & {idempotencyKey:string} {
+  const method='genauth.agents.create';
+  const fields=assertDeclaredFields(method,input,['displayName','description','channels','idempotencyKey']);
+  const name=opaqueField(method,'displayName',fields.displayName).trim().normalize('NFC');
+  if(Buffer.byteLength(name,'utf8')>128)throw new QoniValidationError(`${method}: displayName exceeds 128 UTF-8 bytes`);
+  const channels=assertDeclaredFields(method,fields.channels,['email']);
+  if(typeof channels.email!=='string')throw new QoniValidationError(`${method}: channels.email must be a mailbox local part`);
+  const local=channels.email.trim().toLowerCase();
+  if(!/^[a-z0-9](?:[a-z0-9._-]{0,62}[a-z0-9])?$/.test(local))throw new QoniValidationError(`${method}: channels.email must be a mailbox local part`);
+  let description:string|undefined;
+  if(fields.description!==undefined) {
+    if(typeof fields.description!=='string'||fields.description.includes('\0')||/[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/u.test(fields.description))throw new QoniValidationError(`${method}: description must be valid Unicode without NUL`);
+    // Go unicode.White_Space / strings.TrimSpace; no NFC or body rewriting.
+    description=trimGoWhiteSpace(fields.description);
+    if(Buffer.byteLength(description,'utf8')>1024)throw new QoniValidationError(`${method}: description exceeds 1024 UTF-8 bytes`);
+  }
+  const key=fields.idempotencyKey===undefined?randomUUID():personalKey(fields.idempotencyKey);
+  return {displayName:name,mailboxLocalPart:local,idempotencyKey:key,...(description?{description}:{})};
+}
+
+function personalGetBody(input:GetPersonalAgentInput):JsonObject {
+  const method='genauth.agents.get';
+  const fields=assertDeclaredFields(method,input,['provisioningId','agentId','idempotencyKey','readOnly']);
+  const selectors=['provisioningId','agentId','idempotencyKey'].filter(key=>fields[key]!==undefined);
+  if(selectors.length!==1||fields.readOnly!==undefined&&typeof fields.readOnly!=='boolean')throw new QoniValidationError(`${method}: exactly one selector and a boolean readOnly are required`);
+  const selector=selectors[0];
+  if(selector==='agentId'&&!personalCanonicalUuid(fields.agentId))throw new QoniValidationError(`${method}: agentId must be a canonical formal UUID`);
+  if(selector==='idempotencyKey'&&fields.readOnly!==true)throw new QoniValidationError(`${method}: idempotencyKey recovery requires readOnly:true`);
+  const value=selector==='idempotencyKey'?personalKey(fields[selector]):opaqueField(method,selector,fields[selector]);
+  return {[selector]:value,...(fields.readOnly!==undefined?{readOnly:fields.readOnly}:{})};
+}
+
+function personalReceiptError(body:unknown,message='Personal Agent receipt is unknown'):QoniUpstreamError {
+  return new QoniUpstreamError(message,{retryable:false,body});
+}
+
+function personalNoRetry(cause:unknown):QoniError {
+  if(cause instanceof QoniError) {
+    // Keep the genuine SDK error class, body, ids, stack and existing cause.
+    Object.defineProperty(cause,'retryable',{value:false});
+    return cause;
+  }
+  return new QoniUpstreamError(cause instanceof Error?cause.message:'Personal Agent request outcome is unknown',{retryable:false,cause});
+}
+
+function parsePersonalReceipt(value:unknown):PersonalAgentProvisioning {
+  let receipt:AgentProvisioning;
+  try {receipt=parseProvisioning(value);} catch(cause) {
+    throw new QoniUpstreamError('Personal Agent receipt is unknown',{retryable:false,body:value,cause});
+  }
+  if(!isPlainJsonObject(value)||!personalCanonicalUuid(receipt.provisioningId))throw personalReceiptError(value);
+  for(const key of ['mailboxAddress','bindingId','userId'] as const) {
+    if(value[key]!==null&&(typeof value[key]!=='string'||!value[key]||CONTROL_CHARACTERS.test(value[key] as string)))throw personalReceiptError(value);
+  }
+  const mailboxAddress=value.mailboxAddress as string|null;
+  const bindingId=value.bindingId as string|null;
+  const userId=value.userId as string|null;
+  if(mailboxAddress!==null&&(!receipt.mailboxResourceId||mailboxAddress.length>320||!/^[^\s@]+@[^\s@]+$/.test(mailboxAddress)))throw personalReceiptError(value);
+  if(bindingId!==null&&(!personalCanonicalUuid(bindingId)||receipt.state!=='bound')||userId!==(receipt.state==='bound'?receipt.boundUserId:null))throw personalReceiptError(value);
+  return {...receipt,mailboxAddress,bindingId,userId};
+}
+
+function readyPersonalAgent(receipt:PersonalAgentProvisioning,key:string):PersonalAgentReady {
+  if(!receipt.ready||!['ready','bound'].includes(receipt.state)||!personalCanonicalUuid(receipt.agentId)||!receipt.mailboxAddress||!receipt.mailboxResourceId||receipt.errorCode)throw personalReceiptError(receipt,'Personal Agent is not proven ready with a mailbox');
+  return {...receipt,state:receipt.state as 'ready'|'bound',ready:true,agentId:receipt.agentId,id:receipt.agentId,email:receipt.mailboxAddress,idempotencyKey:key};
+}
+
+function requireAcceptedPending(receipt:PersonalAgentProvisioning):void {
+  if(receipt.ready||!['creating','mail_pending'].includes(receipt.state)||receipt.errorCode)throw personalReceiptError(receipt,'Personal Agent is not an accepted pending operation');
+}
+
+function personalBudget(controller:AbortController,deadline:number):number {
+  const remaining=deadline-performance.now();
+  if(remaining<=0&&!controller.signal.aborted)controller.abort(new QoniTimeoutError('Personal Agent creation exceeded its 120-second total budget'));
+  controller.signal.throwIfAborted();
+  return remaining;
+}
+
+function personalObservationDelay(signal:AbortSignal):Promise<void> {
+  signal.throwIfAborted();
+  return new Promise((resolve,reject)=>{
+    const abort=()=>{clearTimeout(timer);signal.removeEventListener('abort',abort);reject(signal.reason);};
+    const timer=setTimeout(()=>{signal.removeEventListener('abort',abort);resolve();},1000);
+    signal.addEventListener('abort',abort,{once:true});
+  });
+}
+
+async function personalObserve(post:SignedPost,provisioningId:string,parent:AbortSignal,remaining:number):Promise<unknown> {
+  parent.throwIfAborted();
+  const controller=new AbortController();
+  const timeout=Math.min(5000,remaining),deadline=performance.now()+timeout;
+  const reason=new QoniTimeoutError('Personal Agent read-only observation timed out');
+  const abort=()=>controller.abort(parent.reason);
+  parent.addEventListener('abort',abort,{once:true});
+  const timer=setTimeout(()=>controller.abort(reason),timeout);
+  try {
+    const response=await post<unknown>('/api/v3/eak/agents/get',{provisioningId,readOnly:true},controller.signal);
+    if(performance.now()>=deadline)controller.abort(reason);
+    controller.signal.throwIfAborted();
+    return response.data;
+  } finally {
+    clearTimeout(timer);parent.removeEventListener('abort',abort);
+  }
+}
+
+async function createReadyPersonalAgent(post:SignedPost,body:JsonObject & {idempotencyKey:string}):Promise<PersonalAgentReady> {
+  const key=body.idempotencyKey;
+  let provisioningId:string|undefined;
+  const controller=new AbortController();
+  // Starts before the first create; includes its transport/parse time, delays and all observations.
+  const deadline=performance.now()+120000;
+  const timer=setTimeout(()=>controller.abort(new QoniTimeoutError('Personal Agent creation exceeded its 120-second total budget')),120000);
+  try {
+    const response=await post<unknown>('/api/v3/eak/agents/create',body,controller.signal);
+    personalBudget(controller,deadline);
+    if(isPlainJsonObject(response.data)&&personalUuid(response.data.provisioningId))provisioningId=response.data.provisioningId;
+    let receipt=parsePersonalReceipt(response.data);
+    if(receipt.ready)return readyPersonalAgent(receipt,key);
+    requireAcceptedPending(receipt);
+    provisioningId=receipt.provisioningId;
+    for(let i=0;i<20;i++) {
+      if(i>0)await personalObservationDelay(controller.signal);
+      const data=await personalObserve(post,provisioningId,controller.signal,personalBudget(controller,deadline));
+      personalBudget(controller,deadline);
+      receipt=parsePersonalReceipt(data);
+      if(receipt.provisioningId!==provisioningId)throw personalReceiptError(data,'Personal Agent observation returned a different provisioning');
+      if(receipt.ready)return readyPersonalAgent(receipt,key);
+      requireAcceptedPending(receipt);
+    }
+    throw personalReceiptError(receipt,'Personal Agent remains pending after 20 read-only observations; reconcile the original key explicitly');
+  } catch(cause) {
+    throw new PersonalAgentCreateError(cause,key,provisioningId);
+  } finally {
+    clearTimeout(timer);
+  }
 }

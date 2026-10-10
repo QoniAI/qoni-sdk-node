@@ -461,19 +461,35 @@ describe("scopes for the Personal Agent guide", () => {
     }
   });
 
-  it("sends them on delegation like any other scope", async () => {
+  it("sends explicit personal scopes with a formal agentId through interactive delegation", async () => {
     const { client, calls } = makeClient(() =>
-      jsonResponse({ data: { token: "t", tokenType: "Bearer", expiresIn: 3600, grantId: "g", auditId: "a" } }));
-    await client.genauth.delegateAgent({
+      jsonResponse({ data: { mode: "interactive", grantId: "g", grantState: "pending", authorizationUrl: "https://qoni.example.com/delegations/g/authorize" } }));
+    const grant = await client.genauth.delegateAgent({
+      agentId: "01234567-89ab-4cde-8f01-23456789abcd",
+      mode: "interactive",
+      redirectUri: "https://app.example.test/callback",
+      state: "csrf-personal-agent",
+      scopes: [QoniScopes.USER_PROFILE_READ, QoniScopes.USER_PAYMENT_USE, QoniScopes.AGENT_MAIL_READ],
+    });
+    expect(calls).toHaveLength(1);
+    expect(calls[0].body).toEqual({
+      agentId: "01234567-89ab-4cde-8f01-23456789abcd",
+      mode: "interactive",
+      redirectUri: "https://app.example.test/callback",
+      state: "csrf-personal-agent",
+      scopes: ["user.profile:read", "user.payment:use", "agent.mail:read"],
+    });
+    expect(grant).toMatchObject({ mode: "interactive", grantId: "g", grantState: "pending" });
+  });
+
+  it("rejects personal mailbox scope requests made with a legacy agent label before HTTP", async () => {
+    const { client, calls } = makeClient(() => jsonResponse({ data: {} }));
+    await expect(client.genauth.delegateAgent({
       userId: "user_1",
       agent: "shopper",
       scopes: [QoniScopes.USER_PROFILE_READ, QoniScopes.USER_PAYMENT_USE, QoniScopes.AGENT_MAIL_READ],
-    });
-    expect((calls[0].body as { scopes: string[] }).scopes).toEqual([
-      "user.profile:read",
-      "user.payment:use",
-      "agent.mail:read",
-    ]);
+    })).rejects.toBeInstanceOf(QoniValidationError);
+    expect(calls).toHaveLength(0);
   });
 
   it("names every candidate when a scope without its service prefix is ambiguous", async () => {
@@ -670,19 +686,15 @@ describe("confirmSignedIn(): one save, one recheck, honest failures", () => {
     expect(saves(calls).map((call) => call.pathname)).toEqual(["/api/v1/projects/tenant_1/profiles/u-1/confirm"]);
   });
 
-  it("Track monitor handles share the login session across interactionHandle() calls", async () => {
+  it("Track interactionHandle rejects declared DoAnything actions without using their authority", async () => {
     const { client, calls } = makeClient((call) => {
       if (call.pathname === "/api/v3/eak/token-exchange") return jsonResponse({ data: { accessToken: PRODUCT_TOKEN, expiresIn: 3600 } });
-      if (call.pathname.endsWith("/profiles/login")) {
-        return jsonResponse({ profile_id: "u-1", site_id: "amazon", session_id: "login_1", live_url: "https://live/1" }, { status: 201 });
-      }
-      if (/\/profiles\/[^/]+\/confirm$/.test(call.pathname)) return SAVED();
-      return jsonResponse({ data: { id: "mon_1", monitor_id: "mon_1", status: "active" } });
+      return jsonResponse({ id: "mon_1", status: "active" });
     });
     const monitor = await client.track.attach("mon_1", { token: DELEGATION_TOKEN });
-    await monitor.interactionHandle(normalizeInteraction(wireSiteLogin())!).openLogin();
-    await monitor.interactionHandle(normalizeInteraction(wireSiteLogin())!).confirmSignedIn();
-    expect(saves(calls)).toHaveLength(1);
+    const before = calls.length;
+    expect(() => monitor.interactionHandle(normalizeInteraction(wireSiteLogin())!)).toThrow(/unsupported/);
+    expect(calls).toHaveLength(before);
   });
 });
 

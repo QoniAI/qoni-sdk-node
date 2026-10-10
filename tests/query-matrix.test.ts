@@ -174,8 +174,8 @@ describe("query matrix result assertions", () => {
 describe("query matrix Track correlation", () => {
   it("selects the run returned by runNow instead of a newer scheduled run", () => {
     const runs = [
-      { id: "scheduled-run", state: "running", summary: null },
-      { id: "run-now-target", state: "completed", summary: "Example Domain" },
+      { id: "scheduled-run", status: "running", headline: null },
+      { id: "run-now-target", status: "done", headline: "Example Domain" },
     ];
 
     expect(findTrackRun(runs, "run-now-target")).toEqual(runs[1]);

@@ -77,7 +77,7 @@ export interface UserRef {
 }
 
 interface DelegateTokenBaseInput {
-  /** Canonical personal IAM Agent UUID. Explicit interactive consent; mutually exclusive with audit labels. */
+  /** Canonical personal IAM Agent UUID. The server verifies authorization for the selected mode; mutually exclusive with audit labels. */
   agentId?: string;
   /** Audit label for this delegation. Defaults to "sdk". */
   agent?: string;
@@ -102,7 +102,6 @@ export type QoniProductName = "doAnything" | "webSearch" | "deepResearch" | "tra
 
 export type DelegateTokenSilentInput = DelegateTokenBaseInput & {
   mode?: "silent";
-  agentId?: never;
   redirectUri?: string;
   state?: string;
 } & (

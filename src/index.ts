@@ -15,6 +15,7 @@ export {
   QoniTaskSubmissionUnknownError,
   QoniTokenExpiredError,
   QoniUpstreamError,
+  QoniUnsupportedError,
   QoniValidationError,
 } from "./errors";
 export type { QoniErrorCode, QoniErrorOptions, QoniMemoryRunPhase } from "./errors";
@@ -95,6 +96,9 @@ export type {
   MonitorRunsOptions,
   TrackAttachOptions,
   TrackCreateOptions,
+  MonitorSchedule,
+  MonitorRefinePatch,
+  TrackTaskRef,
 } from "./track";
 export type {
   OrdinaryTaskProfile,
@@ -166,6 +170,8 @@ export type {
 export type { FormField, FormAddress, FormValues, FillFormPayload } from "./forms";
 
 export type {AgentProvisioning,CreatePersonalAgentInput} from './genauth';
+export {PersonalAgentCreateError} from './genauth';
+export type {CreatePersonalAgentPageInput,GetPersonalAgentInput,PersonalAgentProvisioning,PersonalAgentReady,BindPersonalAgentUserInput,PersonalAgentBinding} from './genauth';
 
 export type {GumemRecallInput,GumemRecallContextInput} from "./gumem";
 export type {MemoryContext,MemoryContextItem,MemoryContextLimits,MemoryMessageSource} from "./memory-context";

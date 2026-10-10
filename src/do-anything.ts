@@ -1,7 +1,7 @@
 import { createSensitiveForms } from './sensitive-forms';
 import {createGumemNamespace,type GumemRecallContextInput} from "./gumem";
 import {validateMemoryContextInput,type MemoryContext} from "./memory-context";
-import { QoniError, QoniTaskSubmissionUnknownError, QoniTimeoutError, QoniValidationError, type QoniMemoryRunPhase } from "./errors";
+import { QoniError, QoniTaskSubmissionUnknownError, QoniTimeoutError, QoniUnsupportedError, QoniValidationError, type QoniMemoryRunPhase } from "./errors";
 import { memoryRunLifecycle } from "./memory-run-lifecycle";
 import {
   RunHandle,
@@ -24,6 +24,8 @@ import {
 } from "./types";
 
 /**
+ * @deprecated No backend source or endpoint exists for this historical shape.
+ * Use qoni.doAnything.artifacts() for files and captured screenshot events for images.
  * A structured snapshot of the agent's state at a single step — not just an
  * image. The screenshot is one field (an inline reference/data), alongside the
  * metadata and extracted page state captured at that moment.
@@ -50,6 +52,7 @@ export interface DoAnythingSnapshot {
   action?: SnapshotAction;
 }
 
+/** @deprecated Historical snapshot image shape; not returned by the artifact file API. */
 export interface SnapshotImage {
   /** Base64-encoded image bytes (no data: prefix). */
   base64?: string;
@@ -63,6 +66,7 @@ export interface SnapshotImage {
   height?: number;
 }
 
+/** @deprecated Historical snapshot action shape; no backend source. */
 export interface SnapshotAction {
   /** "navigate" | "click" | "type" | ... */
   kind?: string;
@@ -411,17 +415,16 @@ export function createDoAnythingNamespace(transport: QoniTransport) {
         },
       ),
 
-    readArtifacts: <T = DoAnythingSnapshot>(
-      input: RuntimeTokenInput & { sessionId: string; artifactId: string },
-    ): Promise<QoniResponse<T>> =>
-      transport.webAgentJson(
-        "GET",
-        `/do_anything/sessions/${encodeURIComponent(input.sessionId)}/artifacts/${encodeURIComponent(input.artifactId)}`,
-        input.token,
-        {
-          requiredScopes: ["webagent.do_anything:read"],
-        },
-      ),
+    /**
+     * @deprecated No backend snapshot read route exists. Fails locally with zero HTTP.
+     * Use qoni.doAnything.artifacts()/api.listArtifacts for files, or enable capture.screenshots
+     * and consume screenshot events for images. Files are not structured snapshots.
+     */
+    readArtifacts: async <T = DoAnythingSnapshot>(
+      _input: RuntimeTokenInput & { sessionId: string; artifactId: string },
+    ): Promise<QoniResponse<T>> => {
+      throw new QoniUnsupportedError("doAnything.api.readArtifacts has no backend snapshot endpoint. Use qoni.doAnything.artifacts()/api.listArtifacts for files, or capture.screenshots and screenshot events for images.");
+    },
 
     listArtifacts: <T = { items: JsonObject[] }>(
       input: RuntimeTokenInput & { runId: string; signal?: AbortSignal },

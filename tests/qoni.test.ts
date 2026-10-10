@@ -1293,7 +1293,7 @@ describe("Qoni", () => {
     await client.deepResearch.api.get({ token: delegationToken, runId: "research_1" });
     await client.deepResearch.api.cancel({ token: delegationToken, runId: "research_1" });
     await client.deepResearch.api.followUp({ token: delegationToken, runId: "research_1", text: "more" });
-    await client.track.api.createMonitor({ token: delegationToken, url: "https://example.com" });
+    await client.track.api.createMonitor({ token: delegationToken, instructions: "watch", schedule: { every_seconds: 600 } });
     await client.track.api.getMonitor({ token: delegationToken, monitorId: "monitor_1" });
     await client.track.api.runNow({ token: delegationToken, monitorId: "monitor_1" });
     await client.track.api.deleteMonitor({ token: delegationToken, monitorId: "monitor_1" });
@@ -1380,27 +1380,13 @@ describe("Qoni", () => {
     });
   });
 
-  it("reads doAnything artifacts from the session-scoped /sessions/{id}/artifacts/{id} route", async () => {
-    const token = jwt({ webagent_tenant_id: "tenant_1" });
-    const seen: { url?: string; init?: RequestInit } = {};
-    const client = new Qoni({
-      accessKey: "ak_test",
-      secretKey: "sk_test",
-      host: "https://qoni.example.com",
-      webAgentBaseUrl: "https://qoni.example.com",
-      fetch: (async (url: URL | RequestInfo, init?: RequestInit) => {
-        seen.url = String(url);
-        seen.init = init;
-        return jsonResponse({ data: { id: "artifact_1" } });
-      }) as typeof fetch,
-    });
-
-    await client.doAnything.api.readArtifacts({ token, sessionId: "session_1", artifactId: "artifact_1" });
-
-    expect(seen.url).toBe(
-      "https://qoni.example.com/api/v1/projects/tenant_1/do_anything/sessions/session_1/artifacts/artifact_1",
-    );
-    expect(seen.init?.method).toBe("GET");
+  it("refuses the historical snapshot read locally without any HTTP", async () => {
+    const calls: string[] = [];
+    const client = new Qoni({ accessKey: "ak_test", secretKey: "sk_test", fetch: (async (url) => {
+      calls.push(String(url)); return jsonResponse({});
+    }) as typeof fetch });
+    await expect(client.doAnything.api.readArtifacts({ sessionId: "s", artifactId: "a" })).rejects.toMatchObject({ name: "QoniUnsupportedError", code: "unsupported.operation" });
+    expect(calls).toEqual([]);
   });
 
   it("offers a doAnything.run helper that creates the run in a single call", async () => {
@@ -1956,7 +1942,7 @@ describe("Qoni", () => {
   // Track
   // -------------------------------------------------------------------------
 
-  it("maps the full Track monitor lifecycle to the backend monitors contract", async () => {
+  it("maps supported Track operations to the backend tracks contract", async () => {
     const token = jwt({ webagent_tenant_id: "tenant_1" });
     const calls: Array<{ url: string; method?: string; body?: unknown }> = [];
     const client = new Qoni({
@@ -1976,60 +1962,39 @@ describe("Qoni", () => {
 
     await client.track.api.createMonitor({
       token,
-      url: "https://eazo.ai/pricing",
       instructions: "alert me when the price changes",
+      schedule: { every_seconds: 600 },
     });
     await client.track.api.getMonitor({ token, monitorId: "mon_1" });
     await client.track.api.runNow({ token, monitorId: "mon_1" });
-    await client.track.api.updateMonitor({ token, monitorId: "mon_1", schedule: "0 9 * * *" });
+    await client.track.api.updateMonitor({ token, monitorId: "mon_1", schedule: { daily_at: "09:00", tz: "UTC" } });
     await client.track.api.deleteMonitor({ token, monitorId: "mon_1" });
 
-    const monitors = "https://qoni.example.com/api/v1/projects/tenant_1/track/monitors";
+    const monitors = "https://qoni.example.com/api/v1/projects/tenant_1/track/tracks";
     expect(calls).toEqual([
       {
         url: monitors,
         method: "POST",
         body: {
-          url: "https://eazo.ai/pricing",
           instructions: "alert me when the price changes",
+          schedule: { every_seconds: 600 },
         },
       },
       { url: `${monitors}/mon_1`, method: "GET", body: undefined },
       { url: `${monitors}/mon_1/run_now`, method: "POST", body: {} },
-      { url: `${monitors}/mon_1`, method: "PATCH", body: { schedule: "0 9 * * *" } },
+      { url: `${monitors}/mon_1`, method: "PATCH", body: { schedule: { daily_at: "09:00", tz: "UTC" } } },
       { url: `${monitors}/mon_1`, method: "DELETE", body: undefined },
     ]);
   });
 
-  it("streams Track monitor events over SSE", async () => {
-    const token = jwt({ webagent_tenant_id: "tenant_1" });
-    const seen: { url?: string; headers?: Record<string, string> } = {};
-    const client = new Qoni({
-      accessKey: "ak_test",
-      secretKey: "sk_test",
-      host: "https://qoni.example.com",
-      webAgentBaseUrl: "https://qoni.example.com",
-      fetch: (async (url: URL | RequestInfo, init?: RequestInit) => {
-        seen.url = String(url);
-        seen.headers = init?.headers as Record<string, string>;
-        return sseResponse('id: 7\nevent: track_change\ndata: {"changed":true}\n\n');
-      }) as typeof fetch,
-    });
-
-    const events = [];
-    for await (const event of client.track.api.events({
-      token,
-      monitorId: "mon_1",
-      lastEventId: "6",
-    })) {
-      events.push(event);
-    }
-
-    expect(seen.url).toBe(
-      "https://qoni.example.com/api/v1/projects/tenant_1/track/monitors/mon_1/events",
-    );
-    expect(seen.headers?.["last-event-id"]).toBe("6");
-    expect(events).toEqual([{ id: "7", event: "track_change", data: { changed: true } }]);
+  it("rejects unsupported Track SSE locally without HTTP", async () => {
+    const calls: string[] = [];
+    const client = new Qoni({ accessKey: "ak_test", secretKey: "sk_test", fetch: (async url => {
+      calls.push(String(url)); return sseResponse("");
+    }) as typeof fetch });
+    async function consume() { for await (const _ of client.track.api.events({ monitorId: "mon_1" })) { /* exhaust */ } }
+    await expect(consume()).rejects.toMatchObject({ code: "unsupported.operation" });
+    expect(calls).toEqual([]);
   });
 
   // -------------------------------------------------------------------------

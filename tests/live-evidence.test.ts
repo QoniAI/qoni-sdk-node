@@ -98,6 +98,19 @@ describe("live evidence: function → test map", () => {
     expect(unresolved).toEqual([]);
   });
 
+  it("does not count unsupported snapshot/Track surfaces as positive live coverage", () => {
+    for (const name of ["qoni.doAnything.api.readArtifacts", "qoni.track.api.events", "qoni.track.api.intervene", "MonitorHandle.events", "MonitorHandle.interactionHandle"]) {
+      const entry = FUNCTION_TEST_MAP.find(e => e.name === name)!;
+      expect(entry.tier, name).toBe("GUARD_ONLY");
+      expect(entry.tests, name).toEqual([]);
+      expect(entry.noLiveTest, name).toMatch(/deprecated|unsupported/i);
+      expect(catalog.find(e => e.name === name)!.description, name).toMatch(/deprecated|unsupported/i);
+    }
+    for (const entry of FUNCTION_TEST_MAP.filter(e => (e.name.startsWith("qoni.track.") || e.name.startsWith("MonitorHandle.")) && !["qoni.track.api.events", "qoni.track.api.intervene", "MonitorHandle.events", "MonitorHandle.interactionHandle"].includes(e.name))) {
+      expect(entry.tier, entry.name).toBe("MOCK_ONLY"); // current mapping has not run live
+    }
+  });
+
   it("keeps the map's tiers consistent with the recorded verdicts", () => {
     const tiers = new Set(["VERIFIED", "GUARD_ONLY", "BLOCKED", "MOCK_ONLY"]);
     for (const entry of FUNCTION_TEST_MAP as readonly FunctionMapEntry[]) {

@@ -87,7 +87,7 @@ export class Qoni {
     this.genauth = createGenAuthNamespace(transport, {
       adminTokenFor: () => this.genauthAdminTokenFor(),
       delegateTokenFor: (input) => this.delegateToken(input),
-      signedPost: (pathname, body) => this.signedPost(pathname, body),
+      signedPost: (pathname, body, signal) => this.signedPost(pathname, body, signal),
     });
     this.qoni = createQoniNamespace(
       transport,
@@ -863,9 +863,12 @@ function toRecord(value: object): JsonObject {
 }
 
 function normalizeDelegateTokenInput(input: DelegateTokenInput): JsonObject {
+  if (input.mode !== undefined && input.mode !== "silent" && input.mode !== "interactive") {
+    throw new QoniValidationError('delegateToken: mode must be "silent" or "interactive"');
+  }
   const body = toRecord(input);
-  if (input.agentId !== undefined && (!(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/).test(input.agentId) || input.agent !== undefined || input.agentKey !== undefined || input.mode !== 'interactive')) {
-    throw new QoniValidationError('delegateToken: formal agentId requires interactive mode and cannot be combined with an audit label');
+  if (input.agentId !== undefined && (!(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/).test(input.agentId) || input.agent !== undefined || input.agentKey !== undefined)) {
+    throw new QoniValidationError('delegateToken: formal agentId must be a UUID and cannot be combined with an audit label');
   }
   if (input.deniedScopes !== undefined) {
     throw new QoniValidationError(
@@ -895,9 +898,24 @@ function normalizeDelegateTokenInput(input: DelegateTokenInput): JsonObject {
   if (input.agentId === undefined) body.agent = input.agent ?? input.agentKey ?? "sdk";
   delete body.agentKey;
   if (input.expiresIn !== undefined) body.expiresIn = delegationDurationSeconds(input.expiresIn);
-  body.scopes = resolveDelegationScopes(input.scopes, input.products);
+  if (input.scopes !== undefined && (!Array.isArray(input.scopes) || input.scopes.some(scope => typeof scope !== "string"))) {
+    throw new QoniValidationError("delegateToken: scopes must be an array of strings");
+  }
+  if (input.scopes?.includes("*")) {
+    if (input.scopes.length !== 1 || typeof input.agentId !== "string" || input.mode === "interactive" || input.products !== undefined) {
+      throw new QoniValidationError('delegateToken: ["*"] requires a formal agentId in silent mode and cannot be mixed with scopes or products');
+    }
+    // The server resolves current approved authority; the SDK never expands or caches it.
+    body.scopes = ["*"];
+  } else {
+    body.scopes = resolveDelegationScopes(input.scopes, input.products);
+  }
   if (input.agentId === undefined && (body.scopes as string[]).some(scope => scope.startsWith('agent.mail:'))) throw new QoniValidationError('delegateToken: personal mailbox scopes require a verified formal agentId');
   delete body.products;
+  if (input.mode === "interactive") {
+    delete body.user;
+    delete body.userId;
+  }
   return body;
 }
 

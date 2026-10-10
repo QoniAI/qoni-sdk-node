@@ -28,7 +28,7 @@ function prototypeMethods(ctor: { prototype: object }): string[] {
 describe("frozen contract surface", () => {
   it("run products expose lifecycle operations and Do Anything file listing/profile", () => {
     for (const product of ["doAnything", "webSearch", "deepResearch"] as const) {
-      expect(publicKeys(client[product]), product).toEqual(product === "doAnything" ? ["api", "artifacts", "attach", "profile", "run", "runWithMemory"] : ["api", "attach", "run"]);
+      expect(publicKeys(client[product]), product).toEqual(product === "doAnything" ? ["api", "artifacts", "attach", "forms", "mail", "profile", "run", "runWithMemory"] : ["api", "attach", "run"]);
     }
   });
 
