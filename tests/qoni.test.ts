@@ -721,7 +721,7 @@ describe("Qoni", () => {
 
     expect(calls.map((call) => call.url)).toEqual([
       "https://qoni.example.com/api/v3/eak/genauth/admin-token",
-      "https://tenant-a.genauth.example.com/api/v3/get-user?userId=user_1",
+      "https://tenant-a.genauth.example.com/api/v3/get-user?userIdType=user_id&flatCustomData=false&withCustomData=false&withPost=false&withIdentities=false&withDepartmentIds=false&userId=user_1",
       "https://tenant-a.genauth.example.com/api/v3/create-user",
       "https://tenant-a.genauth.example.com/api/v3/create-users-batch",
       "https://tenant-a.genauth.example.com/api/v3/update-user",

@@ -30,6 +30,8 @@ const allowedWirePatterns = [
   ),
   new RegExp(`${legacyLower}\\.\\*`, "g"),
   new RegExp(`${legacyLower}BaseUrl`, "g"),
+  // GenAuth access-key DTO wire property; renaming it would break tenant binding.
+  new RegExp(`${legacyLower}Binding\\b`, "g"),
 ];
 const violations = [];
 

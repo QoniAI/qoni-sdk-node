@@ -3,7 +3,14 @@ import type {
   DelegateTokenSilentInput, DelegateTokenInteractiveInput,
   DelegateTokenSilentResponse, InteractiveDelegationResponse, DelegateAgentResponse,
 } from "./types";
-import { QoniValidationError } from "./errors";
+import { QoniValidationError, QoniUpstreamError } from "./errors";
+import { createGenAuthManagement, requestGenAuthManagement } from "./genauth-management";
+import type { GenAuthAdminTokenOverrideInput, GenAuthAdminTokenProvider, GenAuthManagementRequestOptions } from "./genauth-management";
+import type { GenAuthSdkUserDto, GenAuthListUsersInput, GenAuthGetUserInput, GenAuthGetUserBatchInput, GenAuthCreateUserInput, GenAuthUpdateUserInput, GenAuthManagementOperations } from "./generated/genauth-management-types";
+export type { GenAuthAdminToken, GenAuthAdminTokenProvider, GenAuthAdminTokenOverrideInput } from "./genauth-management";
+
+import { createGenAuthCommunication } from './genauth-communication';
+import type { GenAuthCommunicationCredentials } from './genauth-communication-types';
 
 export interface GenAuthAccessTokenInput {
   accessToken: string;
@@ -15,38 +22,27 @@ export interface GenAuthDelegationIntrospectionInput {
   delegateAgentToken?: string;
 }
 
-export interface GenAuthAdminToken {
-  accessToken: string;
-  userPoolId: string;
-}
-
-export type GenAuthAdminTokenProvider = () => Promise<GenAuthAdminToken>;
-
-export interface GenAuthAdminTokenOverrideInput {
-  adminToken?: string;
-  userPoolId?: string;
-}
-
-export type GenAuthUserListInput = GenAuthAdminTokenOverrideInput & {
+export type GenAuthUserListInput = GenAuthAdminTokenOverrideInput & GenAuthListUsersInput & {
   page?: number;
   limit?: number;
   options?: JsonObject & { pagination?: JsonObject };
 } & JsonObject;
-export type GenAuthUserGetInput = GenAuthAdminTokenOverrideInput & { userId: string };
-export type GenAuthUserGetBatchInput = GenAuthAdminTokenOverrideInput & { userIds: string[] };
-export type GenAuthUserCreateInput = GenAuthAdminTokenOverrideInput & JsonObject;
+export type GenAuthUserGetInput = GenAuthAdminTokenOverrideInput & GenAuthGetUserInput & { userId: string };
+export type GenAuthUserGetBatchInput = GenAuthAdminTokenOverrideInput & GenAuthGetUserBatchInput;
+export type GenAuthUserCreateInput = GenAuthAdminTokenOverrideInput & GenAuthCreateUserInput & JsonObject;
 export type GenAuthUserCreateBatchInput = GenAuthAdminTokenOverrideInput & {
   users?: JsonObject[];
   list?: JsonObject[];
   options?: JsonObject;
 };
-export type GenAuthUserUpdateInput = GenAuthAdminTokenOverrideInput & { userId: string } & JsonObject;
+export type GenAuthUserUpdateInput = GenAuthAdminTokenOverrideInput & GenAuthUpdateUserInput & { userId: string } & JsonObject;
 export type GenAuthUserDeleteBatchInput = GenAuthAdminTokenOverrideInput & { userIds: string[] };
 
 export function createGenAuthNamespace(
   transport: QoniTransport,
   options: {
     adminTokenFor?: GenAuthAdminTokenProvider;
+    communicationCredentials?: GenAuthCommunicationCredentials;
     delegateTokenFor?: (input: DelegateTokenInput) => Promise<QoniResponse<DelegateAgentResponse>>;
   } = {},
 ) {
@@ -61,7 +57,10 @@ export function createGenAuthNamespace(
     }
     return (await options.delegateTokenFor(input)).data;
   }
+  const management = createGenAuthManagement(transport, options.adminTokenFor);
   return {
+    ...management,
+    ...createGenAuthCommunication(transport, options.adminTokenFor, options.communicationCredentials),
     delegateAgent,
     userInfo: <T = unknown>(input: GenAuthAccessTokenInput): Promise<QoniResponse<T>> =>
       transport.genauthJson("GET", "/oidc/me", input.accessToken),
@@ -80,67 +79,42 @@ export function createGenAuthNamespace(
       }),
 
     users: {
-      list: async <T = unknown>(input: GenAuthUserListInput = {}): Promise<QoniResponse<T>> => {
-        const auth = await adminAuthFor(options.adminTokenFor, input);
-        return transport.genauthJson("POST", "/api/v3/list-users", auth.accessToken, {
-          body: listUsersBody(input),
-          headers: userPoolHeaders(auth.userPoolId),
-        });
+      ...management.users,
+      /** Stream all matching users without holding the full userpool in memory. */
+      iterate: async function* (input: GenAuthUserListInput = {}, requestOptions?: GenAuthManagementRequestOptions): AsyncIterable<GenAuthSdkUserDto> {
+        const pagination = input.options?.pagination;
+        const limit = input.limit ?? pagination?.limit ?? 50;
+        let page = input.page ?? pagination?.page ?? 1;
+        if (typeof limit !== 'number' || !Number.isInteger(limit) || limit < 1 || limit > 50 || typeof page !== 'number' || !Number.isInteger(page) || page < 1) {
+          throw new QoniValidationError('GenAuth users.iterate requires page >= 1 and limit between 1 and 50');
+        }
+        for (;;) {
+          const response = await requestGenAuthManagement<GenAuthManagementOperations['listUsers']['result']>(
+            transport, options.adminTokenFor, 'listUsers', listUsersBodyWithAuth({ ...input, page, limit }), requestOptions,
+          );
+          if (!response.data || !Array.isArray(response.data.list)) throw new QoniUpstreamError('GenAuth users.iterate expected a paginated list-users response', { status: 502 });
+          for (const user of response.data.list) {
+            requestOptions?.signal?.throwIfAborted();
+            yield user;
+          }
+          if (response.data.list.length < limit || (typeof response.data.totalCount === 'number' && (page - 1) * limit + response.data.list.length >= response.data.totalCount)) return;
+          page++;
+        }
       },
-
-      get: async <T = unknown>(input: GenAuthUserGetInput): Promise<QoniResponse<T>> => {
-        const auth = await adminAuthFor(options.adminTokenFor, input);
-        return transport.genauthJson("GET", "/api/v3/get-user", auth.accessToken, {
-          query: omit(input, "adminToken", "userPoolId"),
-          headers: userPoolHeaders(auth.userPoolId),
-        });
-      },
-
-      getBatch: async <T = unknown>(
-        input: GenAuthUserGetBatchInput,
-      ): Promise<QoniResponse<T>> => {
-        const auth = await adminAuthFor(options.adminTokenFor, input);
-        return transport.genauthJson("GET", "/api/v3/get-user-batch", auth.accessToken, {
-          query: omit(input, "adminToken", "userPoolId"),
-          headers: userPoolHeaders(auth.userPoolId),
-        });
-      },
-
-      create: async <T = unknown>(input: GenAuthUserCreateInput): Promise<QoniResponse<T>> => {
-        const auth = await adminAuthFor(options.adminTokenFor, input);
-        return transport.genauthJson("POST", "/api/v3/create-user", auth.accessToken, {
-          body: omit(input, "adminToken", "userPoolId"),
-          headers: userPoolHeaders(auth.userPoolId),
-        });
-      },
-
-      createBatch: async <T = unknown>(
-        input: GenAuthUserCreateBatchInput,
-      ): Promise<QoniResponse<T>> => {
-        const auth = await adminAuthFor(options.adminTokenFor, input);
-        return transport.genauthJson("POST", "/api/v3/create-users-batch", auth.accessToken, {
-          body: createUsersBatchBody(input),
-          headers: userPoolHeaders(auth.userPoolId),
-        });
-      },
-
-      update: async <T = unknown>(input: GenAuthUserUpdateInput): Promise<QoniResponse<T>> => {
-        const auth = await adminAuthFor(options.adminTokenFor, input);
-        return transport.genauthJson("POST", "/api/v3/update-user", auth.accessToken, {
-          body: omit(input, "adminToken", "userPoolId"),
-          headers: userPoolHeaders(auth.userPoolId),
-        });
-      },
-
-      deleteBatch: async <T = unknown>(
-        input: GenAuthUserDeleteBatchInput,
-      ): Promise<QoniResponse<T>> => {
-        const auth = await adminAuthFor(options.adminTokenFor, input);
-        return transport.genauthJson("POST", "/api/v3/delete-users-batch", auth.accessToken, {
-          body: omit(input, "adminToken", "userPoolId"),
-          headers: userPoolHeaders(auth.userPoolId),
-        });
-      },
+      list: async <T = GenAuthManagementOperations['listUsers']['result']>(input: GenAuthUserListInput = {}, requestOptions?: GenAuthManagementRequestOptions): Promise<QoniResponse<T>> =>
+        requestGenAuthManagement(transport, options.adminTokenFor, 'listUsers', listUsersBodyWithAuth(input), requestOptions),
+      get: <T = GenAuthManagementOperations['getUser']['result']>(input: GenAuthUserGetInput, requestOptions?: GenAuthManagementRequestOptions): Promise<QoniResponse<T>> =>
+        requestGenAuthManagement(transport, options.adminTokenFor, 'getUser', { ...input }, requestOptions),
+      getBatch: <T = GenAuthManagementOperations['getUserBatch']['result']>(input: GenAuthUserGetBatchInput, requestOptions?: GenAuthManagementRequestOptions): Promise<QoniResponse<T>> =>
+        requestGenAuthManagement(transport, options.adminTokenFor, 'getUserBatch', { ...input }, requestOptions),
+      create: <T = GenAuthManagementOperations['createUser']['result']>(input: GenAuthUserCreateInput, requestOptions?: GenAuthManagementRequestOptions): Promise<QoniResponse<T>> =>
+        requestGenAuthManagement(transport, options.adminTokenFor, 'createUser', input, requestOptions),
+      createBatch: async <T = GenAuthManagementOperations['createUsersBatch']['result']>(input: GenAuthUserCreateBatchInput, requestOptions?: GenAuthManagementRequestOptions): Promise<QoniResponse<T>> =>
+        requestGenAuthManagement(transport, options.adminTokenFor, 'createUsersBatch', { ...createUsersBatchBody(input), adminToken: input.adminToken, userPoolId: input.userPoolId }, requestOptions),
+      update: <T = GenAuthManagementOperations['updateUser']['result']>(input: GenAuthUserUpdateInput, requestOptions?: GenAuthManagementRequestOptions): Promise<QoniResponse<T>> =>
+        requestGenAuthManagement(transport, options.adminTokenFor, 'updateUser', input, requestOptions),
+      deleteBatch: <T = GenAuthManagementOperations['deleteUsersBatch']['result']>(input: GenAuthUserDeleteBatchInput, requestOptions?: GenAuthManagementRequestOptions): Promise<QoniResponse<T>> =>
+        requestGenAuthManagement(transport, options.adminTokenFor, 'deleteUsersBatch', { ...input }, requestOptions),
     },
   };
 }
@@ -148,25 +122,7 @@ export function createGenAuthNamespace(
 function requiredDelegationToken(input: GenAuthDelegationIntrospectionInput): string {
   const token = input.token ?? input.delegateAgentToken;
   if (token?.trim()) return token;
-  throw new Error("GenAuth delegation introspection requires token");
-}
-
-async function adminAuthFor(
-  provider: GenAuthAdminTokenProvider | undefined,
-  input: GenAuthAdminTokenOverrideInput,
-): Promise<GenAuthAdminToken> {
-  if (input.adminToken?.trim()) {
-    if (!input.userPoolId?.trim()) {
-      throw new Error("GenAuth adminToken override requires userPoolId");
-    }
-    return { accessToken: input.adminToken, userPoolId: input.userPoolId };
-  }
-  if (!provider) throw new Error("GenAuth user management requires Qoni AK/SK admin token exchange");
-  return provider();
-}
-
-function userPoolHeaders(userPoolId: string): Record<string, string> {
-  return { "x-authing-userpool-id": userPoolId };
+  throw new QoniValidationError("GenAuth delegation introspection requires token");
 }
 
 function omit(value: object, ...keys: string[]): JsonObject {
@@ -178,8 +134,11 @@ function omit(value: object, ...keys: string[]): JsonObject {
   return out;
 }
 
-function listUsersBody(input: GenAuthUserListInput): JsonObject {
-  const body = omit(input, "adminToken", "userPoolId", "page", "limit");
+function listUsersBodyWithAuth(input: GenAuthUserListInput): JsonObject {
+  const body = omit(input, "page", "limit");
+  for (const [key, value] of Object.entries({ page: input.page, limit: input.limit })) {
+    if (value !== undefined && (!Number.isInteger(value) || value < 1)) throw new QoniValidationError(`GenAuth users.list: ${key} must be a positive integer`);
+  }
   if (input.page === undefined && input.limit === undefined) return body;
   const options = isJsonObject(body.options) ? { ...body.options } : {};
   const pagination = isJsonObject(options.pagination) ? { ...options.pagination } : {};

@@ -5,7 +5,7 @@
 [![Package manager](https://img.shields.io/badge/package%20manager-pnpm-f69220)](https://pnpm.io/)
 [![License](https://img.shields.io/badge/license-MIT-blue)](./LICENSE)
 
-Unified Node.js SDK for Qoni Agent delegation, GenAuth user management, GUMem memory, WebAgent automation, web search, and monitoring.
+Unified Node.js SDK for Qoni Agent delegation, GenAuth management, GUMem memory, WebAgent automation, web search, and monitoring.
 
 `@qoniai/qoni` gives a trusted server one compact way to use Qoni AK/SK. For runtime product calls, your service verifies the GenAuth user, requests short-lived delegation with `delegateToken`, and then uses the returned token in GUMem, WebAgent, Do Anything, Web Search, and Track calls. For GenAuth user management, the SDK exchanges AK/SK for a standard GenAuth management token internally and calls GenAuth v3 users APIs with that token.
 
@@ -124,6 +124,21 @@ await qoni.genauth.users.update({
 // Optional smoke-test cleanup:
 // await qoni.genauth.users.deleteBatch({ userIds: [profile.data.userId] });
 ```
+
+### GenAuth Management
+
+`qoni.genauth` exposes **591 typed management methods across 35 namespaces**, aligned with [Authing's official Node SDK 4.0.2](https://github.com/Authing/authing-node-sdk). This includes all 496 official JSON management methods plus GenAuth extensions and compatibility names, including positions, public accounts, invitations, metadata, approvals and risk lists. Calls share the Qoni AK/SK management-token exchange and support cancellation. Deployment features and permissions still determine endpoint availability.
+
+```ts
+await qoni.genauth.groups.create({ code: "engineering", name: "Engineering" });
+await qoni.genauth.groups.addMembers({ code: "engineering", userIds: ["USER_ID"] });
+const roles = await qoni.genauth.management.listRoles({ namespace: "project", page: 1, limit: 20 });
+for await (const user of qoni.genauth.users.iterate({ limit: 50 })) {
+  console.log(user.userId);
+}
+```
+
+[Integration guide](./docs/genauth-management.md) · [Complete API catalog](./docs/genauth-management-api.md). Roles belong to an existing permission namespace. GenAuth employment and departure rules still apply when deleting users.
 
 ### Runtime Product Delegation
 
@@ -936,3 +951,7 @@ const artifacts = await client.doAnything.artifacts({ token, runId: run.id });
 ```
 
 Wire methods: `client.doAnything.api.listArtifacts(...)` and `artifactDownloadUrl(...)`.
+
+## Agent Mail and Agent Phone
+
+The local GenAuth communication extension provides `qoni.genauth.agentMail` and `qoni.genauth.agentPhone`, including runtime and administrator APIs. Runtime requires native GenAuth credentials via `genauthCommunicationCredentials`; administration reuses Qoni token exchange. See [the communication guide](docs/genauth-communication.md) and [method index](docs/genauth-communication-api.md).

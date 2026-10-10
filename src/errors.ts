@@ -128,10 +128,12 @@ export function errorFromPayload(
 ): QoniError {
   const detail = isJsonObject(payload) ? payload.detail : undefined;
   const detailObject = isJsonObject(detail) ? detail : undefined;
-  const source = detailObject || (isJsonObject(payload) ? payload : {});
+  const nestedError = isJsonObject(payload) && isJsonObject(payload.error) ? payload.error : undefined;
+  const source = detailObject || (nestedError ? { ...payload as JsonObject, ...nestedError } : isJsonObject(payload) ? payload : {});
   const code =
     stringField(source, "code") ||
     stringField(source, "apiCode") ||
+    (isJsonObject(source) && typeof source.apiCode === "number" ? String(source.apiCode) : undefined) ||
     statusCodeToCode(status);
   const rawMessage =
     stringField(source, "message") ||
@@ -149,7 +151,7 @@ export function errorFromPayload(
     requestId: stringField(payload, "requestId") || stringField(source, "requestId"),
     traceId: stringField(payload, "traceId") || stringField(source, "traceId"),
     auditId: stringField(payload, "auditId") || stringField(source, "auditId"),
-    retryable: status === 429 || status >= 500,
+    retryable: typeof source.retryable === "boolean" ? source.retryable : status === 429 || status >= 500,
     body: payload,
   };
 
@@ -211,7 +213,7 @@ const ONBOARDING_HINTS: Record<string, string> = {
     "Hint: the userId is not in the GenAuth userpool bound to this credential. " +
     "Resolve a real user with qoni.resolveAnyBoundUser() (demo/smoke) or qoni.currentUser({ accessToken }).",
   "eak.genauth.userpool_binding_missing":
-    "Hint: bind the Qoni credential to a GenAuth userpool before calling genauth.users.*.",
+    "Hint: bind the Qoni credential to a GenAuth userpool before calling genauth management APIs.",
   "eak.delegation.scope_not_allowed":
     "Hint: enable the denied scopes in this AccessKey's Permission scope settings in Qoni Console.",
 };

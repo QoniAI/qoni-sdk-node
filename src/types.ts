@@ -1,10 +1,11 @@
+import type { GenAuthCommunicationCredentials } from './genauth-communication-types';
 export type JsonPrimitive = string | number | boolean | null;
 export type JsonValue = JsonPrimitive | JsonObject | JsonValue[];
 export type JsonObject = Record<string, unknown>;
 
 export type DelegationMode = "silent" | "interactive";
 export type QoniService = "qoni" | "genauth" | "gumem" | "webagent";
-export type QoniHttpMethod = "GET" | "POST" | "PATCH" | "DELETE";
+export type QoniHttpMethod = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
 
 export interface QoniOptions {
   accessKey?: string;
@@ -28,6 +29,8 @@ export interface QoniOptions {
   gumemBaseUrl?: string;
   /** @deprecated Use host for normal Qoni Gateway access. */
   webAgentBaseUrl?: string;
+  /** Native GenAuth AK/SK (or standard management bearer) for Agent Mail/Phone runtime. */
+  genauthCommunicationCredentials?: GenAuthCommunicationCredentials;
   fetch?: typeof fetch;
   timeoutMs?: number;
   /**
@@ -54,6 +57,9 @@ export interface QoniRuntimeConfig {
 }
 
 export interface QoniMeta {
+  /** Response ETag, including quotes, when supplied by GenAuth. */
+  etag?: string;
+  httpStatus?: number;
   requestId?: string;
   traceId?: string;
   auditId?: string;

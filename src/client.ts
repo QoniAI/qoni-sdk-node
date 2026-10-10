@@ -38,6 +38,7 @@ import {
   type RequestPayload,
 } from "./types";
 import type { GenAuthAccessTokenInput } from "./genauth";
+import type { GenAuthAdminToken } from "./genauth-management";
 import { createWebSearchNamespace } from "./web-search";
 
 const DEFAULT_QONI_HOST = "https://dashboard.qoni.ai";
@@ -50,6 +51,7 @@ export class Qoni {
   private readonly secretKey: string;
   private readonly host: string;
   private runtimeConfigPromise?: Promise<ResolvedRuntimeConfig>;
+  private genAuthAdminTokenPromise?: Promise<GenAuthAdminToken>;
   private genAuthAdminTokenCache?: { accessToken: string; userPoolId: string; expiresAt: number };
 
   readonly gumem: ReturnType<typeof createGumemNamespace>;
@@ -83,7 +85,8 @@ export class Qoni {
       webAgentSSE: (...args) => this.webAgentSSE(...args),
     };
     this.genauth = createGenAuthNamespace(transport, {
-      adminTokenFor: () => this.genauthAdminTokenFor(),
+      communicationCredentials: options.genauthCommunicationCredentials,
+      adminTokenFor: (rejectedAccessToken) => this.genauthAdminTokenFor(rejectedAccessToken),
       delegateTokenFor: (input) => this.delegateToken(input),
     });
     this.qoni = createQoniNamespace(
@@ -399,7 +402,7 @@ export class Qoni {
         `Qoni request failed with HTTP ${response.status}`,
       );
     }
-    const envelopeStatus = errorEnvelopeStatus(payload);
+    const envelopeStatus = errorEnvelopeStatus(payload, options.service);
     if (envelopeStatus !== undefined) {
       throw errorFromPayload(
         envelopeStatus,
@@ -407,7 +410,13 @@ export class Qoni {
         `Qoni request failed with statusCode ${envelopeStatus}`,
       );
     }
-    return normalizeResponse<T>(payload, options.service);
+    const normalized = normalizeResponse<T>(payload, options.service);
+    if (options.service === 'genauth' && /^\/api\/v3\/agent-(personas|phone|mail)(?:\/|$)/.test(pathname)) normalized.meta.httpStatus = response.status;
+    const etag = response.headers.get('etag');
+    if (etag) normalized.meta.etag = etag;
+    const requestId = response.headers.get('x-request-id');
+    if (requestId && !normalized.meta.requestId) normalized.meta.requestId = requestId;
+    return normalized;
   }
 
   // Reconnecting wrapper: yields events from a fresh connection, and on a
@@ -720,32 +729,42 @@ export class Qoni {
     return accessToken;
   }
 
-  private async genauthAdminTokenFor(): Promise<{ accessToken: string; userPoolId: string }> {
+  private async genauthAdminTokenFor(rejectedAccessToken?: string): Promise<GenAuthAdminToken> {
+    if (rejectedAccessToken && this.genAuthAdminTokenCache?.accessToken === rejectedAccessToken) {
+      this.genAuthAdminTokenCache = undefined;
+    }
     const cached = this.genAuthAdminTokenCache;
     if (cached && cached.expiresAt > Date.now() + 30_000) {
       return { accessToken: cached.accessToken, userPoolId: cached.userPoolId };
     }
+    if (!this.genAuthAdminTokenPromise) {
+      this.genAuthAdminTokenPromise = this.exchangeGenAuthAdminToken();
+    }
+    const pending = this.genAuthAdminTokenPromise;
+    try {
+      return await pending;
+    } finally {
+      if (this.genAuthAdminTokenPromise === pending) this.genAuthAdminTokenPromise = undefined;
+    }
+  }
 
+  private async exchangeGenAuthAdminToken(): Promise<GenAuthAdminToken> {
     const response = await this.signedPost<unknown>("/api/v3/eak/genauth/admin-token", {});
     const payload = response.data;
     const accessToken = readAccessToken(payload);
-    const userPoolId =
-      readString(payload, "userPoolId") ??
-      readString(payload, "userpoolId") ??
-      readString(payload, "user_pool_id");
+    const userPoolId = readString(payload, "userPoolId") ?? readString(payload, "userpoolId") ?? readString(payload, "user_pool_id");
     if (!accessToken || !userPoolId) {
-      throw errorFromPayload(
-        502,
-        payload,
-        "Qoni GenAuth admin-token response did not include accessToken and userPoolId",
-      );
+      throw errorFromPayload(502, payload, "Qoni GenAuth admin-token response did not include accessToken and userPoolId");
     }
-
-    this.genAuthAdminTokenCache = {
-      accessToken,
-      userPoolId,
-      expiresAt: Date.now() + Math.max(0, readExpiresIn(payload) ?? 3600) * 1000,
-    };
+    const receivedAt = Date.now();
+    const lifetime = readExpiresIn(payload);
+    const jwtExpiry = safeDecodeJwtPayload(accessToken)?.exp;
+    const expiresAt = Math.min(
+      lifetime !== undefined ? receivedAt + Math.max(0, lifetime) * 1000 : Infinity,
+      typeof jwtExpiry === "number" && Number.isFinite(jwtExpiry) ? jwtExpiry * 1000 : Infinity,
+      receivedAt + 3600_000,
+    );
+    this.genAuthAdminTokenCache = { accessToken, userPoolId, expiresAt };
     return { accessToken, userPoolId };
   }
 }
@@ -1099,11 +1118,11 @@ function validateScopeFormat(scope: string): void {
   }
 }
 
-function errorEnvelopeStatus(payload: unknown): number | undefined {
+function errorEnvelopeStatus(payload: unknown, service?: QoniService): number | undefined {
   if (!isJsonObject(payload)) return undefined;
   const statusCode = payload.statusCode;
   if (typeof statusCode !== "number" || statusCode < 400) return undefined;
-  if ("data" in payload && payload.data !== undefined) return undefined;
+  if (service !== "genauth" && "data" in payload && payload.data !== undefined) return undefined;
   return statusCode;
 }
 
