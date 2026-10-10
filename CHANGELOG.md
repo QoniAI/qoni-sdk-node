@@ -7,6 +7,8 @@ not bump the packaged version, publish, or release it.
 
 ### Candidate integration documentation
 
+- Add explicit `taskScopes` to `doAnything.run()`, `api.createRun()` and `runWithMemory()` for the task's initial Web Agent token exchange. Defaults remain manage-only. Request `webagent.browser_use:take_control` when the task needs human control; the original delegation and current policy must allow it. The SDK-only option never enters the task body, does not expand an existing product token, and rejects invalid input before any request (including memory recall).
+
 - Document the corrected `runWithMemory` phase/submissionUnknown contract and `QoniTaskSubmissionUnknownError` (`task.submit_unknown`, non-retryable). Other run APIs retain existing error types; unknown writes must never be blindly replayed.
 
 - Clarify that this local candidate is not the npm release, despite retaining version 0.9.0. Add typed hosted-login, exact-interaction, ordinary Profile, opt-in memory and Agent provisioning examples.

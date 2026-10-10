@@ -159,6 +159,9 @@ console.log(result.output);
 
 此公开网页示例只申请产品的 `read` + `manage`。使用下文浏览器接管处理函数前，为该 run 申请 token 时需显式加入 `scopes: [QoniScopes.BROWSER_USE_TAKE_CONTROL]`，在 AccessKey 策略中允许该权限，并取得用户同意。站点登录处理函数另外需要 `QoniScopes.SITE_LOGIN_REQUEST` 和 `QoniScopes.SITE_LOGIN_CONFIRM`。这些权限应通过交互式委托取得；`products` 简写不包含它们。
 
+创建可能发起人类接管的任务时，给 `doAnything.run()` 传入 `taskScopes: [QoniScopes.BROWSER_USE_TAKE_CONTROL]`；`api.createRun()` 和 `runWithMemory()` 也支持此参数。任务需要站点登录权限时，再明确加入对应的 `SITE_LOGIN_*`。SDK 始终包含 manage；省略 `taskScopes` 时只申请 manage。原委托与当前权限策略必须已经允许所列 Scope。只接受 SDK 已知的具体 Web Agent Scope，不接受通配符。直接传入的产品 Token 保持原样，此参数不能给它扩权。这是尚未发布的 0.10.0 接口，npm 0.9.0 不提供。
+
+
 `run()` 返回一个 `RunHandle`。核心事件（状态、动作、交互、完成）始终默认推送；`capture: { screenshots: true }` 开启逐步截图，并且 SDK 已经把图片解码成字节。`wait()` 把任务跑到终态，并从权威 run envelope 结算结果（成本、步数、token 用量都在 `result.raw` 上）。
 
 无论是否开启 capture，不可解码或空的截图 data URI 都不会中断 `wait()`，也不会触发 `onScreenshot`。有可读消息时按既有契约降级为 progress；`onWireEvent` 始终保留原始 payload，包括没有 progress 文本的帧。
@@ -865,6 +868,8 @@ run 需要用户出手时会暂停，并发出一个 `interaction` 事件，`eve
 `Interaction` 是按 `type` 分布的联合类型，`switch (request.type)` 之后每个分支里的 `request.payload` 会自动收窄。每个方法都 POST 到交互 `actions[]` 里后端声明的 endpoint，不需要写死路由：
 
 本段处理函数所用 run 的 token，需要在准备 AccessKey 策略并取得用户同意后，申请 `products: ["doAnything"]` 并显式加入 `scopes: [QoniScopes.BROWSER_USE_TAKE_CONTROL, QoniScopes.SITE_LOGIN_REQUEST, QoniScopes.SITE_LOGIN_CONFIRM]`；产品权限提供 DoAnything manage，任务不需要登录时去掉登录权限。只有 `products: ["doAnything"]` 不能授权 `connectControl()`、`refreshControl()` 或 `releaseControl()`。切换版本前先按上文完成迁移。
+
+任务创建时还须传 `taskScopes: [QoniScopes.BROWSER_USE_TAKE_CONTROL]`，只有委托 Token 含接管 Scope 仍不足以让任务发起接管。刷新控制地址不能扩大旧任务创建时固定的权限。
 
 ```ts
 import type { InteractionHandle } from "@qoniai/qoni";

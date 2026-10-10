@@ -173,6 +173,9 @@ console.log(result.output);
 
 This public-page example requests only the product's `read` + `manage` pair. Before using the [browser-control handler below](#interactions-hitl), explicitly add `scopes: [QoniScopes.BROWSER_USE_TAKE_CONTROL]` when requesting its run token, allow that scope in the AccessKey policy, and obtain the user's consent. The site-login handler separately needs `QoniScopes.SITE_LOGIN_REQUEST` and `QoniScopes.SITE_LOGIN_CONFIRM`. Use interactive delegation for these permissions; the `products` shorthand does not request them.
 
+When creating a task that may request human control, pass `taskScopes: [QoniScopes.BROWSER_USE_TAKE_CONTROL]` to `doAnything.run()` (also supported by `api.createRun()` and `runWithMemory()`). Add specific `SITE_LOGIN_*` scopes there only when the task needs them. The SDK always includes manage; omitting `taskScopes` requests only manage. These scopes must already be allowed by the delegation and current policy. Only known concrete Web Agent scopes are accepted, not wildcards. Existing product tokens are passed through unchanged and cannot gain authority through this option. This is an unreleased 0.10.0 API; it is not available in npm 0.9.0.
+
+
 `run()` returns a `RunHandle` typed to the product: `qoni.deepResearch.run()` is a `RunHandle<DeepResearchEvent>`, so its events are narrowed to what Deep Research actually emits. `capture: { screenshots: true }` opts into per-step screenshots, decoded to bytes for you. `wait()` drives the run to its terminal state and settles the result (`result.raw` carries cost, step counts, token usage).
 
 Undecodable or empty screenshot data URIs never interrupt `wait()` or invoke `onScreenshot`, regardless of capture settings. They follow the existing progress fallback when a human-readable message is available; `onWireEvent` always retains the original payload, including frames with no progress text.
@@ -965,6 +968,8 @@ narrows `request.payload` in each branch. Each method posts to the endpoint the
 backend declared in the interaction's `actions[]`, so you never hard-code a route:
 
 Create the token for this handler with `products: ["doAnything"]` plus explicit `scopes: [QoniScopes.BROWSER_USE_TAKE_CONTROL, QoniScopes.SITE_LOGIN_REQUEST, QoniScopes.SITE_LOGIN_CONFIRM]` after AccessKey policy preparation and user consent. The product permissions supply DoAnything manage; omit the site-login scopes when the task does not need login. `products: ["doAnything"]` alone cannot authorize `connectControl()`, `refreshControl()` or `releaseControl()`; follow the migration steps above before switching versions.
+
+The task must have been created with `taskScopes: [QoniScopes.BROWSER_USE_TAKE_CONTROL]` to initiate human control; delegation scope alone is insufficient. An existing task's original authority cannot be expanded by refreshing a control URL.
 
 ```ts
 import type { InteractionHandle } from "@qoniai/qoni";

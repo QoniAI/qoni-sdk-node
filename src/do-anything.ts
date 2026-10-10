@@ -12,7 +12,7 @@ import {
 } from "./run-handle";
 import type { DoAnythingEvent } from "./run-events";
 import { interactionActionScopes } from "./interactions";
-import { QoniScopes } from "./scopes";
+import { KNOWN_SCOPES, QoniScopes } from "./scopes";
 import {
   isJsonObject,
   type QoniEvent,
@@ -118,6 +118,10 @@ export interface BrowserProxyOptions {
 
 export interface DoAnythingRunOptions {
   signal?: AbortSignal;
+  /** Concrete Web Agent scopes requested for this task's original authority.
+   * manage is always included; the default requests manage only. GenAuth checks
+   * current authorization. Existing product tokens cannot gain authority here. */
+  taskScopes?: readonly string[];
   /** Stable caller key for this acceptance. Reuse only with the identical payload.
    * Writes are never retried automatically; read api.getRequest after a lost receipt. */
   requestId?: string;
@@ -315,11 +319,11 @@ export function createDoAnythingNamespace(transport: QoniTransport) {
      * run is a follow-up in that session (409 while the prior run is
      * non-terminal).
      */
-    createRun: async <T = unknown>(input: RuntimeTokenInput & JsonObject & {signal?:AbortSignal}): Promise<QoniResponse<T>> =>
+    createRun: async <T = unknown>(input: RuntimeTokenInput & JsonObject & {signal?:AbortSignal; taskScopes?:readonly string[]}): Promise<QoniResponse<T>> =>
       transport.webAgentJson("POST", "/do_anything/runs", input.token, {
-        body: normalizeDoAnythingRunInput(omit(input, "token", "signal")),
+        body: normalizeDoAnythingRunInput(omit(input, "token", "signal", "taskScopes")),
         signal: input.signal,
-        requiredScopes: ["webagent.do_anything:manage"],
+        requiredScopes: taskCreationScopes(input),
       }),
 
     /** A missing receipt is not evidence that submission never reached the server. */
@@ -652,6 +656,7 @@ export function createDoAnythingNamespace(transport: QoniTransport) {
         if (PLATFORM_DECIDED_RUN_OPTIONS.some(key=>runInput[key]!==undefined))
           throw new QoniValidationError("Memory run contains platform-decided options");
         validateBrowserProxyOptions(runInput.browserProxy);
+        taskCreationScopes(runInput);
         signal?.throwIfAborted();
         signal?.addEventListener("abort",cancel,{once:true});
         timer=setTimeout(()=>ctl.abort(new QoniTimeoutError("Memory run deadline exceeded",{retryable:false})),timeoutMs);
@@ -697,6 +702,29 @@ export function createDoAnythingNamespace(transport: QoniTransport) {
       }
     },
   };
+}
+
+// Additional task authority must be explicit and re-enter the normal exchange.
+function taskCreationScopes(input: JsonObject): string[] {
+  if (Object.hasOwn(input, "task_scopes")) {
+    throw new QoniValidationError("Use taskScopes, not task_scopes; task authority is requested through token exchange");
+  }
+  const value = input.taskScopes;
+  const scopes = new Set<string>([QoniScopes.DO_ANYTHING_MANAGE]);
+  if (value === undefined) return [...scopes];
+  if (!Array.isArray(value) || value.length > 128) {
+    throw new QoniValidationError("taskScopes must be an array of concrete Web Agent scopes (at most 128)");
+  }
+  for (let i = 0; i < value.length; i++) {
+    const scope: unknown = value[i];
+    if (!Object.hasOwn(value, i) || typeof scope !== "string" || scope.length > 256 ||
+        !scope.startsWith("webagent.") || !KNOWN_SCOPES.includes(scope)) {
+      throw new QoniValidationError("taskScopes accepts known concrete webagent.* scopes; wildcards and other products are not supported");
+    }
+    scopes.add(scope);
+  }
+  if (scopes.size > 128) throw new QoniValidationError("taskScopes including manage must contain at most 128 scopes");
+  return [...scopes].sort();
 }
 
 // camelCase conveniences → the snake_case fields of the wire create body
