@@ -2,6 +2,10 @@
 
 本说明覆盖本次交付分支相对 main 的完整 SDK 改动，帮助应用开发者判断升级影响。目标是把 GenAuth 身份与授权、Web Agent 任务与人工交互、GUMem 记忆接入统一调用链；不代表复杂网页任务、邮件或支付业务已经全面验收。
 
+## 统一待解决清单
+
+完整的跨仓库待解决问题、已有修复但待部署项、专项待验范围及明确延期事项见 [Quickstart 待解决问题与后续验收清单](https://gitlab.asix.inc/qoni/qoni-docs/-/blob/release/quickstart-v5-doc-scopes-20261010/QUICKSTART-OPEN-ITEMS.md)。本仓具体限制仍见下文。本次有效交付为八个仓库；Authing user-portal 已因归属问题排除，相关纠正及后续处理也记录在总表。
+
 ## 用户能得到什么
 
 | 改动 | 对应用和用户的影响 |
