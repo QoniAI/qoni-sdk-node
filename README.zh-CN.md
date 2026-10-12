@@ -472,43 +472,93 @@ const followUp = await qoni.deepResearch.run({
 });
 ```
 
+`doAnything.api.readArtifacts()` 及导出类型 `DoAnythingSnapshot`、`SnapshotImage`、
+`SnapshotAction` 已 deprecated：该结构化快照契约从未有后端路径或字段来源。
+方法本地抛 `QoniUnsupportedError(code: "unsupported.operation")`，零 HTTP。
+文件请用 `qoni.doAnything.artifacts({ token, runId })` / `api.listArtifacts()`，下载用 `artifact.content()` /
+`api.artifactDownloadUrl()`；图片请开启 `capture: { screenshots: true }` 并读取
+screenshot events。文本文件不是 snapshot，真实文件 artifacts API 保持。
+
 ### Track
 
+Track 使用真实 `/track/tracks`。`prompt` 原样映射到 `instructions`，目标 URL
+请明确写在描述中。必须显式指定 schedule：整数 600–2592000 秒 interval，或带
+时区的 daily。daily 在目标时间前 0–30 分钟启动，不保证整点启动。
+
 ```ts
+import type { MonitorSchedule } from "@qoniai/qoni";
+
 const monitor = await qoni.track.create({
   token,
-  prompt: "每分钟监控一次比特币价格。",
-});
+  prompt: "监控 https://example.com/policy 并报告变化。",
+  title: "政策变化",
+  schedule: { kind: "interval", intervalSeconds: 3600 },
+}); // create 立即启动 first_look 首次检查
+const initial = await monitor.get();
+const firstRunId = initial.lastTaskId; // 只捕获一次原始首检 ID
+if (typeof firstRunId !== "string" || !firstRunId) throw new Error("缺少初始 lastTaskId");
+const sameMonitor = await qoni.track.attach(monitor.id, { token });
 
-// 新建的 monitor 先处于 `pending_clarification`（后端把意图对齐成具体规格），
-// 几秒后转为 `active`（意图含糊时可能先发一个 interaction）。runNow()/refine()
-// 都要求 `active`，所以先等它就绪再操作：
-for await (const event of monitor.events()) {
-  if (event.type === "interaction") {
-    const i = monitor.interactionHandle(event.data); // 如意图澄清
-    if (i.can("confirm")) await i.confirm();
-    continue;
-  }
-  const { status } = await monitor.get();
-  if (status === "active") break;
+async function waitForCheck(runId: string) {
+  const deadline = Date.now() + 300_000;
+  do {
+    const check = await monitor.run(runId); // 在最近 50 条中按原始 ID 精确查找
+    if (["done", "failed", "expired", "canceled"].includes(String(check.status))) {
+      if (check.status !== "done") throw new Error(`检查 ${runId} ${String(check.status)}：${String(check.failure ?? "")}`);
+      return check;
+    }
+    await new Promise(resolve => setTimeout(resolve, Math.min(1000, Math.max(0, deadline - Date.now()))));
+  } while (Date.now() < deadline);
+  throw new Error(`检查 ${runId} 超时`);
 }
 
-await monitor.runNow();                     // 立即触发一次 tick
-const ticks = await monitor.runs({ limit: 10 }); // tick 产生的 run 只读列表
-
-// 用 refine() 改定义（任意字段子集：schedule / targetUrls / extractionSchema /
-// triggerDsl / stopConditionDsl / notifyChannel）。`schedule` 是
-// { kind: "cron", expr } 或 { kind: "interval", intervalSeconds }（track.create() 相同）。
-// get()/run() 读回时，抽取字段名与抽取结果保留原始键名。
-// 自然语言意图不可 refine——要改描述请新建 monitor：
-await monitor.refine({ schedule: { kind: "cron", expr: "0 9 * * *" } });
-await monitor.pause();   // 停掉定时 tick 但不删除
-await monitor.resume();
-await monitor.delete();
-
-// 之后可以用存下来的 id 重连：
-const sameMonitor = await qoni.track.attach(monitor.id, { token });
+try {
+  await monitor.pause(); // 停止未来调度，已经启动的首检继续
+  await waitForCheck(firstRunId);
+  await monitor.refine({ schedule: initial.schedule as MonitorSchedule }); // 本次已校验的已知输入可 roundtrip
+  await monitor.refine({ schedule: { kind: "daily", at: "09:00", tz: "Asia/Singapore" } });
+  const task = await monitor.runNow(); // 调度暂停时，显式手动执行一次
+  const check = await waitForCheck(task.runId); // 202 接受不等于完成
+  const checks = await monitor.runs({ limit: 10, offset: 0 });
+  await monitor.resume();
+} finally {
+  await monitor.delete(); // 软删除；仍在运行的检查继续
+}
 ```
+
+create 会立即启动一次 `first_look` 首检。只捕获一次初始 `lastTaskId`，等待
+同一个首检结束，再显式调用一次 runNow。并发启动其他任务仍可能导致 409，SDK
+原样抛出，不隐式重试。pause 只暂停未来调度，已经启动的检查继续。
+
+Track check.status 为 `running/done/failed/expired/canceled`，成功终态是 **done**，
+原样保留，区别于单次 RunResult.status 的 succeeded。读回已知 wire schedule 形状
+时不重新套用 SDK 写入边界或 Intl 时区校验；未知/不完整形状原样保留。写入仍严格
+校验，请选择支持的输入，不要把任意服务端 schedule 强制 cast 后重写。
+
+`runs()` 查询后端最近 50 条 checks，再在本地应用 limit/offset；`run(id)` 只在
+同一窗口按精确 run_id 查找，未找到抛本地 `QoniError(code: "not_found")`（没有 HTTP status）并说明范围；Track 本身不存在是后端 404 `track_not_found`。
+检查保留真实 status/outcome/headline/answer/failure，不补造 extracted、diffs 或
+snapshotId。早前任务仍在运行时，`runNow()` 会原样抛后端 409 `task_in_progress`；
+成功只返回真实任务引用，完成与否需要再读 checks。
+
+| 保留的方法或输入 | 当前行为 |
+| --- | --- |
+| `track.create`、`attach`、`MonitorHandle.get` | 创建/读取真实 Track；get 转换已知 schedule 形状，未知形状原样保留。 |
+| `MonitorHandle.pause`、`resume` | PATCH status 为 paused / active；pause 不停已启动的检查。 |
+| `MonitorHandle.refine` | 仅修改 title/schedule；改 prompt/instructions/intent 需新建 Track。 |
+| `MonitorHandle.runNow` | POST run_now，返回真实任务引用。 |
+| `MonitorHandle.runs`、`run` | 仅以 Track read scope 读取最近检查，不回退到 DoAnything。 |
+| `MonitorHandle.delete` | DELETE204 软删除停止调度，不取消正在运行的任务。 |
+| `track.api.createMonitor`、`getMonitor` | 保留旧方法名；真实字段为 instructions/title，wire schedule 为 `{ every_seconds: N }` 或 `{ daily_at: "HH:MM", tz }`。 |
+| `track.api.updateMonitor` | PATCH 真实 title/instructions/schedule/status；低层可改 instructions，高层 refine 不允许。 |
+| `track.api.runNow`、`deleteMonitor` | 真实 run_now / DELETE；wire 任务引用 / 空 204。 |
+| `track.api.listRuns`、`getRun` | 原始 checks，本地分页，精确查找最近 50 条。 |
+| `MonitorHandle.events`、`interactionHandle`、`track.api.events`、`intervene` | deprecated，无后端路径，本地 QoniUnsupportedError，零 HTTP/零 token exchange。 |
+| `targetUrls`、`extractionSchema`、`triggerDsl`、`stopConditionDsl`、`notifyChannel`（含 snake_case 别名）、旧 `url` | 无对应字段，本地 QoniUnsupportedError；URL 需明确写入 prompt。 |
+| cron schedule | deprecated，本地明确拒绝并给出 daily 替代，不默默转换任意 cron。 |
+
+无 schedule、非法 interval/时间/时区/分页等输入在 HTTP 前抛 `QoniValidationError`。
+旧类型导出与 cron 分支保留并标记 deprecated；值为 undefined 的可选键保持省略行为，有值的不支持字段仍拒绝；unsupported 负例不算能力正例。
 
 ### GenAuth 用户上下文与用户管理
 
@@ -601,7 +651,7 @@ interface RunResult {
   runId: string;
   status: "succeeded" | "failed" | "canceled";  // run 的交付状态
   output?: unknown;            // 最终答案 / 载荷（形状随任务而定）
-  artifacts: Artifact[];       // 交付物——deepResearch 报告；其它产品为 []
+  artifacts: Artifact[];       // 持久化 DoAnything 文件 / deepResearch 报告
   isTaskSuccessful?: boolean;  // 任务是否达成目标（与 status 不同）
   terminalReason?: string;
   raw: JsonObject;             // 完整 wire envelope——成本、步数、token 用量
@@ -610,7 +660,7 @@ interface RunResult {
 
 每个 `Artifact` 暴露 `id`、`name?`、`mime?`、`sizeBytes?`、`createdAt?` 和 `content(): Promise<Uint8Array>`（懒加载字节）。其余方法都返回下文的 `QoniResponse<T>` 信封,`T` 是该调用的具体载荷类型（例如 `genauth.users.list` → `.data` 上的分页用户列表）。`T` 的精确形状见随包的 `.d.ts`，与后端契约一致。
 
-`MonitorHandle`（Track）提供 `id`、`get()`、`pause()`、`resume()`、`refine(patch)`、`runNow()`、`events()`、`interactionHandle()`、`runs()`、`run(runId)`、`delete()`。`runNow()` 和 `refine()` 要求 monitor 处于 `active`——新建的 monitor 会先短暂处于 `pending_clarification`（见上方 Track 示例）。
+`MonitorHandle`（Track）提供 `id`、`get()`、`pause()`、`resume()`、`refine(patch)`、`runNow()`、`runs()`、`run(runId)`、`delete()`。deprecated 的 `events()` / `interactionHandle()` 本地拒绝，完整逐项映射见上方 Track。
 
 ### 交互（HITL）
 
@@ -682,7 +732,7 @@ if (handle.type === InteractionTypes.AskUser && handle.can(ActionKinds.answer)) 
 
 ### Wire 级逃生舱
 
-与后端 HTTP 契约一一对应的低层方法保留在 `qoni.<product>.api.*` 下（如 `qoni.doAnything.api.createSession`、`qoni.deepResearch.api.followUp`、`qoni.track.api.createMonitor`）。这些方法直接镜像 wire 形状——snake_case 字段、双层 envelope 事件、run 操作统一走 `/{product}/runs/{run_id}` 单 ID 寻址——形状会随 API 演进变化，不在冻结的公开契约范围内。
+可支持的低层方法保留在 `qoni.<product>.api.*` 下（如 `qoni.doAnything.api.createSession`、`qoni.deepResearch.api.followUp`、`qoni.track.api.createMonitor`）。这些方法直接镜像 wire 形状——snake_case 字段、双层 envelope 事件、run 操作统一走 `/{product}/runs/{run_id}` 单 ID 寻址——形状会随 API 演进变化，不在冻结的公开契约范围内。
 
 原始 wire 事件类型（`run.action.started` 这种内部传输名，命名是历史遗留、也不一致）**不作为公开导出**——开发者按上面那套精选 `event.type` 匹配即可；极少数要精确 wire 的场景，`event.raw.event` 是个原始字符串，直接比对。
 
@@ -713,9 +763,9 @@ type QoniResponse<T> = {
 //     "phase"          string   —— Deep Research 阶段名
 //     "sectionReady"   string   —— Deep Research 章节标题
 //     "resultsReady"   number   —— Web Search 结果数
-//     "monitorCreated" string   —— Track monitor id
-//     "triggered"      string   —— Track 变化摘要
-//     "checkCompleted" boolean  —— Track:这次检查有没有发现变化
+//     "monitorCreated" string   —— deprecated 的旧 monitor wire 类型
+//     "triggered"      string   —— deprecated 的旧 monitor wire 类型
+//     "checkCompleted" boolean  —— deprecated 的旧 monitor wire 类型
 //   丰富事件 —— event.data 是个小对象:
 //     "message"        { text, role }
 //     "interaction"    带类型的 Interaction 对象（HITL）—— 见「交互」一节
@@ -732,7 +782,7 @@ type QoniResponse<T> = {
 | Do Anything | 核心:`progress` / `message` / `interaction` / `screenshot` / `browserLiveUrlChanged` / `done` |
 | Web Search | 核心 + `resultsReady` |
 | Deep Research | 核心 + `phase` / `sectionReady`（大纲审批走 `interaction`） |
-| Track（`MonitorHandle`） | 核心 + `monitorCreated` / `triggered` / `checkCompleted` |
+| Track（`MonitorHandle`） | 无 SSE 路径，旧 MonitorEvent 类型 deprecated；用 runs()/run() 读取检查。 |
 
 展示实时浏览器时，监听 `browserLiveUrlChanged`，用 `event.data.liveUrl` 更新预览地址。任务执行期间可能切换标签页，因此不能只使用第一次收到的地址。`forceViewerReload` 为 true 时重载已有预览。live URL 可访问浏览器画面，不要写入公开日志。
 
@@ -758,6 +808,7 @@ type QoniEvent<T = unknown> = {
 
 | 类 | 触发时机 | 典型处理 |
 | --- | --- | --- |
+| `QoniUnsupportedError` | 保留表面没有后端操作（code: `unsupported.operation`），零 HTTP。 | 使用错误提示中的真实替代能力。 |
 | `QoniValidationError` | 请求发出前的本地校验失败（scope 字符串格式错、silent 委托缺 user）。 | 按消息修正调用——消息里给出正确写法。 |
 | `QoniAuthError` | AK/SK 签名被 Qoni 拒绝（凭据错误/已轮换）。 | 检查 `accessKey` / `secretKey`。 |
 | `QoniPermissionDeniedError` | AccessKey 或 delegation token 缺少所需 scope（403）。 | 检查 AccessKey 权限策略，并在 `delegateToken` 中申请所需 scope。 |

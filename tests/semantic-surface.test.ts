@@ -1492,179 +1492,55 @@ describe("deepResearch.run → RunHandle", () => {
 
 describe("track.create → MonitorHandle", () => {
   function monitorClient() {
-    const harness = makeClient((call) => {
-      if (call.pathname.endsWith("/track/monitors") && call.method === "POST") {
-        return jsonResponse({ data: { id: "mon_1", status: "active" } });
-      }
-      if (call.pathname.endsWith("/monitors/mon_1/events")) {
-        return sseResponse(
-          frame(1, "run.status_changed", { status: "running" }, { task_id: "tick_1" }) +
-            frame(2, "run.completed", { terminal_reason: "done" }, { task_id: "tick_1" }),
-        );
-      }
-      if (call.pathname.endsWith("/monitors/mon_1/runs")) {
-        return jsonResponse({
-          data: {
-            items: [
-              { run_id: "tick_1", status: "succeeded", started_at: "2026-06-12T08:00:00+00:00" },
-            ],
-            total: 1,
-          },
-        });
-      }
-      if (call.pathname.endsWith("/monitors/mon_1/runs/tick_1")) {
-        return jsonResponse({ data: { run_id: "tick_1", status: "succeeded" } });
-      }
-      return jsonResponse({ data: { id: "mon_1", check_interval_minutes: 30 } });
+    return makeClient((call) => {
+      if (call.pathname.endsWith("/checks")) return jsonResponse({ items: [{ run_id: "tick_1", status: "done", outcome: "same", headline: "No change", answer: "No change", failure: null }] });
+      if (call.pathname.endsWith("/run_now")) return jsonResponse({ track_id: "mon_1", session_id: "sess_1", run_id: "tick_2" }, { status: 202 });
+      if (call.method === "DELETE") return new Response(null, { status: 204 });
+      return jsonResponse({ id: "mon_1", instructions: "watch", schedule: { every_seconds: 600 }, status: (call.body as Record<string, unknown>)?.status ?? "active" });
     });
-    return harness;
   }
-
-  it("create() snakeifies the definition and returns a handle with the id", async () => {
+  const definition = { token: TOKEN, prompt: "watch", schedule: { kind: "interval" as const, intervalSeconds: 600 } };
+  it("maps prompt and schedule and returns a resident track handle", async () => {
     const { client, calls } = monitorClient();
-    const monitor = await client.track.create({
-      token: TOKEN,
-      prompt: "monitor the pricing page for changes",
-      url: "https://eazo.ai/pricing",
-      checkIntervalMinutes: 30,
-    });
+    const monitor = await client.track.create(definition);
     expect(monitor.id).toBe("mon_1");
-    expect(calls[0].body).toEqual({
-      intent: "monitor the pricing page for changes",
-      url: "https://eazo.ai/pricing",
-      check_interval_minutes: 30,
-    });
+    expect(calls[0].body).toEqual({ instructions: "watch", schedule: { every_seconds: 600 } });
+    expect((await monitor.get()).schedule).toEqual(definition.schedule);
   });
-
-  it("handle methods address the monitor without re-passing token or id", async () => {
+  it("pause/resume/refine PATCH real Track fields and never rewrite intent", async () => {
     const { client, calls } = monitorClient();
-    const monitor = await client.track.create({
-      token: TOKEN,
-      prompt: "monitor the page for changes",
-      url: "https://eazo.ai",
-    });
-
-    const detail = await monitor.get();
-    expect(detail.checkIntervalMinutes).toBe(30); // camelCase normalization
-
-    await monitor.refine({ schedule: { kind: "interval", intervalSeconds: 3600 } });
-    await monitor.runNow();
-    await monitor.delete();
-
-    expect(calls.slice(1).map((c) => `${c.method} ${c.pathname}`)).toEqual([
-      "GET /api/v1/projects/tenant_1/track/monitors/mon_1",
-      "PATCH /api/v1/projects/tenant_1/track/monitors/mon_1",
-      "POST /api/v1/projects/tenant_1/track/monitors/mon_1/run_now",
-      "DELETE /api/v1/projects/tenant_1/track/monitors/mon_1",
+    const monitor = await client.track.create(definition);
+    await monitor.pause(); await monitor.resume();
+    await monitor.refine({ schedule: { kind: "daily", at: "09:00", tz: "UTC" } });
+    expect(calls.filter(c => c.method === "PATCH").map(c => c.body)).toEqual([
+      { status: "paused" }, { status: "active" }, { schedule: { daily_at: "09:00", tz: "UTC" } },
     ]);
-    expect(calls[2].body).toEqual({
-      action: "refine",
-      patch: { schedule: { kind: "interval", interval_seconds: 3600 } },
-    });
-  });
-
-  it("pause/resume/refine send the action-shaped PATCH body the backend FSM expects", async () => {
-    const { client, calls } = monitorClient();
-    const monitor = await client.track.create({
-      token: TOKEN,
-      prompt: "monitor the page for changes",
-      url: "https://eazo.ai",
-    });
-
-    await monitor.pause();
-    await monitor.resume();
-    await monitor.refine({ targetUrls: ["https://eazo.ai/pricing"] });
-
-    const patchBodies = calls.filter((c) => c.method === "PATCH").map((c) => c.body);
-    expect(patchBodies).toEqual([
-      { action: "pause" },
-      { action: "resume" },
-      { action: "refine", patch: { target_urls: ["https://eazo.ai/pricing"] } },
-    ]);
-
-    // A refine with nothing to change fails locally, before any request.
     const before = calls.length;
     await expect(monitor.refine({})).rejects.toMatchObject({ name: "QoniValidationError" });
-    expect(calls.length).toBe(before);
+    await expect(monitor.refine({ instructions: "new intent" })).rejects.toMatchObject({ code: "unsupported.operation" });
+    expect(calls).toHaveLength(before);
   });
-
-  it("a monitor interaction's action posts to its declared endpoint", async () => {
+  it("returns a task reference from runNow and soft-deletes with empty 204", async () => {
     const { client, calls } = monitorClient();
-    const monitor = await client.track.create({
-      token: TOKEN,
-      prompt: "monitor the page for changes",
-      url: "https://eazo.ai",
-    });
-
-    // monitor.needs_login surfaces as a site_login interaction on the stream;
-    // confirmSignedIn() posts to the endpoint the backend declared.
-    const handle = monitor.interactionHandle({
-      id: "ix_m",
-      type: "site_login",
-      status: "active",
-      createdAt: "2026-06-12T08:00:01+00:00",
-      title: "Re-sign in",
-      actions: [
-        {
-          kind: "confirm_signed_in",
-          label: "I signed in",
-          method: "POST",
-          endpoint: "/track/monitors/mon_1/interactions/ix_m/confirm_signed_in",
-        },
-      ],
-      payload: { sites: [], monitorId: "mon_1" },
-    });
-    await handle.confirmSignedIn();
-
-    const action = calls.filter((c) => c.pathname.includes("/interactions/"));
-    expect(action.map((c) => `${c.method} ${c.pathname}`)).toEqual([
-      "POST /api/v1/projects/tenant_1/track/monitors/mon_1/interactions/ix_m/confirm_signed_in",
-    ]);
+    const monitor = await client.track.create(definition);
+    expect(await monitor.runNow()).toEqual({ trackId: "mon_1", sessionId: "sess_1", runId: "tick_2" });
+    await monitor.delete();
+    expect(calls.at(-1)?.method).toBe("DELETE");
+    expect(calls.some(c => c.pathname.includes("/cancel"))).toBe(false);
   });
-
-  it("runs() / run() expose read-only normalized tick runs", async () => {
+  it("runs/run read checks through Track only", async () => {
     const { client, calls } = monitorClient();
-    const monitor = await client.track.create({
-      token: TOKEN,
-      prompt: "monitor the page for changes",
-      url: "https://eazo.ai",
-    });
-
-    const runs = await monitor.runs({ limit: 5 });
-    expect(runs).toEqual([
-      { id: "tick_1", runId: "tick_1", status: "succeeded", startedAt: "2026-06-12T08:00:00+00:00" },
-    ]);
-    expect(calls.at(-1)?.url).toContain("/monitors/mon_1/runs?limit=5");
-
-    const single = await monitor.run("tick_1");
-    expect(single).toEqual({ id: "tick_1", runId: "tick_1", status: "succeeded" });
-    // Read-only views carry no operations.
-    expect((single as Record<string, unknown>).cancel).toBeUndefined();
+    const monitor = await client.track.create(definition);
+    const rows = await monitor.runs({ limit: 5 });
+    expect(rows[0]).toMatchObject({ id: "tick_1", runId: "tick_1", status: "done", outcome: "same" });
+    expect(await monitor.run("tick_1")).toEqual(rows[0]);
+    expect(calls.at(-1)?.url).toContain("/tracks/mon_1/checks");
+    expect(calls.at(-1)?.url).not.toContain("?");
   });
-
-  it("events() yields normalized events without auto-ending on tick run terminals", async () => {
-    const { client } = monitorClient();
-    const monitor = await client.track.create({
-      token: TOKEN,
-      prompt: "monitor the page for changes",
-      url: "https://eazo.ai",
-    });
-
-    const types: string[] = [];
-    for await (const event of monitor.events()) types.push(event.type);
-    // The terminal `done` of a tick run is yielded, and the iterator only
-    // ends because the mocked stream closes — not because of the terminal.
-    // (status_changed folds into progress.)
-    expect(types).toEqual(["progress", "done"]);
-  });
-
-  it("attach() verifies the monitor exists", async () => {
+  it("attach verifies the resource through the tracks route", async () => {
     const { client, calls } = monitorClient();
-    const monitor = await client.track.attach("mon_1", { token: TOKEN });
-    expect(monitor.id).toBe("mon_1");
-    expect(calls.map((c) => `${c.method} ${c.pathname}`)).toEqual([
-      "GET /api/v1/projects/tenant_1/track/monitors/mon_1",
-    ]);
+    expect((await client.track.attach("mon_1", { token: TOKEN })).id).toBe("mon_1");
+    expect(calls[0].pathname).toBe("/api/v1/projects/tenant_1/track/tracks/mon_1");
   });
 });
 

@@ -16,7 +16,6 @@ import {
   doAnythingScopes,
   liveClient,
   liveE2EEnabled,
-  trackScopes,
 } from "./helpers";
 
 /**
@@ -134,7 +133,7 @@ describeLiveE2E("live e2e: interactions (InteractionHandle + run.interactionHand
 
       // Domain content: this is OUR interaction, typed and normalized.
       expect(observedInteraction!.id).toBe(requestId);
-      expect(observedInteraction!.type).toBe("clarification");
+      expect(observedInteraction!.type).toBe("ask_user");
       expect(observedInteraction!.status).toBe("resolved");
       expect(observedInteraction!.createdAt).toBeTruthy();
       expect(observedInteraction!.resolvedAt).toBeTruthy();
@@ -258,81 +257,5 @@ describeLiveE2E("live e2e: interactions (InteractionHandle + run.interactionHand
   );
 });
 
-/**
- * Track's clarification channel, checked against the interaction model.
- *
- * The monitor handle exposes an `interactionHandle()` factory documented for
- * "a site_login to unlock a needs_reauth park". On this deployment a monitor
- * that needs input does NOT emit `run.interaction`: it emits
- * `monitor.alignment_progress`, which the event normalizer does not turn into
- * an Interaction — so no monitor-borne Interaction exists to wrap, and the
- * answer must go through the wire alignment route instead (covered in
- * wire-api.test.ts).
- *
- * This suite deliberately drives Track through the WIRE api and applies the
- * normalizer directly, rather than constructing a monitor handle: doing the
- * latter would make the function-coverage mapper report the monitor's
- * `interactionHandle()` as live-covered when it is not.
- */
-describeLiveE2E("live e2e: interactions — Track's clarification is not an Interaction", () => {
-  let client: ReturnType<typeof liveClient>;
-  let token: string;
-  let monitorId = "";
-
-  beforeAll(async () => {
-    client = liveClient(matrix?.runtime);
-    token = (await delegateLiveToken(client, trackScopes)).token;
-  }, 120_000);
-
-  afterAll(async () => {
-    if (monitorId) {
-      await client.track.api.deleteMonitor({ token, monitorId }).catch(() => undefined);
-    }
-  });
-
-  it("a monitor asking for input emits monitor.alignment_progress, not run.interaction", async () => {
-    const created = await client.track.api.createMonitor<JsonObject>({
-      token,
-      intent: "Tell me when it changes.",
-    });
-    monitorId = String(created.data.id);
-    expect(created.data.status).toBe("pending_clarification");
-
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 60_000);
-    const wire: QoniEvent<unknown>[] = [];
-    try {
-      for await (const event of client.track.api.events<unknown>({
-        token,
-        monitorId,
-        signal: controller.signal,
-      })) {
-        const envelope = (event.data ?? {}) as JsonObject;
-        if (String(envelope.type) === "stream.heartbeat") continue;
-        wire.push(event);
-        if (String(envelope.type) === "monitor.alignment_progress") break;
-      }
-    } catch (error) {
-      if (!controller.signal.aborted) throw error;
-    } finally {
-      clearTimeout(timer);
-      controller.abort();
-    }
-
-    const ask = wire.find(
-      (event) => String(((event.data ?? {}) as JsonObject).type) === "monitor.alignment_progress",
-    );
-    expect(ask, "the parked monitor must ask for the missing input").toBeTruthy();
-
-    // No `run.interaction` on the monitor stream…
-    expect(
-      wire.some((event) => String(((event.data ?? {}) as JsonObject).type) === "run.interaction"),
-    ).toBe(false);
-    // …and the normalizer the semantic monitor stream applies produces no
-    // interaction-typed event for the ask, so there is nothing to wrap.
-    for (const event of wire) {
-      const normalized = normalizeRunEvent(event);
-      expect(normalized?.type).not.toBe("interaction");
-    }
-  }, 120_000);
-});
+// Track has no interaction/events endpoint. Historical alignment live tests
+// are retired; local unsupported guards live in gray-track-contract.test.ts.

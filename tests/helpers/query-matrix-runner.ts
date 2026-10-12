@@ -5,6 +5,7 @@ import type {
   Qoni,
   JsonObject,
   MonitorHandle,
+  TrackCreateOptions,
   RunEvent,
   RunHandle,
   RunImage,
@@ -340,8 +341,8 @@ async function executeTrack(
 ): Promise<{ resourceId: string; methods: string[]; output: unknown }> {
   const monitor = await client.track.create({
     token,
-    ...(item.input as JsonObject & { prompt: string }),
-  });
+    ...(item.input as Omit<TrackCreateOptions, "token">),
+  } as TrackCreateOptions);
   const methods = ["track.create"];
   let deleted = false;
   try {
@@ -353,9 +354,13 @@ async function executeTrack(
     await attached.get();
     methods.push("track.attach");
 
-    const triggered = await runTrackTick(monitor, caseDir, item.timeoutMs ?? 180_000);
+    const firstRunId = initial.lastTaskId;
+    if (typeof firstRunId !== "string" || !firstRunId) throw new Error("Track initial response did not contain lastTaskId");
+    const firstLook = await waitForTrackRun(monitor, firstRunId, item.timeoutMs ?? 180_000);
+    writeJson(path.join(caseDir, "first-look.json"), firstLook);
+    const triggered = await monitor.runNow();
     writeJson(path.join(caseDir, "run-now.json"), triggered);
-    methods.push("MonitorHandle.runNow", "MonitorHandle.events");
+    methods.push("MonitorHandle.runNow");
 
     const triggeredRunId = typeof triggered.runId === "string" ? triggered.runId : undefined;
     if (!triggeredRunId) throw new Error("Track runNow response did not contain runId");
@@ -366,6 +371,7 @@ async function executeTrack(
     const detail = await monitor.run(triggeredRunId);
     methods.push("MonitorHandle.run");
     writeJson(path.join(caseDir, "run-detail.json"), detail);
+    if (detail.status !== "done") throw new Error(`Track check ${triggeredRunId} ${String(detail.status)}: ${String(detail.failure ?? "no failure detail")}`);
     assertQueryMatrixOutput(item, detail);
 
     await monitor.delete();
@@ -419,48 +425,6 @@ function createGenericRunEvidence(dir: string): {
   };
 }
 
-async function runTrackTick(
-  monitor: MonitorHandle,
-  caseDir: string,
-  timeoutMs: number,
-): Promise<JsonObject> {
-  const file = path.join(caseDir, "events.raw.jsonl");
-  fs.writeFileSync(file, "");
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), timeoutMs);
-  let completed = false;
-  const eventsReady = (async () => {
-    try {
-      for await (const event of monitor.events({ signal: controller.signal })) {
-        appendJsonLine(file, { receivedAt: new Date().toISOString(), ...event.raw });
-        const wireType = String(event.raw.event || "");
-        if (wireType === "monitor.tick_completed") {
-          completed = true;
-          break;
-        }
-        if (wireType === "monitor.tick_failed") {
-          throw new Error("Track run emitted monitor.tick_failed");
-        }
-      }
-    } catch (error) {
-      if (!controller.signal.aborted) throw error;
-    }
-  })();
-  try {
-    // Let the SSE request establish before triggering the tick, so the test
-    // witnesses the new lifecycle instead of relying on history replay.
-    await new Promise((resolve) => setTimeout(resolve, 250));
-    const triggered = await monitor.runNow();
-    await eventsReady;
-    if (!completed) throw new Error(`Track run did not complete within ${timeoutMs} ms`);
-    return triggered;
-  } finally {
-    clearTimeout(timeout);
-    controller.abort();
-    await eventsReady.catch(() => undefined);
-  }
-}
-
 async function waitForTrackRun(
   monitor: MonitorHandle,
   runId: string,
@@ -468,10 +432,10 @@ async function waitForTrackRun(
 ): Promise<JsonObject> {
   const deadline = Date.now() + timeoutMs;
   do {
-    const runs = await monitor.runs({ limit: 10 });
+    const runs = await monitor.runs();
     const target = findTrackRun(runs, runId);
     if (target && isTerminalTrackRun(target)) return target;
-    await new Promise((resolve) => setTimeout(resolve, 1_000));
+    await new Promise((resolve) => setTimeout(resolve, Math.min(1_000, Math.max(0, deadline - Date.now()))));
   } while (Date.now() < deadline);
   throw new Error(`Track run ${runId} did not reach a terminal state within ${timeoutMs} ms`);
 }
@@ -481,7 +445,7 @@ export function findTrackRun(runs: JsonObject[], runId: string): JsonObject | un
 }
 
 function isTerminalTrackRun(run: JsonObject): boolean {
-  return ["completed", "failed", "cancelled", "canceled"].includes(String(run.state));
+  return ["done", "failed", "expired", "canceled"].includes(String(run.status));
 }
 
 function writeSerializableResult(file: string, result: RunResult): void {

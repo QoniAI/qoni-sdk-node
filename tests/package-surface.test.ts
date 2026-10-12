@@ -16,6 +16,7 @@ const publicExports = [
   "QoniPermissionDeniedError",
   "QoniTokenExpiredError",
   "QoniValidationError",
+  "QoniUnsupportedError",
   "QoniRateLimitError",
   "QoniUpstreamError",
   "QoniTimeoutError",

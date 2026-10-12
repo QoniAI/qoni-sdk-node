@@ -192,7 +192,7 @@
   {
     "id": "qoni-do-anything-api-read-artifacts",
     "name": "qoni.doAnything.api.readArtifacts",
-    "description": "Read a session artifact."
+    "description": "Deprecated unsupported: no backend route/source; local typed error with zero HTTP, not a positive capability."
   },
   {
     "id": "qoni-do-anything-api-read-recording",
@@ -282,57 +282,57 @@
   {
     "id": "qoni-track-create",
     "name": "qoni.track.create",
-    "description": "Create a monitor."
+    "description": "Create a real Track from prompt instructions and an explicit interval/daily schedule."
   },
   {
     "id": "qoni-track-attach",
     "name": "qoni.track.attach",
-    "description": "Reconnect to a monitor."
+    "description": "Reconnect to a real Track by id."
   },
   {
     "id": "qoni-track-api-create-monitor",
     "name": "qoni.track.api.createMonitor",
-    "description": "Create a raw monitor."
+    "description": "Historical name: POST a Track with instructions/title and a wire schedule."
   },
   {
     "id": "qoni-track-api-get-monitor",
     "name": "qoni.track.api.getMonitor",
-    "description": "Read a raw monitor."
+    "description": "Historical name: GET a real Track wire record."
   },
   {
     "id": "qoni-track-api-run-now",
     "name": "qoni.track.api.runNow",
-    "description": "Trigger a monitor tick."
+    "description": "Accept a manual check; return track_id/session_id/run_id, not a monitor or completion."
   },
   {
     "id": "qoni-track-api-events",
     "name": "qoni.track.api.events",
-    "description": "Stream monitor events."
+    "description": "Deprecated unsupported: no backend route/source; local typed error with zero HTTP, not a positive capability."
   },
   {
     "id": "qoni-track-api-intervene",
     "name": "qoni.track.api.intervene",
-    "description": "Post a monitor intervention."
+    "description": "Deprecated unsupported: no backend route/source; local typed error with zero HTTP, not a positive capability."
   },
   {
     "id": "qoni-track-api-list-runs",
     "name": "qoni.track.api.listRuns",
-    "description": "List monitor runs."
+    "description": "GET recent 50 checks and paginate locally."
   },
   {
     "id": "qoni-track-api-get-run",
     "name": "qoni.track.api.getRun",
-    "description": "Read a monitor run."
+    "description": "Find exact run_id within the recent 50 checks; no DA fallback."
   },
   {
     "id": "qoni-track-api-update-monitor",
     "name": "qoni.track.api.updateMonitor",
-    "description": "Update a raw monitor."
+    "description": "PATCH real Track title/instructions/schedule/status fields."
   },
   {
     "id": "qoni-track-api-delete-monitor",
     "name": "qoni.track.api.deleteMonitor",
-    "description": "Delete a raw monitor."
+    "description": "Soft-delete a Track via empty 204; does not cancel in-flight tasks."
   },
   {
     "id": "run-handle-status",
@@ -362,52 +362,52 @@
   {
     "id": "monitor-handle-get",
     "name": "MonitorHandle.get",
-    "description": "Refresh monitor state."
+    "description": "Read a real Track with roundtrippable SDK schedules."
   },
   {
     "id": "monitor-handle-pause",
     "name": "MonitorHandle.pause",
-    "description": "Pause scheduled ticks."
+    "description": "Pause future scheduled checks via status PATCH."
   },
   {
     "id": "monitor-handle-resume",
     "name": "MonitorHandle.resume",
-    "description": "Resume scheduled ticks."
+    "description": "Resume scheduled checks via status PATCH."
   },
   {
     "id": "monitor-handle-refine",
     "name": "MonitorHandle.refine",
-    "description": "Refine a monitor definition."
+    "description": "Change title/schedule only; never rewrite original instructions."
   },
   {
     "id": "monitor-handle-run-now",
     "name": "MonitorHandle.runNow",
-    "description": "Trigger an immediate tick."
+    "description": "Return the accepted Track task reference, not a completed check."
   },
   {
     "id": "monitor-handle-events",
     "name": "MonitorHandle.events",
-    "description": "Stream semantic monitor events."
+    "description": "Deprecated unsupported: no backend route/source; local typed error with zero HTTP, not a positive capability."
   },
   {
     "id": "monitor-handle-interaction-handle",
     "name": "MonitorHandle.interactionHandle",
-    "description": "Bind an interaction to a monitor."
+    "description": "Deprecated unsupported: no backend route/source; local typed error with zero HTTP, not a positive capability."
   },
   {
     "id": "monitor-handle-runs",
     "name": "MonitorHandle.runs",
-    "description": "List tick runs."
+    "description": "Read recent 50 checks; apply limit/offset locally."
   },
   {
     "id": "monitor-handle-run",
     "name": "MonitorHandle.run",
-    "description": "Read a tick run."
+    "description": "Find an exact run in the recent 50 checks with actual fields only."
   },
   {
     "id": "monitor-handle-delete",
     "name": "MonitorHandle.delete",
-    "description": "Delete a monitor."
+    "description": "Soft-delete a Track without cancelling its in-flight task."
   },
   {
     "id": "interaction-handle-can",

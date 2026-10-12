@@ -501,45 +501,103 @@ const followUp = await qoni.deepResearch.run({
 });
 ```
 
+`doAnything.api.readArtifacts()` and the exported `DoAnythingSnapshot`,
+`SnapshotImage`, and `SnapshotAction` types are deprecated. There has never been
+a backend endpoint/source for that structured snapshot contract. The method
+raises local `QoniUnsupportedError` (`code: "unsupported.operation"`) with zero
+HTTP. Use `qoni.doAnything.artifacts({ token, runId })` / `api.listArtifacts()` for files, including
+`artifact.content()` or `api.artifactDownloadUrl()` for downloads. Use
+`capture: { screenshots: true }` and screenshot events for images. A text file
+artifact is not a snapshot; the real file APIs are unchanged.
+
 ### Track
 
+Track uses `/track/tracks`. `prompt` maps to `instructions`; include watched URLs
+in that text. An explicit schedule is required: an integer interval of
+600–2592000 seconds, or a daily time with a time zone. A daily check starts
+0–30 minutes before the target time, rather than exactly at that time.
+
 ```ts
+import type { MonitorSchedule } from "@qoniai/qoni";
+
 const monitor = await qoni.track.create({
   token,
-  prompt: "Monitor the price of Bitcoin every minute.",
-});
+  prompt: "Watch https://example.com/policy and report changes.",
+  title: "Policy changes",
+  schedule: { kind: "interval", intervalSeconds: 3600 },
+}); // create immediately starts a first_look check
+const initial = await monitor.get();
+const firstRunId = initial.lastTaskId; // capture this original ID once
+if (typeof firstRunId !== "string" || !firstRunId) throw new Error("Missing initial lastTaskId");
+const sameMonitor = await qoni.track.attach(monitor.id, { token });
 
-// A new monitor starts in `pending_clarification` while the backend aligns
-// the intent into a concrete spec, then flips to `active` (usually a few
-// seconds; it may emit an `interaction` first if the intent is ambiguous).
-// runNow()/refine() require `active`, so wait for it before acting:
-for await (const event of monitor.events()) {
-  if (event.type === "interaction") {
-    const i = monitor.interactionHandle(event.data); // e.g. an intent clarification
-    if (i.can("confirm")) await i.confirm();
-    continue;
-  }
-  const { status } = await monitor.get();
-  if (status === "active") break;
+async function waitForCheck(runId: string) {
+  const deadline = Date.now() + 300_000;
+  do {
+    const check = await monitor.run(runId); // exact ID in the recent 50 checks
+    if (["done", "failed", "expired", "canceled"].includes(String(check.status))) {
+      if (check.status !== "done") throw new Error(`Check ${runId} ${String(check.status)}: ${String(check.failure ?? "")}`);
+      return check;
+    }
+    await new Promise(resolve => setTimeout(resolve, Math.min(1000, Math.max(0, deadline - Date.now()))));
+  } while (Date.now() < deadline);
+  throw new Error(`Check ${runId} timed out`);
 }
 
-await monitor.runNow();                     // trigger an immediate tick
-const ticks = await monitor.runs({ limit: 10 }); // read-only tick run views
-
-// Change the definition with refine() (any subset of: schedule / targetUrls /
-// extractionSchema / triggerDsl / stopConditionDsl / notifyChannel). `schedule`
-// is { kind: "cron", expr } or { kind: "interval", intervalSeconds } (same for
-// track.create()). Extraction field names and extracted values keep their
-// original keys in get()/run() reads. The
-// natural-language intent isn't refinable — create a new monitor to change it:
-await monitor.refine({ schedule: { kind: "cron", expr: "0 9 * * *" } });
-await monitor.pause();   // stop scheduled ticks without deleting
-await monitor.resume();
-await monitor.delete();
-
-// Reconnect later from a stored id:
-const sameMonitor = await qoni.track.attach(monitor.id, { token });
+try {
+  await monitor.pause(); // pause future scheduling; the first look continues
+  await waitForCheck(firstRunId);
+  await monitor.refine({ schedule: initial.schedule as MonitorSchedule }); // our known, validated input roundtrips
+  await monitor.refine({ schedule: { kind: "daily", at: "09:00", tz: "Asia/Singapore" } });
+  const task = await monitor.runNow(); // one explicit manual check while scheduling is paused
+  const check = await waitForCheck(task.runId); // 202 acceptance is not completion
+  const checks = await monitor.runs({ limit: 10, offset: 0 });
+  await monitor.resume();
+} finally {
+  await monitor.delete(); // soft-delete; any in-flight check continues
+}
 ```
+
+Create immediately starts a `first_look` check. Capture its initial `lastTaskId`
+and wait for that same check before one explicit `runNow()`. A concurrent run
+can still cause 409; the SDK surfaces it and never retries. Pause stops future
+scheduled checks and keeps any started check running.
+
+Track check `status` is `running`, `done`, `failed`, `expired`, or `canceled`;
+`done` is the successful terminal value. It is kept verbatim and differs from
+one-shot `RunResult.status: "succeeded"`. Known wire schedule shapes are read
+without revalidating server values against SDK write bounds or Intl time zones;
+unknown/incomplete shapes remain verbatim. Writing a schedule stays strict, so
+validate/choose supported input rather than casting every server value back.
+
+`runs()` retrieves the backend's newest 50 checks and applies `limit`/`offset`
+locally. `run(id)` searches that same bounded window; a missing ID raises
+`QoniError` with local `code: "not_found"` (no HTTP status) and explains the range. A missing Track itself is the backend 404 `track_not_found`. Checks expose the
+actual status, outcome, headline, answer and failure; no extraction, diffs or
+snapshot IDs are synthesized. `runNow()` can return the backend's 409
+`task_in_progress` while an earlier task is working. It returns a task reference
+on 202; read checks to observe completion.
+
+| Retained surface | Current behavior |
+| --- | --- |
+| `track.create`, `track.attach`, `MonitorHandle.get` | Create/read the real Track resource; get converts known wire schedules; unknown shapes stay verbatim. |
+| `MonitorHandle.pause`, `resume` | PATCH `status: paused` / `active`; pause keeps an in-flight check running. |
+| `MonitorHandle.refine` | PATCH title/schedule only; changing prompt/instructions/intent requires a new track. |
+| `MonitorHandle.runNow` | POST `run_now`; returns the actual task reference. |
+| `MonitorHandle.runs`, `run` | Read recent checks with Track read scope only; no DoAnything fallback. |
+| `MonitorHandle.delete` | DELETE 204; soft deletion stops scheduling and does not cancel running work. |
+| `track.api.createMonitor`, `getMonitor` | Historical names retained; use real `instructions`, `title`, and wire schedule `{ every_seconds: N }` or `{ daily_at: "HH:MM", tz }`. |
+| `track.api.updateMonitor` | PATCH real title/instructions/schedule/status fields; wire API permits instructions, while high-level refine does not. |
+| `track.api.runNow`, `deleteMonitor` | Real `run_now` / DELETE; raw task reference / empty 204. |
+| `track.api.listRuns`, `getRun` | Raw checks, local limit/offset, exact lookup within recent 50. |
+| `MonitorHandle.events`, `interactionHandle`, `track.api.events`, `intervene` | Deprecated; no backend endpoint. Local `QoniUnsupportedError`, zero HTTP or token exchange. |
+| `targetUrls`, `extractionSchema`, `triggerDsl`, `stopConditionDsl`, `notifyChannel` (including snake_case aliases), legacy `url` | No backend equivalent; rejected locally with `QoniUnsupportedError`. Put URLs in the prompt explicitly. |
+| Cron schedule | Deprecated and rejected locally with a daily alternative. Arbitrary cron is never silently converted. |
+
+A missing schedule, malformed input, invalid interval/time/zone, or invalid
+pagination raises `QoniValidationError` before HTTP. `MonitorSchedule` retains
+the deprecated cron branch; optional undefined fields retain omission behavior, while specified unsupported fields fail; historical event and option types remain exported
+for source compatibility. Unsupported methods are not successful capability tests.
 
 ### GenAuth User Context and Management
 
@@ -647,7 +705,7 @@ interface RunResult {
   runId: string;
   status: "succeeded" | "failed" | "canceled";  // delivery status of the run
   output?: unknown;            // final answer / payload (shape is task-specific)
-  artifacts: Artifact[];       // deliverables — deepResearch reports; [] for the others
+  artifacts: Artifact[];       // persisted DoAnything files / deepResearch reports
   isTaskSuccessful?: boolean;  // did the task achieve its goal (distinct from `status`)
   terminalReason?: string;
   raw: JsonObject;             // full wire envelope — cost, step counts, token usage
@@ -660,7 +718,7 @@ is the typed payload for that call (e.g. `genauth.users.list` → a paged user
 list on `.data`). The exact `T` shapes live in the bundled `.d.ts` and follow
 the backend contract.
 
-`MonitorHandle` (Track) exposes `id`, `get()`, `pause()`, `resume()`, `refine(patch)`, `runNow()`, `events()`, `interactionHandle()`, `runs()`, `run(runId)`, and `delete()`. `runNow()` and `refine()` require the monitor to be `active` — a freshly created monitor is briefly `pending_clarification` first (see the Track example).
+`MonitorHandle` (Track) provides `id`, `get()`, `pause()`, `resume()`, `refine(patch)`, `runNow()`, `runs()`, `run(runId)`, and `delete()`. Its deprecated `events()` and `interactionHandle()` methods fail locally; see Track above for the complete mapping.
 
 ### Interactions (HITL)
 
@@ -776,7 +834,7 @@ if (handle.type === InteractionTypes.AskUser && handle.can(ActionKinds.answer)) 
 
 ### Wire-Level Escape Hatch
 
-The 1:1 low-level methods live under `qoni.<product>.api.*` (e.g. `qoni.doAnything.api.createSession`, `qoni.deepResearch.api.followUp`, `qoni.track.api.createMonitor`). These mirror the backend HTTP contract directly — snake_case fields, double-envelope events, single-ID `/{product}/runs/{run_id}` addressing for run operations — and their shapes may evolve with the API. They are not part of the frozen public contract.
+Supported low-level methods live under `qoni.<product>.api.*` (e.g. `qoni.doAnything.api.createSession`, `qoni.deepResearch.api.followUp`, `qoni.track.api.createMonitor`). These mirror the backend HTTP contract directly — snake_case fields, double-envelope events, single-ID `/{product}/runs/{run_id}` addressing for run operations — and their shapes may evolve with the API. They are not part of the frozen public contract.
 
 `event.raw.event` is the **raw wire event type** — an internal transport name (`run.action.started`, `run.section_completed`, …) whose naming is historical and inconsistent, exposed as a plain string. This is an implementation detail, not the product API: developers match on the curated `event.type` above. The full wire-type catalog is intentionally NOT exported — reach for `event.raw.event` (a string) only when you need an exact wire match the curated layer folds into `progress` (e.g. telling a specific browser action apart).
 
@@ -809,9 +867,9 @@ that type:
 //     "phase"          string   — the Deep Research phase name
 //     "sectionReady"   string   — the Deep Research section title
 //     "resultsReady"   number   — Web Search count of unique results
-//     "monitorCreated" string   — Track monitor id
-//     "triggered"      string   — Track change summary
-//     "checkCompleted" boolean  — Track: did the scheduled check find a change
+//     "monitorCreated" string   — deprecated legacy monitor wire type
+//     "triggered"      string   — deprecated legacy monitor wire type
+//     "checkCompleted" boolean  — deprecated legacy monitor wire type
 //   RICH events — event.data is a small object:
 //     "message"        { text, role }
 //     "interaction"    the typed Interaction object (HITL) — see Interactions
@@ -829,7 +887,7 @@ Each product handle is typed to its own subset:
 | Do Anything | core: `progress` / `message` / `interaction` / `screenshot` / `browserLiveUrlChanged` / `done` |
 | Web Search | core + `resultsReady` |
 | Deep Research | core + `phase` / `sectionReady` (the outline gate arrives as an `interaction`) |
-| Track (`MonitorHandle`) | core + `monitorCreated` / `triggered` / `checkCompleted` |
+| Track (`MonitorHandle`) | No SSE endpoint; historical MonitorEvent types are deprecated. Read checks with runs()/run(). |
 
 For a live browser preview, listen for `browserLiveUrlChanged` and show
 `event.data.liveUrl` in your viewer. A run can switch browser tabs after its
@@ -861,6 +919,7 @@ All error classes are exported and can be matched with `instanceof`:
 
 | Class | Fires when | Typical recovery |
 | --- | --- | --- |
+| `QoniUnsupportedError` | Retained surface has no backend operation (code: `unsupported.operation`); zero HTTP. | Use the alternative named in the error. |
 | `QoniValidationError` | Local input check failed before any request (bad scope string, silent delegation missing a user). | Fix the call — the message states the correct form. |
 | `QoniAuthError` | AK/SK signing rejected by Qoni (bad/rotated credentials). | Check `accessKey` / `secretKey`. |
 | `QoniPermissionDeniedError` | The AccessKey or delegation token lacks a required scope (403). | Check the AccessKey permission policy and request the missing scope with `delegateToken`. |
