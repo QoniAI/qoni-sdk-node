@@ -1,155 +1,285 @@
-# GenAuth / Authing management
+---
+title: GenAuth 管理 SDK
+description: 初始化 SDK，管理用户、用户组、组织、角色、权限、应用和自定义字段。
+status: draft
+sdkCandidate: contracts/genauth-management.json
+lastReviewed: 2026-10-12
+pageClass: qoni-sdk-management
+---
 
-GenAuth uses the Authing v3 management API contract. The SDK exposes 591 JSON management methods in 35 namespaces, with generated TypeScript inputs, results and enum values. The primary reference is the [official Authing Node SDK 4.0.2](https://github.com/Authing/authing-node-sdk/tree/cc9f6ed7e0f41542d94d2634fb4fa8a35a622a86): all 496 JSON methods are included, alongside 95 GenAuth extension/compatibility names. Each deployment still enforces its own permissions, entitlements and business rules.
-
-The pinned upstream snapshot is in `scripts/contracts/authing-management.json`. The generator uses official method names, HTTP verbs, routes, DTOs and defaults. Checked GenAuth server contracts supplement older optional fields and query/body bindings where the official SDK differs from the deployed service. The original convenience methods remain usable; callers need not supply fields such as group descriptions or department metadata just because upstream types mark them required. Upstream models have the `GenAuthSdk` prefix; GenAuth extension models retain the `GenAuth` prefix. The [upstream MIT notice](./authing-sdk-LICENSE.txt) is included in the package.
+## 初始化
 
 ```ts
-import { Qoni } from '@qoniai/qoni';
+import { Qoni } from '@qoniai/qoni'
 
 const qoni = new Qoni({
   accessKey: process.env.QONI_ACCESS_KEY!,
   secretKey: process.env.QONI_SECRET_KEY!,
-});
-
-const { data: users } = await qoni.genauth.users.list({ page: 1, limit: 20 });
-const { data: user } = await qoni.genauth.users.get({ userId: users.list[0].userId });
+})
 ```
 
-All management calls use the credential-bound userpool. They do not need a user access token, a delegated token or `QONI_USER_ID`. The SDK discovers GenAuth through Qoni runtime configuration, exchanges AK/SK for a management token, caches it and coalesces concurrent exchanges. It reads token expiry from `expiresIn` or JWT `exp` and refreshes once on an authentication rejection. Permission errors, business errors, timeouts and network failures never automatically replay writes.
+使用绑定目标 GenAuth 用户池的 Qoni 访问密钥，在服务端调用。
 
-## Domain namespaces and Authing method names
+| 参数 | 类型 | 必填 | 说明 |
+| --- | --- | --- | --- |
+| `accessKey` | `string` | 是 | Qoni 访问密钥 |
+| `secretKey` | `string` | 是 | Qoni 访问密钥 Secret |
+| `host` | `string` | 否 | 私有部署的 Qoni 服务地址 |
+| `genauthHost` | `string` | 否 | 指定 GenAuth 服务地址 |
+| `timeoutMs` | `number` | 否 | 请求超时，单位毫秒，默认 `30000` |
+| `fetch` | `typeof fetch` | 否 | 自定义 HTTP transport |
 
-Use a domain shortcut, or keep the Authing v3 endpoint name when migrating existing code. Both call the same management endpoint:
+## 用户管理
 
 ```ts
-await qoni.genauth.groups.create({ code: 'engineering', name: 'Engineering' });
-// Equivalent alternative; do not run both to create the same group:
-// await qoni.genauth.management.createGroup({ code: 'engineering', name: 'Engineering' });
+const { data: user } = await qoni.genauth.users.create({
+  username: 'sdk-example-user',
+  name: 'Example user',
+})
 
-await qoni.genauth.groups.addMembers({ code: 'engineering', userIds: ['USER_ID'] });
+const { data: userDetails } = await qoni.genauth.users.get({ userId: user.userId })
+await qoni.genauth.users.update({ userId: user.userId, nickname: 'Alice' })
+const { data: userBatch } = await qoni.genauth.users.getBatch({ userIds: [user.userId] })
 ```
 
-Namespaces: `users`, `roles`, `groups`, `organizations`, `departments`, `applications`, `namespaces`, `resources`, `permissions`, `policies`, `dataPermissions`, `tenants`, `identityProviders`, `customFields`, `auditLogs`, `sessions`, `security`, `webhooks`, `sync`, `pipelines`, `dynamicGroups`, `accessKeys`, `whitelist`, `positions`, `publicAccounts`, `invitations`, `metadata`, `email`, `billing`, `events`, `riskLists`, `deviceRules`, `devices`, `approvals`, `ldap`.
+| 方法 | 功能 | 主要参数 | `data` |
+| --- | --- | --- | --- |
+| `users.create` | 创建用户 | username / email / phone；name、password 等可选 | 用户对象 |
+| `users.get` | 读取用户 | userId | 用户对象 |
+| `users.getBatch` | 批量读取用户 | userIds: string[] | 用户数组 |
+| `users.update` | 更新用户 | userId 与需要更新的字段 | 更新后的用户 |
+| `users.createBatch` | 批量创建用户 | list: 用户参数数组 | 用户数组 |
+| `users.deleteBatch` | 批量删除用户 | userIds: string[] | 删除结果 |
+
+创建时至少设置用户名、邮箱或手机号。删除在职用户前，先按业务流程通过 `users.resign({ userId })` 设置离职状态。
+
+## 用户查询与分页
 
 ```ts
-const posts = await qoni.genauth.positions.list({ keywords: 'engineer' });
-// Official method spelling is also available:
-// await qoni.genauth.management.postList({ keywords: 'engineer' });
-const accounts = await qoni.genauth.publicAccounts.list({
-  options: { pagination: { page: 1, limit: 10 } },
-});
+const { data: userPage } = await qoni.genauth.users.list({
+  page: 1,
+  limit: 20,
+  keywords: 'alice',
+  options: { fuzzySearchOn: ['username', 'email'] },
+})
+console.log(userPage.list, userPage.totalCount)
+
+for await (const item of qoni.genauth.users.iterate({ limit: 50 })) {
+  console.log(item.userId)
+}
 ```
 
-All methods take one input object. Official positional scalar methods use a named property, e.g. `management.deleteById({ id })`; the SDK encodes the identifier into the route and removes it from query/body. PUT approval methods preserve their request bodies. `management.getTenantEnterpriseCertification` accepts official `tenantId` and GenAuth `tenant_id`, mapping both to the deployed query key; conflicting values fail locally.
+| 方法 | 功能 | 主要参数 | `data` |
+| --- | --- | --- | --- |
+| `users.list` | 分页查询用户 | page、limit、keywords、options | { list, totalCount } |
+| `users.iterate` | 逐个遍历用户 | page 默认 1，limit 默认 50、范围 1–50 | `AsyncIterable<User>` |
 
-See [the complete API catalog](./genauth-management-api.md) for exact methods and aliases. Existing `users.list/get/getBatch/create/createBatch/update/deleteBatch` helpers remain available. Legacy GraphQL/v2 APIs and internal APIs are not included. The official `makeRequest` raw transport helper, `sub/initWebSocket/reconnect` WebSocket helpers and multipart `upload` are outside this JSON management surface; the official upload implementation does not send a file payload, so it is not exposed as a working JSON method.
+`page` 从 1 开始。`keywords` 用于关键字筛选，`options.fuzzySearchOn` 指定匹配字段。无需筛选时省略这两个参数。`iterate` 中使用 `break` 停止遍历。
 
-## Roles and resources
-
-A role or resource belongs to an existing permission namespace. Supply it explicitly if the userpool has no `default` namespace. Create application identifiers and namespace codes within the server's length limits (namespace codes and application identifiers should be at most 32 characters).
+## 用户组
 
 ```ts
-await qoni.genauth.namespaces.create({ code: 'project', name: 'Project' });
-await qoni.genauth.roles.create({ namespace: 'project', code: 'reader', name: 'Reader' });
+const { data: group } = await qoni.genauth.groups.create({
+  code: 'engineering',
+  name: 'Engineering',
+})
+await qoni.genauth.groups.addMembers({ code: group.code, userIds: [user.userId] })
+const { data: groupPage } = await qoni.genauth.groups.list({ page: 1, limit: 20 })
+```
+
+| 方法 | 功能 | 主要参数 | `data` |
+| --- | --- | --- | --- |
+| `groups.create` | 创建用户组 | code、name | 用户组对象 |
+| `groups.get` | 读取用户组 | code | 用户组对象 |
+| `groups.list` | 查询用户组 | page、limit | { list, totalCount } |
+| `groups.update` | 更新用户组 | code 与更新字段 | 用户组对象 |
+| `groups.addMembers` | 添加成员 | code、userIds | 操作结果 |
+
+## 组织与部门
+
+```ts
+await qoni.genauth.organizations.create({
+  organizationCode: 'company',
+  organizationName: 'Example company',
+})
+const { data: department } = await qoni.genauth.departments.create({
+  organizationCode: 'company',
+  parentDepartmentId: 'root',
+  name: 'Engineering',
+  code: 'engineering',
+})
+await qoni.genauth.departments.addMembers({
+  organizationCode: 'company',
+  departmentId: department.departmentId,
+  userIds: [user.userId],
+})
+```
+
+| 方法 | 功能 | 主要参数 | `data` |
+| --- | --- | --- | --- |
+| `organizations.create` | 创建组织 | organizationCode、organizationName | 组织对象 |
+| `organizations.get` | 读取组织 | organizationCode | 组织对象 |
+| `organizations.list` | 查询组织 | page、limit | 组织列表 |
+| `organizations.update` | 更新组织 | organizationCode 与更新字段 | 组织对象 |
+| `departments.create` | 创建部门 | organizationCode、parentDepartmentId、name | 部门对象 |
+| `departments.get` | 读取部门 | organizationCode、departmentId 或 departmentCode | 部门对象 |
+| `departments.update` | 更新部门 | organizationCode、departmentId 与更新字段 | 部门对象 |
+| `departments.addMembers` | 添加部门成员 | organizationCode、departmentId、userIds | 操作结果 |
+
+根部门的 `parentDepartmentId` 使用 `root`；其他部门使用实际父部门 ID。
+
+## 角色、资源与授权
+
+```ts
+await qoni.genauth.namespaces.create({ code: 'project', name: 'Project' })
+await qoni.genauth.roles.create({ namespace: 'project', code: 'reader', name: 'Reader' })
 await qoni.genauth.roles.assign({
   namespace: 'project',
   code: 'reader',
-  targets: [{ targetType: 'USER', targetIdentifier: 'USER_ID' }],
-});
+  targets: [{ targetType: 'USER', targetIdentifier: user.userId }],
+})
 await qoni.genauth.resources.create({
-  namespace: 'project', code: 'documents', type: 'API', apiIdentifier: '/documents',
+  namespace: 'project', code: 'documents', type: 'API',
+  apiIdentifier: '/documents',
   actions: [{ name: 'documents:read', description: 'Read documents' }],
-});
+})
 await qoni.genauth.permissions.authorize({
   namespace: 'project',
   list: [{
     targetType: 'ROLE', targetIdentifiers: ['reader'],
     resources: [{ code: 'documents:*', resourceType: 'API', actions: ['documents:read'] }],
   }],
-});
-const { data } = await qoni.genauth.permissions.isAllowed({
-  namespace: 'project', userId: 'USER_ID', resource: 'documents:123', action: 'documents:read',
-});
-console.log(data.allowed);
+})
+const { data: permission } = await qoni.genauth.permissions.isAllowed({
+  namespace: 'project', userId: user.userId,
+  resource: 'documents:123', action: 'documents:read',
+})
+console.log(permission.allowed)
 ```
 
-`resources.create` uses `type`; resource grants use `resourceType`. Resource actions use the full `resourceCode:action` format, such as `documents:read`. TypeScript highlights this distinction. Newer GenAuth permission configurations require API resources with `apiIdentifier`; the example works with that configuration. Server permission checks remain authoritative.
+| 方法 | 功能 | 主要参数 | `data` |
+| --- | --- | --- | --- |
+| `namespaces.create` | 创建权限空间 | code、name | 权限空间对象 |
+| `roles.create` | 创建角色 | namespace、code、name | 角色对象 |
+| `roles.list` | 查询角色 | namespace、page、limit | { list, totalCount } |
+| `roles.assign` | 分配角色 | namespace、code、targets | 操作结果 |
+| `resources.create` | 定义资源及动作 | namespace、code、type、actions；API 资源使用 apiIdentifier | 资源对象 |
+| `permissions.authorize` | 授予资源权限 | namespace、list | 操作结果 |
+| `permissions.isAllowed` | 判断用户权限 | namespace、userId、resource、action | { allowed } |
 
-## Pagination and search
+角色、资源和授权使用同一 `namespace`。创建资源用 `type`，授权资源项用 `resourceType`。
 
-`users.list` accepts top-level `page` and `limit` and maps them into `options.pagination`, preserving other options. The flat `management.listUsers` method accepts the Authing DTO directly (`options.pagination`). Other list endpoints use their own typed pagination fields.
-
-Keyword and advanced-filter queries use the GenAuth search provider. The SDK preserves server search semantics; set `options.fuzzySearchOn` to select the fields to search:
+## 应用管理
 
 ```ts
-const result = await qoni.genauth.users.list({
-  keywords: 'alice', page: 1, limit: 20,
-  options: { fuzzySearchOn: ['username', 'email'] },
-});
-
-for await (const user of qoni.genauth.users.iterate({
-  keywords: 'alice', limit: 50,
-  options: { fuzzySearchOn: ['username'] },
-})) {
-  console.log(user.userId);
-  // Breaking here prevents the next page from being requested.
-}
+const { data: application } = await qoni.genauth.applications.create({
+  appName: 'Example app',
+  appIdentifier: 'example-app',
+  appType: 'web',
+  defaultProtocol: 'oidc',
+  redirectUris: ['https://app.example.com/callback'],
+})
+const { data: appDetails } = await qoni.genauth.applications.get({ appId: application.appId })
+const { data: appPage } = await qoni.genauth.applications.list({ page: 1, limit: 20 })
 ```
 
-`users.iterate` streams pages with a limit of 1–50. Filtered user queries depend on the server search index; a new user may be available through `get` before search has indexed it. Lists are not transactional snapshots; concurrent user changes may affect page contents. Batch methods accept arrays according to their DTOs; GET arrays are serialized using Authing's comma-separated query format.
+| 方法 | 功能 | 主要参数 | `data` |
+| --- | --- | --- | --- |
+| `applications.create` | 创建应用 | appName；自建应用传 appIdentifier，可设置 appType、defaultProtocol、redirectUris | 应用创建结果 |
+| `applications.get` | 读取应用配置 | appId | 应用对象 |
+| `applications.list` | 分页查询应用 | page、limit、keywords | 应用列表 |
+| `applications.update` | 更新应用配置 | appId 与更新字段 | 应用对象 |
+| `applications.delete` | 删除应用 | appId | 操作结果 |
 
-Custom-field lists with `keyword` also use the server search provider, whereas lists without a keyword use the database. Check that the deployment's search provider supports and indexes these queries; the SDK surfaces upstream failures rather than silently replacing server filtering with a local scan.
-
-## Responses, errors and cancellation
-
-Methods return `QoniResponse<Result>`: business data is under `data`, while request identifiers remain under `meta`. Custom result generics are supported for private extensions.
+## 自定义字段
 
 ```ts
-import { QoniError } from '@qoniai/qoni';
-
-try {
-  const controller = new AbortController();
-  const result = await qoni.genauth.roles.list({ namespace: 'project' }, { signal: controller.signal });
-  console.log(result.data.list);
-} catch (error) {
-  if (error instanceof QoniError) {
-    console.error(error.status, error.code, error.requestId, error.message);
-  }
-  throw error;
-}
+await qoni.genauth.customFields.set({
+  list: [{ targetType: 'USER', key: 'costCenter', label: 'Cost center', dataType: 'STRING' }],
+})
+await qoni.genauth.customFields.setData({
+  targetType: 'USER', targetIdentifier: user.userId,
+  list: [{ key: 'costCenter', value: 'engineering' }],
+})
+const { data: fieldValues } = await qoni.genauth.customFields.getData({
+  targetType: 'USER', targetIdentifier: user.userId,
+})
 ```
 
-HTTP 200 with an error `statusCode` throws a typed `QoniError`, even if the response includes `data`. Numeric Authing `apiCode` values are preserved as strings in `error.code`; the original response remains in `error.body`.
+| 方法 | 功能 | 主要参数 | `data` |
+| --- | --- | --- | --- |
+| `customFields.list` | 查询字段定义 | targetType，默认 USER | 字段定义列表 |
+| `customFields.set` | 创建或更新字段定义 | list: { targetType, key, label, dataType }[] | 操作结果 |
+| `customFields.setData` | 设置对象字段值 | targetType、targetIdentifier、list | 操作结果 |
+| `customFields.getData` | 读取对象字段值 | targetType、targetIdentifier | 字段数据 |
 
-`customFields.list` and `listUserBaseFields` default `targetType` to `USER`; specify it to query another supported subject. `customFields.set` requires `dataType` when creating or updating a definition; changing an existing field type is not supported.
+先定义字段，再写入字段值。已有字段的 `dataType` 不能修改；角色字段需要传所属 `namespace`。
 
-Business rules are not bypassed. For example, an employed user cannot be deleted, and a user cannot be removed from their last department. Use the explicit `users.resign({ userId })` lifecycle operation only when departure is intended, then delete if needed. The SDK never resigns users automatically.
+## 其他管理功能
 
-## Explicit management-token override
+| 入口 | 功能 |
+| --- | --- |
+| `tenants` | 租户与租户成员 |
+| `identityProviders` | 外部身份源与连接配置 |
+| `dataPermissions / policies` | 数据资源、策略及数据授权 |
+| `auditLogs / sessions` | 管理审计与用户会话 |
+| `security / whitelist / riskLists` | MFA、安全设置及访问名单 |
+| `webhooks / events` | Webhook 配置与事件 |
+| `sync / pipelines` | 账号同步及认证流程 |
+| `accessKeys` | 访问密钥管理 |
+| `positions / dynamicGroups` | 岗位与动态用户组 |
+| `devices / deviceRules` | 设备及设备规则 |
+| `publicAccounts / invitations` | 公共账号及邀请 |
+| `approvals / ldap` | 审批与 LDAP 配置 |
+| `metadata / email / billing` | 元数据、邮件及计费配置 |
 
-Every method accepts `adminToken` and `userPoolId` together. These go into headers rather than the business payload. Explicit tokens are not refreshed by the SDK. Configure `genauthHost` if the target GenAuth server differs from the discovered one.
+以上入口均位于 `qoni.genauth` 下。具体方法、参数与返回类型见 [管理方法参考](./genauth-management-api)。
+
+## 返回值与请求取消
 
 ```ts
-await qoni.genauth.roles.list({
+const controller = new AbortController()
+const { data: rolePage, meta } = await qoni.genauth.roles.list(
+  { namespace: 'project', page: 1, limit: 20 },
+  { signal: controller.signal },
+)
+console.log(rolePage.list, meta.requestId)
+```
+
+方法返回 `Promise<QoniResponse<T>>`：`data` 为业务结果，`meta.requestId` 为请求标识。第二参数传 `{ signal }`，调用 `controller.abort()` 取消请求。`users.iterate` 返回 `AsyncIterable`。
+
+## 使用已有管理 Token
+
+```ts
+const { data: roleList } = await qoni.genauth.roles.list({
   namespace: 'project',
   adminToken: process.env.GENAUTH_MANAGEMENT_TOKEN!,
-  userPoolId: process.env.GENAUTH_USERPOOL_ID!,
-});
+  userPoolId: process.env.GENAUTH_USER_POOL_ID!,
+})
 ```
 
-The access-key `eakBinding` property and legacy access-key type discriminator are server wire identifiers and retain their original spelling.
+`adminToken` 与 `userPoolId` 必须同时传入。显式传入的 Token 过期后由调用方更新。
 
-## Verification and regeneration
+## 错误处理
 
-```sh
-pnpm typecheck
-pnpm test
-pnpm test:e2e:genauth
-GENAUTH_SOURCE_DIR=/path/to/genauth pnpm gen:genauth-management
-GENAUTH_SOURCE_DIR=/path/to/genauth node scripts/gen-genauth-management.mjs --check
-# Refresh the pinned contract after reviewing a newer official SDK checkout:
-AUTHING_SDK_SOURCE_DIR=/path/to/authing-node-sdk pnpm gen:genauth-management
+```ts
+import { QoniError } from '@qoniai/qoni'
+
+try {
+  await qoni.genauth.users.get({ userId: '<user-id>' })
+} catch (error) {
+  if (error instanceof QoniError) {
+    console.error(error.code, error.message, error.requestId)
+  }
+  throw error
+}
 ```
 
-Live tests read `.env.local` (`QONI_ACCESS_KEY`, `QONI_SECRET_KEY`, optional `QONI_HOST` / `QONI_GENAUTH_HOST`). They create only uniquely named fixtures, exercise management writes and relationships, and clean those fixtures. Cleanup failures fail the suite. Use a dedicated test userpool. Live tests cover representative workflows; the generated contract catalog is not a claim that every operation has been exercised on every deployment.
+| 错误 | 处理方式 |
+| --- | --- |
+| `QoniValidationError` | 检查必填参数与字段类型 |
+| `401` / `403` | 检查凭据、用户池绑定及管理权限 |
+| `404` | 检查对象 ID 与所属用户池 |
+| `409` | 处理对象状态冲突或标识重复 |
+| `QoniTimeoutError` | 重试写操作前先查询原操作结果 |
+| 其他 `QoniError` | 查看 `code`、`message`、`requestId`、`body` |
