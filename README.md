@@ -955,3 +955,19 @@ Wire methods: `client.doAnything.api.listArtifacts(...)` and `artifactDownloadUr
 ## Agent Mail and Agent Phone
 
 The local GenAuth communication extension provides `qoni.genauth.agentMail` and `qoni.genauth.agentPhone`, including runtime and administrator APIs. Runtime requires native GenAuth credentials via `genauthCommunicationCredentials`; administration reuses Qoni token exchange. See [the communication guide](docs/genauth-communication.md) and [method index](docs/genauth-communication-api.md).
+
+## Local Agent integration extension
+
+The integration branch adds `qoni.genauth.auth.createLoginUrl` / `exchangeLoginCode` and
+`qoni.genauth.agents.create` / `get` / `bind` / `bindUser`, alongside the existing
+management, Agent Mail and Agent Phone APIs. These additions are not an npm release.
+The hosted-login callback must validate the App's stored `state` before exchanging
+the one-use code. Personal mailbox delegation requires a formal IAM `agentId`; an
+audit label does not prove mailbox ownership. A Personal creation response may still
+be pending; an unknown result must be reconciled using its original provisioning
+reference or idempotency key, without starting another creation.
+
+The Personal Quickstart email creation flow is separate from the unified Agent
+management model, where identity, email and phone are optional capabilities and an
+Agent may have multiple email addresses and phone numbers. Personal binding does
+not issue credentials or enable IAM-token access to the native Mail/Phone APIs.

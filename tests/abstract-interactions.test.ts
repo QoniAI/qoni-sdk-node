@@ -459,19 +459,35 @@ describe("scopes for the Personal Agent guide", () => {
     }
   });
 
-  it("sends them on delegation like any other scope", async () => {
+  it("sends explicit personal scopes with a formal agentId through interactive delegation", async () => {
     const { client, calls } = makeClient(() =>
-      jsonResponse({ data: { token: "t", tokenType: "Bearer", expiresIn: 3600, grantId: "g", auditId: "a" } }));
-    await client.genauth.delegateAgent({
+      jsonResponse({ data: { mode: "interactive", grantId: "g", grantState: "pending", authorizationUrl: "https://qoni.example.com/delegations/g/authorize" } }));
+    const grant = await client.genauth.delegateAgent({
+      agentId: "01234567-89ab-4cde-8f01-23456789abcd",
+      mode: "interactive",
+      redirectUri: "https://app.example.test/callback",
+      state: "csrf-personal-agent",
+      scopes: [QoniScopes.USER_PROFILE_READ, QoniScopes.USER_PAYMENT_USE, QoniScopes.AGENT_MAIL_READ],
+    });
+    expect(calls).toHaveLength(1);
+    expect(calls[0].body).toEqual({
+      agentId: "01234567-89ab-4cde-8f01-23456789abcd",
+      mode: "interactive",
+      redirectUri: "https://app.example.test/callback",
+      state: "csrf-personal-agent",
+      scopes: ["user.profile:read", "user.payment:use", "agent.mail:read"],
+    });
+    expect(grant).toMatchObject({ mode: "interactive", grantId: "g", grantState: "pending" });
+  });
+
+  it("rejects personal mailbox scope requests made with a legacy agent label before HTTP", async () => {
+    const { client, calls } = makeClient(() => jsonResponse({ data: {} }));
+    await expect(client.genauth.delegateAgent({
       userId: "user_1",
       agent: "shopper",
       scopes: [QoniScopes.USER_PROFILE_READ, QoniScopes.USER_PAYMENT_USE, QoniScopes.AGENT_MAIL_READ],
-    });
-    expect((calls[0].body as { scopes: string[] }).scopes).toEqual([
-      "user.profile:read",
-      "user.payment:use",
-      "agent.mail:read",
-    ]);
+    })).rejects.toBeInstanceOf(QoniValidationError);
+    expect(calls).toHaveLength(0);
   });
 
   it("names every candidate when a scope without its service prefix is ambiguous", async () => {

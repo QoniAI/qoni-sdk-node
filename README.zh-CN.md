@@ -850,3 +850,16 @@ Wire methods: `client.doAnything.api.listArtifacts(...)` and `artifactDownloadUr
 ## Agent Mail 与 Agent Phone
 
 本地通信扩展提供 `qoni.genauth.agentMail` 和 `qoni.genauth.agentPhone` 的运行侧与管理侧 API。运行侧通过 `genauthCommunicationCredentials` 配置原生 GenAuth 凭据；管理侧复用 Qoni 的兑换流程。详见 [通信指南](docs/genauth-communication.md) 与 [方法索引](docs/genauth-communication-api.md)。
+
+## 本地 Agent 整合扩展
+
+整合分支增加 `qoni.genauth.auth.createLoginUrl` / `exchangeLoginCode` 与
+`qoni.genauth.agents.create` / `get` / `bind` / `bindUser`，并保留原有管理、
+Agent Mail 和 Agent Phone 接口。这些新增内容尚未发布到 npm。登录回调必须先核对
+App 保存的 `state`，再兑换一次性 code。Personal 邮箱委托必须指定真实 IAM
+`agentId`，审计标签不能证明邮箱归属。创建可能仍处于 pending；结果未知时只能使用
+原 provisioning 引用或幂等键核对，不能重新创建资源。
+
+Personal Quickstart 的邮箱创建流程与统一 Agent 管理的可选能力模型分别保留。
+统一管理中身份、邮箱、手机号均可选，一个 Agent 可以拥有多个邮箱和手机号。
+绑定 Personal 身份不会签发凭据，也不会自动打通 IAM token 调用原生 Mail/Phone API。

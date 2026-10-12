@@ -82,6 +82,8 @@ export interface UserRef {
 }
 
 interface DelegateTokenBaseInput {
+  /** Formal IAM Agent UUID; mutually exclusive with audit labels. */
+  agentId?: string;
   /** Audit label for this delegation. Defaults to "sdk". */
   agent?: string;
   /** Compatibility alias for agent. Supplying conflicting labels is an error. */
