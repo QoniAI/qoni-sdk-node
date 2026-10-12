@@ -1,6 +1,6 @@
 ---
 name: qoni-sdk
-description: Use when building, testing, debugging, or documenting Node.js integrations with @qoniai/qoni, the Qoni constructor, AK/SK credentials, delegateToken, GenAuth currentUser/userInfo/introspection/user management, Qoni runtime-config discovery, GUMem, WebAgent, Web Search, Do Anything, Deep Research, Track, OBO product token exchange, or local .genauth.localhost SDK flows.
+description: Use when building, testing, debugging, or documenting Node.js integrations with @qoniai/qoni, the Qoni constructor, AK/SK credentials, delegateToken, GenAuth currentUser/userInfo/introspection/Authing v3 management, Qoni runtime-config discovery, GUMem, WebAgent, Web Search, Do Anything, Deep Research, Track, OBO product token exchange, or local .genauth.localhost SDK flows.
 ---
 
 # Qoni SDK
@@ -15,7 +15,7 @@ description: Use when building, testing, debugging, or documenting Node.js integ
 
 ## Core Contract
 
-Use `@qoniai/qoni` from trusted server-side Node.js code. Keep AK/SK on the server and create one reusable `Qoni`. For silent runtime product calls, resolve a real GenAuth user id from the credential-bound userpool, call `delegateToken`, then pass `delegation.data.token` explicitly to every product capability call. For interactive runtime authorization, call `delegateToken({ mode: "interactive", redirectUri, state, agent, scopes })` from the server without exposing AK/SK; redirect the user to `authorizationUrl`, then handle the business callback server-side with `completeDelegateToken({ grantId, code, state })` to receive the token. For GenAuth user management, call `qoni.genauth.users.*`; the SDK exchanges AK/SK for a standard GenAuth management token internally and does not require `QONI_USER_ID`.
+Use `@qoniai/qoni` from trusted server-side Node.js code. Keep AK/SK on the server and create one reusable `Qoni`. For silent runtime product calls, resolve a real GenAuth user id from the credential-bound userpool, call `delegateToken`, then pass `delegation.data.token` explicitly to every product capability call. For interactive runtime authorization, call `delegateToken({ mode: "interactive", redirectUri, state, agent, scopes })` from the server without exposing AK/SK; redirect the user to `authorizationUrl`, then handle the business callback server-side with `completeDelegateToken({ grantId, code, state })` to receive the token. For GenAuth management, use `qoni.genauth` domain namespaces (such as `users`, `roles`, `groups`, `organizations`, `applications`) or the Authing-name migration entry `qoni.genauth.management`; the SDK exchanges AK/SK for a standard GenAuth management token internally and does not require `QONI_USER_ID`.
 
 ```ts
 import { Qoni, QoniScopes } from "@qoniai/qoni";
@@ -439,3 +439,19 @@ For skill or docs changes that teach integration, also validate from a fresh con
 5. Run the consumer project's typecheck and test command.
 
 Prefer mocked fetch-based tests for normal verification. Use real GenAuth/GUMem/WebAgent services only for explicit smoke tests, and never hard-code real secrets in repository files.
+
+## Authing v3 management additions
+
+The SDK provides 591 typed JSON management methods in 35 namespaces, aligned with the official Authing Node SDK 4.0.2 (496 JSON methods) plus GenAuth extensions and compatibility names. Read `docs/genauth-management.md` and `docs/genauth-management-api.md` for exact methods, aliases, inputs and deployment-dependent rules. Preserve the Qoni management-token exchange; do not use a delegated runtime token for management calls.
+
+- Use `genauth.users.iterate` for paginated user processing (limit 1-50); pass cancellation in the optional second argument.
+- Roles and resources belong to an existing permission namespace. Resource action names use `resourceCode:action`; newer permission deployments require `apiIdentifier` for API resources.
+- `customFields.set` requires `dataType` for both create and update. `customFields.list` defaults the subject to `USER`.
+- HTTP-200 business errors throw typed Qoni errors, including numeric Authing API codes as strings. Do not replay writes after network or business failures.
+- Respect employment rules: resign a user only when departure is intended. The SDK never automatically resigns users to make deletion succeed.
+- Filtered user queries depend on the GenAuth search index. A successful `get` or batch lookup does not prove that a newly created user is searchable. Keep search acceptance failures visible and diagnose the server index separately.
+- Run `pnpm test:e2e:genauth` using an isolated test userpool; cleanup failures fail the suite. Generated contract coverage does not imply live acceptance of every operation.
+
+### Agent Mail and Agent Phone (unreleased extension)
+
+Use `qoni.genauth.agentMail` and `qoni.genauth.agentPhone`. Read `docs/genauth-communication.md` and `docs/genauth-communication-api.md` before using these APIs. Runtime requires native GenAuth credentials through `genauthCommunicationCredentials`; administrator calls reuse Qoni management exchange. Preserve stable idempotency keys, pass current revisions, and inspect original operations after ambiguous results. Never treat an unknown purchase/send outcome as safe to repeat. Phone numbers, mailboxes, and communication personas are distinct from login email/phone and delegation agentId.

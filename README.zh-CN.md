@@ -118,6 +118,25 @@ await qoni.genauth.users.update({
 // await qoni.genauth.users.deleteBatch({ userIds: [profile.data.userId] });
 ```
 
+### GenAuth 管理功能
+
+`qoni.genauth` 现在提供 **35 个命名空间、591 个管理方法**，以 [Authing 官方 Node SDK 4.0.2](https://github.com/Authing/authing-node-sdk) 为参考，覆盖其全部 496 个 JSON 管理方法，并保留 GenAuth 扩展及兼容名称。除用户、角色、组织、应用和资源授权外，还包括岗位、公共账号、邀请、元数据、审批和风险名单。所有方法复用 Qoni AK/SK 管理 Token 交换，具备 TypeScript 参数及返回类型，并支持取消请求；实际部署的功能开关和权限仍决定接口可用性。
+
+```ts
+await qoni.genauth.groups.create({ code: "engineering", name: "工程团队" });
+await qoni.genauth.groups.addMembers({ code: "engineering", userIds: ["USER_ID"] });
+
+// 沿用 Authing v3 方法名称的调用入口：
+const roles = await qoni.genauth.management.listRoles({ namespace: "project", page: 1, limit: 20 });
+
+// 自动逐页读取；break 后不会请求下一页：
+for await (const user of qoni.genauth.users.iterate({ limit: 50 })) {
+  console.log(user.userId);
+}
+```
+
+[使用指南](./docs/genauth-management.md) · [完整 API 清单](./docs/genauth-management-api.md)。角色需属于已存在的权限分组；删除用户仍需遵循 GenAuth 的在职与离职规则。
+
 ### 运行时产品委托
 
 GUMem、WebAgent、Do Anything、Web Search、Track 是代表终端用户执行的运行时产品能力。silent 委托需要一个来自 Qoni credential 绑定 userpool 的真实 GenAuth 用户 ID，再使用 `delegateToken` 返回的 token。
@@ -878,3 +897,20 @@ const artifacts = await client.doAnything.artifacts({ token, runId: run.id });
 ```
 
 Wire methods: `client.doAnything.api.listArtifacts(...)` and `artifactDownloadUrl(...)`.
+
+## Agent Mail 与 Agent Phone
+
+本地通信扩展提供 `qoni.genauth.agentMail` 和 `qoni.genauth.agentPhone` 的运行侧与管理侧 API。运行侧通过 `genauthCommunicationCredentials` 配置原生 GenAuth 凭据；管理侧复用 Qoni 的兑换流程。详见 [通信指南](docs/genauth-communication.md) 与 [方法索引](docs/genauth-communication-api.md)。
+
+## 本地 Agent 整合扩展
+
+整合分支增加 `qoni.genauth.auth.createLoginUrl` / `exchangeLoginCode` 与
+`qoni.genauth.agents.create` / `get` / `bind` / `bindUser`，并保留原有管理、
+Agent Mail 和 Agent Phone 接口。这些新增内容尚未发布到 npm。登录回调必须先核对
+App 保存的 `state`，再兑换一次性 code。Personal 邮箱委托必须指定真实 IAM
+`agentId`，审计标签不能证明邮箱归属。创建可能仍处于 pending；结果未知时只能使用
+原 provisioning 引用或幂等键核对，不能重新创建资源。
+
+Personal Quickstart 的邮箱创建流程与统一 Agent 管理的可选能力模型分别保留。
+统一管理中身份、邮箱、手机号均可选，一个 Agent 可以拥有多个邮箱和手机号。
+绑定 Personal 身份不会签发凭据，也不会自动打通 IAM token 调用原生 Mail/Phone API。

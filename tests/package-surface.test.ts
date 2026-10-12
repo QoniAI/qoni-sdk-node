@@ -48,6 +48,26 @@ describe("built package surface", () => {
     expect(cjs).not.toHaveProperty(removedConstructorExport);
   });
 
+  it("exposes the GenAuth management namespaces in both package formats", async () => {
+    const esm = await import("../dist/index.js");
+    const require = createRequire(import.meta.url);
+    const cjs = require("../dist/index.cjs");
+    for (const pkg of [esm, cjs]) {
+      const client = new pkg.Qoni({ accessKey: "test", secretKey: "test" });
+      expect(client.genauth.management.createRole).toBeTypeOf("function");
+      expect(client.genauth.roles.assign).toBeTypeOf("function");
+      expect(client.genauth.groups.addMembers).toBeTypeOf("function");
+      expect(client.genauth.departments.create).toBeTypeOf("function");
+      expect(client.genauth.agentMail.messages.send).toBeTypeOf("function");
+      expect(client.genauth.agentMail.admin.providers.rotateCredentials).toBeTypeOf("function");
+      expect(client.genauth.agentPhone.numbers.acquire).toBeTypeOf("function");
+      expect(client.genauth.agentPhone.admin.policies.create).toBeTypeOf("function");
+      expect(client.genauth.agentPhone.operations.wait).toBeTypeOf("function");
+      expect(client.genauth.users.iterate).toBeTypeOf("function");
+      expect(client.genauth.customFields.set).toBeTypeOf("function");
+    }
+  });
+
   it("does NOT export the raw internal wire-type catalog (developers use QoniEventTypes / event.type)", async () => {
     const esm = await import("../dist/index.js");
     expect(esm).not.toHaveProperty("WireEventTypes");

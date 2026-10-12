@@ -145,3 +145,18 @@ export type {
   RuntimeTokenInput,
   TokenInput,
 } from "./types";
+
+export type { GenAuthManagementRequestOptions } from "./genauth-management";
+export type * from "./generated/genauth-management-types";
+
+export type * from './genauth-communication-types';
+export type * from './generated/genauth-communication-types';
+export type { GenAuthAgentMailClient, GenAuthAgentPhoneClient } from './genauth-communication';
+
+export { PersonalAgentCreateError } from './genauth';
+export type {
+  CreateLoginUrlInput, ExchangeLoginCodeInput, LoginSession, LoginUrl, SignedInUser,
+  AgentProvisioning, CreatePersonalAgentInput, CreatePersonalAgentPageInput,
+  GetPersonalAgentInput, PersonalAgentProvisioning, PersonalAgentReady,
+  BindPersonalAgentUserInput, PersonalAgentBinding,
+} from './genauth';

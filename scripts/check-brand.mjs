@@ -25,11 +25,13 @@ const allowedWirePatterns = [
   // Infrastructure runner tag. Keep until the GitLab runner itself is renamed.
   new RegExp(`${legacyLower}-us`, "g"),
   new RegExp(
-    `${legacyLower}\\.(?:auth|delegation|genauth|token_exchange)(?:\\.[a-z0-9_]+)+`,
+    `${legacyLower}\\.(?:auth|delegation|genauth|token_exchange|hosted_login|credential)(?:\\.[a-z0-9_]+)+`,
     "g",
   ),
   new RegExp(`${legacyLower}\\.\\*`, "g"),
   new RegExp(`${legacyLower}BaseUrl`, "g"),
+  // GenAuth access-key DTO wire property; renaming it would break tenant binding.
+  new RegExp(`${legacyLower}Binding\\b`, "g"),
 ];
 const violations = [];
 

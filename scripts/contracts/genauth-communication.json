@@ -1,0 +1,4549 @@
+{
+  "status": "unreleased",
+  "reviewedAt": "2026-10-10",
+  "sourceCommit": "3d5dd6ef34e782a61874cf4024911c6f6dd4261e",
+  "sourceFiles": {
+    "src/modules/agent-mail/openapi.json": "982c0468e59278aeb9b8ae8707f91d552ca51afeb0660876ca1a0f7209f2f751",
+    "src/modules/agent-mail/api/agent-mail.controller.ts": "5a5e87c6b6c302c97b3598fa7fd271bf9083a664f18add56450a849b7645d4d2",
+    "src/modules/agent-mail/admin/agent-mail-admin.controller.ts": "a49667d16c47235a690c7de5a79f8b5374e90f13f898eb16e1ee36c0e85077fa",
+    "src/modules/agent-phone/api/agent-phone-runtime.controller.ts": "5072f792d09fc14d7309b69b985da5e77f64fcc51b64b71426bab4c4b0ec483f",
+    "src/modules/agent-phone/api/agent-phone-admin.controller.ts": "87a7c1e4e43612d4328a0287aa4ea0d5a4d3d07f6e0b68ab438d2b8f7d555e7c",
+    "src/modules/agent-phone/services/agent-phone.service.ts": "07508f65719596f77dc5077e3e6dd083c09f7c974e4706ddb6789e00f43cae51",
+    "src/entities/agent-phone-runtime.entity.ts": "8220f7ad4a755757eb5be1ef0d971c65c1edf4091e971dfab17b508f1c3eeba5",
+    "src/entities/agent-mail-runtime.entity.ts": "f245e6cfe4bcdfa2c4c913013ba0db36db33dc6dfadbe47d0eb6da3c44733bf9",
+    "src/modules/agent-mail/admin/agent-mail-admin.service.ts": "e6bbf396841961aaa80e3f29273fee0deaf5e85788cf68864427dee541783a32",
+    "src/modules/agent-mail/auth/agent-mail-auth.service.ts": "b13db8bf9e86de28a638f60dd7ab6af8b8591ce871b8ff9c362eed38b22a0268",
+    "src/modules/agent-mail/api/agent-mail-presenter.ts": "8f1a2fdd4ca9cdd9d37d62cfdf3358b1191bcb1c55ce7933dbdacd11e7c5778f",
+    "src/modules/agent-phone/services/agent-phone-auth.service.ts": "2b40710e524808f1d0f773c3204c6fc62a57393b084350c60b6316890b4146a7",
+    "src/modules/agent-phone/services/agent-phone-store.service.ts": "d455c325249de5bd80ff777e4e9fc5e97a4070a3e3d28c3539ec73557116751f",
+    "src/modules/agent-phone/services/agent-phone-ingest.service.ts": "ada737a73d5b8367e9c29b426d266ae127fd957d1be54dbab87e460d84903b2e"
+  },
+  "schemas": {
+    "ApiError": {
+      "type": "object",
+      "properties": {
+        "code": {
+          "type": "string",
+          "description": "稳定的机器可读错误码。"
+        },
+        "retryable": {
+          "type": "boolean",
+          "description": "是否允许按重试规则重试；不能据此对 unknown 换键重发。"
+        },
+        "requiresManualReview": {
+          "type": "boolean",
+          "description": "是否需要人工核对供应商结果。"
+        }
+      },
+      "required": [
+        "code",
+        "retryable"
+      ],
+      "additionalProperties": false,
+      "example": {
+        "code": "VERIFICATION_ALREADY_PENDING",
+        "retryable": false
+      }
+    },
+    "ErrorEnvelope": {
+      "type": "object",
+      "properties": {
+        "statusCode": {
+          "type": "integer",
+          "description": "新接口与 HTTP 状态码一致；现有令牌接口保持原契约。"
+        },
+        "message": {
+          "type": "string",
+          "description": "面向人的结果描述；业务判断使用状态或错误码。"
+        },
+        "requestId": {
+          "type": "string",
+          "maxLength": 128,
+          "minLength": 1,
+          "description": "请求追踪 ID；排障时提供此值。"
+        },
+        "error": {
+          "$ref": "#/components/schemas/ApiError"
+        }
+      },
+      "required": [
+        "statusCode",
+        "message",
+        "requestId",
+        "error"
+      ],
+      "additionalProperties": false,
+      "example": {
+        "statusCode": 409,
+        "message": "该邮箱在此平台已有等待任务",
+        "requestId": "req_demo",
+        "error": {
+          "code": "VERIFICATION_ALREADY_PENDING",
+          "retryable": false
+        }
+      }
+    },
+    "Persona": {
+      "type": "object",
+      "properties": {
+        "personaId": {
+          "type": "string",
+          "maxLength": 128,
+          "minLength": 1,
+          "description": "拟人身份 ID；与旧 Agent Identity 的 agentId 无关。"
+        },
+        "displayName": {
+          "type": "string",
+          "maxLength": 128,
+          "minLength": 1,
+          "description": "显示名称。"
+        },
+        "avatar": {
+          "type": "string",
+          "format": "uri",
+          "nullable": true,
+          "description": "头像地址；更新时传 null 清空。",
+          "maxLength": 2048
+        },
+        "status": {
+          "type": "string",
+          "description": "沿用人的五种状态；由本模块管理端状态命令维护，独立 persona 不直接写 users 表。"
+        },
+        "externalRef": {
+          "type": "string",
+          "maxLength": 128,
+          "minLength": 1,
+          "nullable": true,
+          "description": "下游业务关联 ID；不得填密码或凭据。"
+        },
+        "revision": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "当前版本号；修改时使用响应 ETag。"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "创建时间。"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "最后更新时间。"
+        }
+      },
+      "required": [
+        "personaId",
+        "displayName",
+        "status",
+        "revision",
+        "createdAt",
+        "updatedAt"
+      ],
+      "additionalProperties": false,
+      "example": {
+        "personaId": "persona_demo",
+        "displayName": "运营助手",
+        "avatar": null,
+        "status": "Activated",
+        "externalRef": "business-persona-001",
+        "revision": 1,
+        "createdAt": "2026-09-21T06:00:00Z",
+        "updatedAt": "2026-09-21T06:00:00Z"
+      }
+    },
+    "CreatePersona": {
+      "type": "object",
+      "properties": {
+        "displayName": {
+          "type": "string",
+          "maxLength": 128,
+          "minLength": 1,
+          "description": "显示名称。"
+        },
+        "avatar": {
+          "type": "string",
+          "format": "uri",
+          "description": "头像地址；更新时传 null 清空。",
+          "maxLength": 2048
+        },
+        "externalRef": {
+          "type": "string",
+          "maxLength": 128,
+          "minLength": 1,
+          "description": "下游业务关联 ID；不得填密码或凭据。"
+        }
+      },
+      "required": [
+        "displayName"
+      ],
+      "additionalProperties": false,
+      "example": {
+        "displayName": "运营助手",
+        "externalRef": "business-persona-001"
+      }
+    },
+    "UpdatePersona": {
+      "type": "object",
+      "properties": {
+        "displayName": {
+          "type": "string",
+          "maxLength": 128,
+          "minLength": 1,
+          "description": "显示名称。"
+        },
+        "avatar": {
+          "type": "string",
+          "format": "uri",
+          "nullable": true,
+          "description": "头像地址；更新时传 null 清空。",
+          "maxLength": 2048
+        }
+      },
+      "additionalProperties": false,
+      "minProperties": 1,
+      "example": {
+        "displayName": "内容运营助手",
+        "avatar": null
+      }
+    },
+    "ProviderConfigSummary": {
+      "type": "object",
+      "properties": {
+        "configId": {
+          "type": "string",
+          "maxLength": 128,
+          "minLength": 1,
+          "description": "供应商配置实例 ID。"
+        },
+        "name": {
+          "type": "string",
+          "maxLength": 128,
+          "minLength": 1,
+          "description": "配置名称。"
+        },
+        "providerType": {
+          "type": "string",
+          "description": "供应商类型，首期为 agentmail。"
+        },
+        "capabilities": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "当前可用能力；以返回列表为准。"
+        },
+        "allowedDomains": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "允许申请邮箱的域名列表。"
+        },
+        "defaultDomain": {
+          "type": "string",
+          "description": "未指定 domain 时使用的域名。"
+        },
+        "isDefault": {
+          "type": "boolean",
+          "description": "用户池只有一个可申请邮箱的启用供应商配置时为 true。"
+        },
+        "acceptNewMailboxes": {
+          "type": "boolean",
+          "description": "是否允许新申请；false 不影响既有邮箱。"
+        }
+      },
+      "required": [
+        "configId",
+        "name",
+        "providerType",
+        "capabilities",
+        "allowedDomains",
+        "defaultDomain",
+        "isDefault",
+        "acceptNewMailboxes"
+      ],
+      "additionalProperties": false,
+      "example": {
+        "configId": "mail_primary",
+        "name": "AgentMail 主配置",
+        "providerType": "agentmail",
+        "capabilities": [
+          "mailbox.create",
+          "mail.receive",
+          "mail.send"
+        ],
+        "allowedDomains": [
+          "mail.example.com"
+        ],
+        "defaultDomain": "mail.example.com",
+        "isDefault": true,
+        "acceptNewMailboxes": true
+      }
+    },
+    "Resource": {
+      "type": "object",
+      "properties": {
+        "resourceId": {
+          "type": "string",
+          "maxLength": 128,
+          "minLength": 1,
+          "description": "通信资源 ID；邮箱资源使用 mailboxId 的同一值。"
+        },
+        "personaId": {
+          "type": "string",
+          "maxLength": 128,
+          "minLength": 1,
+          "description": "拟人身份 ID；与旧 Agent Identity 的 agentId 无关。"
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "email",
+            "phone"
+          ],
+          "description": "对象类型。"
+        },
+        "address": {
+          "type": "string",
+          "description": "邮箱未获得地址时为 null；active 邮箱必须有地址，号码必须为有效 E.164。",
+          "nullable": true
+        },
+        "source": {
+          "type": "string",
+          "enum": [
+            "provider",
+            "manual"
+          ],
+          "description": "来源；provider 为供应商资源，manual 为人工登记。"
+        },
+        "status": {
+          "type": "string",
+          "description": "邮箱沿用 Mailbox 状态；首期人工登记号码为 active，仅表示记录有效。"
+        },
+        "providerConfigId": {
+          "type": "string",
+          "maxLength": 128,
+          "minLength": 1,
+          "nullable": true,
+          "description": "邮箱绑定的配置 ID；申请时省略则使用用户池内唯一可申请邮箱的启用供应商配置。"
+        },
+        "label": {
+          "type": "string",
+          "maxLength": 128,
+          "minLength": 1,
+          "nullable": true,
+          "description": "资源备注名称。"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "创建时间。"
+        }
+      },
+      "required": [
+        "resourceId",
+        "personaId",
+        "type",
+        "address",
+        "source",
+        "status",
+        "createdAt"
+      ],
+      "additionalProperties": false,
+      "example": {
+        "resourceId": "phone_demo",
+        "personaId": "persona_demo",
+        "type": "phone",
+        "address": "+12025550123",
+        "source": "manual",
+        "status": "active",
+        "providerConfigId": null,
+        "label": "平台注册号码",
+        "createdAt": "2026-09-21T06:00:00Z"
+      },
+      "oneOf": [
+        {
+          "properties": {
+            "type": {
+              "enum": [
+                "phone"
+              ]
+            },
+            "address": {
+              "type": "string",
+              "pattern": "^\\+[1-9][0-9]{1,14}$"
+            }
+          }
+        },
+        {
+          "properties": {
+            "type": {
+              "enum": [
+                "email"
+              ]
+            },
+            "status": {
+              "enum": [
+                "active"
+              ]
+            },
+            "address": {
+              "type": "string",
+              "format": "email"
+            }
+          }
+        },
+        {
+          "properties": {
+            "type": {
+              "enum": [
+                "email"
+              ]
+            },
+            "status": {
+              "enum": [
+                "provisioning",
+                "failed",
+                "unavailable",
+                "deleting",
+                "deleted"
+              ]
+            },
+            "address": {
+              "type": "string",
+              "nullable": true,
+              "format": "email"
+            }
+          }
+        }
+      ]
+    },
+    "RegisterPhone": {
+      "type": "object",
+      "properties": {
+        "phone": {
+          "type": "string",
+          "pattern": "^\\+[1-9][0-9]{1,14}$",
+          "description": "带国家码的 E.164 号码；登记不代表可收短信或已验证。"
+        },
+        "label": {
+          "type": "string",
+          "maxLength": 128,
+          "minLength": 1,
+          "description": "资源备注名称。"
+        }
+      },
+      "required": [
+        "phone"
+      ],
+      "additionalProperties": false,
+      "example": {
+        "phone": "+12025550123",
+        "label": "平台注册号码"
+      }
+    },
+    "CreateMailbox": {
+      "type": "object",
+      "properties": {
+        "providerConfigId": {
+          "type": "string",
+          "maxLength": 128,
+          "minLength": 1,
+          "description": "邮箱绑定的配置 ID；申请时省略则使用用户池内唯一可申请邮箱的启用供应商配置。"
+        },
+        "localPart": {
+          "type": "string",
+          "maxLength": 64,
+          "pattern": "^[a-z0-9][a-z0-9._-]{0,63}$",
+          "description": "邮箱 @ 前部分；省略时由服务端或供应商分配，首字符为小写字母或数字。"
+        },
+        "displayName": {
+          "type": "string",
+          "maxLength": 128,
+          "minLength": 1,
+          "description": "显示名称。"
+        },
+        "domain": {
+          "type": "string",
+          "maxLength": 253,
+          "description": "必须属于所选配置的 allowedDomains；省略使用 defaultDomain。"
+        }
+      },
+      "additionalProperties": false,
+      "example": {
+        "providerConfigId": "mail_primary",
+        "localPart": "assistant-demo",
+        "domain": "mail.example.com",
+        "displayName": "运营助手"
+      }
+    },
+    "Mailbox": {
+      "type": "object",
+      "properties": {
+        "mailboxId": {
+          "type": "string",
+          "maxLength": 128,
+          "minLength": 1,
+          "description": "邮箱 ID；同时也是该邮箱的 resourceId。"
+        },
+        "personaId": {
+          "type": "string",
+          "maxLength": 128,
+          "minLength": 1,
+          "description": "拟人身份 ID；与旧 Agent Identity 的 agentId 无关。"
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "email"
+          ],
+          "description": "对象类型。"
+        },
+        "address": {
+          "type": "string",
+          "format": "email",
+          "nullable": true,
+          "description": "邮箱地址或 E.164 号码。"
+        },
+        "providerConfigId": {
+          "type": "string",
+          "maxLength": 128,
+          "minLength": 1,
+          "description": "邮箱绑定的配置 ID；申请时省略则使用用户池内唯一可申请邮箱的启用供应商配置。"
+        },
+        "providerType": {
+          "type": "string",
+          "description": "供应商类型，首期为 agentmail。"
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "provisioning",
+            "active",
+            "failed",
+            "unavailable",
+            "deleting",
+            "deleted"
+          ],
+          "description": "当前状态；取值与处理方式见状态说明。"
+        },
+        "capabilities": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "当前可用能力；以返回列表为准。"
+        },
+        "revision": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "当前版本号；修改时使用响应 ETag。"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "创建时间。"
+        }
+      },
+      "required": [
+        "mailboxId",
+        "personaId",
+        "type",
+        "address",
+        "providerConfigId",
+        "providerType",
+        "status",
+        "capabilities",
+        "revision",
+        "createdAt"
+      ],
+      "additionalProperties": false,
+      "example": {
+        "mailboxId": "mbx_demo",
+        "personaId": "persona_demo",
+        "type": "email",
+        "address": "assistant-demo@mail.example.com",
+        "providerConfigId": "mail_primary",
+        "providerType": "agentmail",
+        "status": "active",
+        "capabilities": [
+          "mail.receive",
+          "mail.send"
+        ],
+        "revision": 1,
+        "createdAt": "2026-09-21T06:00:00Z"
+      },
+      "oneOf": [
+        {
+          "properties": {
+            "status": {
+              "enum": [
+                "active"
+              ]
+            },
+            "address": {
+              "type": "string",
+              "format": "email"
+            }
+          }
+        },
+        {
+          "properties": {
+            "status": {
+              "enum": [
+                "provisioning",
+                "failed",
+                "unavailable",
+                "deleting",
+                "deleted"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "OperationAccepted": {
+      "type": "object",
+      "properties": {
+        "operationId": {
+          "type": "string",
+          "maxLength": 128,
+          "minLength": 1,
+          "description": "异步操作 ID；超时后继续查询原操作。"
+        },
+        "resourceId": {
+          "type": "string",
+          "maxLength": 128,
+          "minLength": 1,
+          "description": "通信资源 ID；邮箱资源使用 mailboxId 的同一值。"
+        },
+        "messageId": {
+          "type": "string",
+          "maxLength": 128,
+          "minLength": 1,
+          "description": "邮件 ID。"
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "pending"
+          ],
+          "description": "当前状态；取值与处理方式见状态说明。"
+        },
+        "pollAfterSeconds": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "建议下次查询间隔，单位秒；终态为 null。"
+        }
+      },
+      "required": [
+        "operationId",
+        "resourceId",
+        "status",
+        "pollAfterSeconds"
+      ],
+      "additionalProperties": false,
+      "example": {
+        "operationId": "op_create_demo",
+        "resourceId": "mbx_demo",
+        "status": "pending",
+        "pollAfterSeconds": 3
+      }
+    },
+    "OperationResult": {
+      "type": "object",
+      "properties": {
+        "mailboxId": {
+          "type": "string",
+          "maxLength": 128,
+          "minLength": 1,
+          "description": "邮箱 ID；同时也是该邮箱的 resourceId。"
+        },
+        "address": {
+          "type": "string",
+          "format": "email",
+          "description": "邮箱地址或 E.164 号码。"
+        },
+        "messageId": {
+          "type": "string",
+          "maxLength": 128,
+          "minLength": 1,
+          "description": "邮件 ID。"
+        },
+        "deliveryStatus": {
+          "type": "string",
+          "enum": [
+            "queued",
+            "accepted",
+            "delivered",
+            "bounced",
+            "rejected",
+            "unknown"
+          ],
+          "description": "出站邮件投递状态；入站邮件为 null。"
+        }
+      },
+      "additionalProperties": false,
+      "example": {
+        "mailboxId": "mbx_demo",
+        "address": "assistant-demo@mail.example.com"
+      }
+    },
+    "Operation": {
+      "type": "object",
+      "properties": {
+        "operationId": {
+          "type": "string",
+          "maxLength": 128,
+          "minLength": 1,
+          "description": "异步操作 ID；超时后继续查询原操作。"
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "mailbox.create",
+            "mail.send"
+          ],
+          "description": "对象类型。"
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "pending",
+            "running",
+            "succeeded",
+            "failed",
+            "unknown"
+          ],
+          "description": "当前状态；取值与处理方式见状态说明。"
+        },
+        "resourceId": {
+          "type": "string",
+          "maxLength": 128,
+          "minLength": 1,
+          "description": "通信资源 ID；邮箱资源使用 mailboxId 的同一值。"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "创建时间。"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "最后更新时间。"
+        },
+        "pollAfterSeconds": {
+          "type": "integer",
+          "minimum": 1,
+          "nullable": true,
+          "description": "建议下次查询间隔，单位秒；终态为 null。"
+        },
+        "result": {
+          "type": "object",
+          "properties": {
+            "mailboxId": {
+              "type": "string",
+              "maxLength": 128,
+              "minLength": 1,
+              "description": "邮箱 ID；同时也是该邮箱的 resourceId。"
+            },
+            "address": {
+              "type": "string",
+              "format": "email",
+              "description": "邮箱地址或 E.164 号码。"
+            },
+            "messageId": {
+              "type": "string",
+              "maxLength": 128,
+              "minLength": 1,
+              "description": "邮件 ID。"
+            },
+            "deliveryStatus": {
+              "type": "string",
+              "enum": [
+                "queued",
+                "accepted",
+                "delivered",
+                "bounced",
+                "rejected",
+                "unknown"
+              ],
+              "description": "出站邮件投递状态；入站邮件为 null。"
+            }
+          },
+          "additionalProperties": false,
+          "nullable": true,
+          "description": "执行或提取结果；未产生时为 null。"
+        },
+        "error": {
+          "type": "object",
+          "properties": {
+            "code": {
+              "type": "string",
+              "description": "稳定的机器可读错误码。"
+            },
+            "retryable": {
+              "type": "boolean",
+              "description": "是否允许按重试规则重试；不能据此对 unknown 换键重发。"
+            },
+            "requiresManualReview": {
+              "type": "boolean",
+              "description": "是否需要人工核对供应商结果。"
+            }
+          },
+          "required": [
+            "code",
+            "retryable"
+          ],
+          "additionalProperties": false,
+          "nullable": true,
+          "description": "任务错误；无错误时为 null。"
+        }
+      },
+      "required": [
+        "operationId",
+        "type",
+        "status",
+        "resourceId",
+        "createdAt",
+        "updatedAt",
+        "pollAfterSeconds",
+        "result",
+        "error"
+      ],
+      "additionalProperties": false,
+      "example": {
+        "operationId": "op_create_demo",
+        "type": "mailbox.create",
+        "status": "succeeded",
+        "resourceId": "mbx_demo",
+        "createdAt": "2026-09-21T06:00:00Z",
+        "updatedAt": "2026-09-21T06:00:30Z",
+        "pollAfterSeconds": null,
+        "result": {
+          "mailboxId": "mbx_demo",
+          "address": "assistant-demo@mail.example.com"
+        },
+        "error": null
+      }
+    },
+    "MessageSummary": {
+      "type": "object",
+      "properties": {
+        "messageId": {
+          "type": "string",
+          "maxLength": 128,
+          "minLength": 1,
+          "description": "邮件 ID。"
+        },
+        "mailboxId": {
+          "type": "string",
+          "maxLength": 128,
+          "minLength": 1,
+          "description": "邮箱 ID；同时也是该邮箱的 resourceId。"
+        },
+        "direction": {
+          "type": "string",
+          "enum": [
+            "inbound",
+            "outbound"
+          ],
+          "description": "inbound 收件；outbound 发件。"
+        },
+        "from": {
+          "type": "string",
+          "format": "email",
+          "description": "发件邮箱地址。"
+        },
+        "to": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "format": "email"
+          },
+          "description": "收件地址；发送接口仅接受单个字符串。"
+        },
+        "subject": {
+          "type": "string",
+          "description": "完整邮件主题。缺主题且内容可用时为空串；内容待拉取、过期或不可用时为 null，与正文按 observedAt 起 24 小时清理。",
+          "nullable": true
+        },
+        "receivedAt": {
+          "type": "string",
+          "format": "date-time",
+          "nullable": true,
+          "description": "供应商真实接收时间；仅适配器确认语义后填写。首期 AgentMail 为 null，不用 timestamp、Date 或创建时间替代。"
+        },
+        "sentAt": {
+          "type": "string",
+          "format": "date-time",
+          "nullable": true,
+          "description": "供应商发送时间；仅确认发送事件或字段语义后填写，未知为 null。不以 GenAuth 受理时间或供应商创建时间替代。"
+        },
+        "deliveryStatus": {
+          "type": "string",
+          "enum": [
+            "queued",
+            "accepted",
+            "delivered",
+            "bounced",
+            "rejected",
+            "unknown",
+            null
+          ],
+          "nullable": true,
+          "description": "出站邮件投递状态；入站邮件为 null。"
+        },
+        "observedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "GenAuth 首次持久化观察到邮件的时间，不是供应商接收时间；重复事件和补拉不刷新。用于邮件排序、after/before 筛选及验证码窗口。"
+        },
+        "contentStatus": {
+          "type": "string",
+          "enum": [
+            "available",
+            "pending",
+            "expired",
+            "unavailable"
+          ],
+          "description": "主题和正文的可用状态；非 available 时 subject/text 为 null。"
+        }
+      },
+      "required": [
+        "messageId",
+        "mailboxId",
+        "direction",
+        "from",
+        "to",
+        "subject",
+        "receivedAt",
+        "sentAt",
+        "deliveryStatus",
+        "observedAt",
+        "contentStatus"
+      ],
+      "additionalProperties": false,
+      "example": {
+        "messageId": "msg_demo",
+        "mailboxId": "mbx_demo",
+        "direction": "inbound",
+        "from": "noreply@demo.example.com",
+        "to": [
+          "assistant-demo@mail.example.com"
+        ],
+        "subject": "注册验证码",
+        "receivedAt": null,
+        "sentAt": null,
+        "deliveryStatus": null,
+        "observedAt": "2026-09-21T06:00:30Z",
+        "contentStatus": "available"
+      },
+      "oneOf": [
+        {
+          "properties": {
+            "contentStatus": {
+              "enum": [
+                "available"
+              ]
+            },
+            "subject": {
+              "type": "string"
+            }
+          }
+        },
+        {
+          "properties": {
+            "contentStatus": {
+              "enum": [
+                "pending",
+                "expired",
+                "unavailable"
+              ]
+            },
+            "subject": {
+              "type": "string",
+              "nullable": true,
+              "enum": [
+                null
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "MessageDetail": {
+      "type": "object",
+      "properties": {
+        "messageId": {
+          "type": "string",
+          "maxLength": 128,
+          "minLength": 1,
+          "description": "邮件 ID。"
+        },
+        "mailboxId": {
+          "type": "string",
+          "maxLength": 128,
+          "minLength": 1,
+          "description": "邮箱 ID；同时也是该邮箱的 resourceId。"
+        },
+        "direction": {
+          "type": "string",
+          "enum": [
+            "inbound",
+            "outbound"
+          ],
+          "description": "inbound 收件；outbound 发件。"
+        },
+        "from": {
+          "type": "string",
+          "format": "email",
+          "description": "发件邮箱地址。"
+        },
+        "to": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "format": "email"
+          },
+          "description": "收件地址；发送接口仅接受单个字符串。"
+        },
+        "subject": {
+          "type": "string",
+          "description": "完整邮件主题。缺主题且内容可用时为空串；内容待拉取、过期或不可用时为 null，与正文按 observedAt 起 24 小时清理。",
+          "nullable": true
+        },
+        "receivedAt": {
+          "type": "string",
+          "format": "date-time",
+          "nullable": true,
+          "description": "供应商真实接收时间；仅适配器确认语义后填写。首期 AgentMail 为 null，不用 timestamp、Date 或创建时间替代。"
+        },
+        "sentAt": {
+          "type": "string",
+          "format": "date-time",
+          "nullable": true,
+          "description": "供应商发送时间；仅确认发送事件或字段语义后填写，未知为 null。不以 GenAuth 受理时间或供应商创建时间替代。"
+        },
+        "deliveryStatus": {
+          "type": "string",
+          "enum": [
+            "queued",
+            "accepted",
+            "delivered",
+            "bounced",
+            "rejected",
+            "unknown",
+            null
+          ],
+          "nullable": true,
+          "description": "出站邮件投递状态；入站邮件为 null。"
+        },
+        "text": {
+          "type": "string",
+          "nullable": true,
+          "description": "纯文本正文；发送上限为 UTF-8 64 KiB。"
+        },
+        "contentStatus": {
+          "type": "string",
+          "enum": [
+            "available",
+            "pending",
+            "expired",
+            "unavailable"
+          ],
+          "description": "主题和正文的可用状态；非 available 时 subject/text 为 null。"
+        },
+        "observedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "GenAuth 首次持久化观察到邮件的时间，不是供应商接收时间；重复事件和补拉不刷新。用于邮件排序、after/before 筛选及验证码窗口。"
+        }
+      },
+      "required": [
+        "messageId",
+        "mailboxId",
+        "direction",
+        "from",
+        "to",
+        "subject",
+        "receivedAt",
+        "sentAt",
+        "deliveryStatus",
+        "text",
+        "contentStatus",
+        "observedAt"
+      ],
+      "additionalProperties": false,
+      "example": {
+        "messageId": "msg_demo",
+        "mailboxId": "mbx_demo",
+        "direction": "inbound",
+        "from": "noreply@demo.example.com",
+        "to": [
+          "assistant-demo@mail.example.com"
+        ],
+        "subject": "注册验证码",
+        "receivedAt": null,
+        "sentAt": null,
+        "deliveryStatus": null,
+        "text": "注册验证码：012345",
+        "contentStatus": "available",
+        "observedAt": "2026-09-21T06:00:30Z"
+      },
+      "oneOf": [
+        {
+          "properties": {
+            "contentStatus": {
+              "enum": [
+                "available"
+              ]
+            },
+            "subject": {
+              "type": "string"
+            },
+            "text": {
+              "type": "string"
+            }
+          }
+        },
+        {
+          "properties": {
+            "contentStatus": {
+              "enum": [
+                "pending",
+                "expired",
+                "unavailable"
+              ]
+            },
+            "subject": {
+              "type": "string",
+              "nullable": true,
+              "enum": [
+                null
+              ]
+            },
+            "text": {
+              "type": "string",
+              "nullable": true,
+              "enum": [
+                null
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "SendMessage": {
+      "type": "object",
+      "properties": {
+        "to": {
+          "type": "string",
+          "format": "email",
+          "description": "收件地址；发送接口仅接受单个字符串。"
+        },
+        "subject": {
+          "type": "string",
+          "maxLength": 200,
+          "minLength": 1,
+          "description": "邮件主题。"
+        },
+        "text": {
+          "type": "string",
+          "description": "纯文本正文；发送上限为 UTF-8 64 KiB。",
+          "minLength": 1
+        },
+        "externalRef": {
+          "type": "string",
+          "maxLength": 128,
+          "minLength": 1,
+          "description": "下游业务关联 ID；不得填密码或凭据。"
+        }
+      },
+      "required": [
+        "to",
+        "subject",
+        "text"
+      ],
+      "additionalProperties": false,
+      "example": {
+        "to": "recipient@example.com",
+        "subject": "验证通知",
+        "text": "示例验证码：012345",
+        "externalRef": "business-notice-001"
+      }
+    },
+    "MatchConditions": {
+      "type": "object",
+      "properties": {
+        "fromAddresses": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "format": "email"
+          },
+          "minItems": 1,
+          "maxItems": 10,
+          "description": "精确发件地址列表；与 fromDomains 至少填一项。"
+        },
+        "fromDomains": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "maxLength": 253
+          },
+          "minItems": 1,
+          "maxItems": 10,
+          "description": "精确发件域列表，不自动包含子域；与 fromAddresses 至少填一项。"
+        },
+        "subjectContains": {
+          "type": "string",
+          "maxLength": 200,
+          "description": "主题包含此文本；省略则不限制主题。"
+        }
+      },
+      "additionalProperties": false,
+      "anyOf": [
+        {
+          "required": [
+            "fromAddresses"
+          ]
+        },
+        {
+          "required": [
+            "fromDomains"
+          ]
+        }
+      ],
+      "example": {
+        "fromDomains": [
+          "demo.example.com"
+        ],
+        "subjectContains": "注册验证码"
+      }
+    },
+    "ExtractRule": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": [
+            "code",
+            "link"
+          ],
+          "description": "code 返回验证码字符串；link 返回 HTTPS 链接。"
+        },
+        "pattern": {
+          "type": "string",
+          "description": "受限正则，仅一个捕获组；禁止脚本与无界执行。",
+          "maxLength": 256,
+          "minLength": 1
+        },
+        "allowedLinkDomains": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "maxLength": 253
+          },
+          "minItems": 1,
+          "maxItems": 10,
+          "description": "kind=link 时必填；精确域名白名单，不自动包含子域。"
+        }
+      },
+      "required": [
+        "kind",
+        "pattern"
+      ],
+      "additionalProperties": false,
+      "oneOf": [
+        {
+          "properties": {
+            "kind": {
+              "type": "string",
+              "enum": [
+                "code"
+              ]
+            }
+          }
+        },
+        {
+          "properties": {
+            "kind": {
+              "type": "string",
+              "enum": [
+                "link"
+              ]
+            }
+          },
+          "required": [
+            "allowedLinkDomains"
+          ]
+        }
+      ],
+      "example": {
+        "kind": "code",
+        "pattern": "验证码[：: ]*([0-9]{6})"
+      }
+    },
+    "CreateVerificationRequest": {
+      "type": "object",
+      "properties": {
+        "platformKey": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9-]{0,63}$",
+          "description": "平台稳定标识；小写字母、数字、短横线，最长 64 字符。"
+        },
+        "externalRef": {
+          "type": "string",
+          "maxLength": 128,
+          "minLength": 1,
+          "description": "本次注册尝试 ID；每次重发使用新的值。"
+        },
+        "timeoutSeconds": {
+          "type": "integer",
+          "default": 180,
+          "minimum": 30,
+          "maximum": 600,
+          "description": "从任务创建起计算的等待时长，单位秒；不代表验证码有效期。"
+        },
+        "templateId": {
+          "type": "string",
+          "maxLength": 128,
+          "minLength": 1,
+          "description": "管理员提供的平台模板 ID；与 match、extract 互斥。"
+        },
+        "match": {
+          "$ref": "#/components/schemas/MatchConditions"
+        },
+        "extract": {
+          "$ref": "#/components/schemas/ExtractRule"
+        }
+      },
+      "required": [
+        "platformKey",
+        "externalRef"
+      ],
+      "additionalProperties": false,
+      "oneOf": [
+        {
+          "required": [
+            "templateId"
+          ],
+          "not": {
+            "anyOf": [
+              {
+                "required": [
+                  "match"
+                ]
+              },
+              {
+                "required": [
+                  "extract"
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "required": [
+            "match",
+            "extract"
+          ],
+          "not": {
+            "required": [
+              "templateId"
+            ]
+          }
+        }
+      ],
+      "example": {
+        "platformKey": "demo-platform",
+        "externalRef": "registration-attempt-001",
+        "timeoutSeconds": 180,
+        "match": {
+          "fromDomains": [
+            "demo.example.com"
+          ],
+          "subjectContains": "注册验证码"
+        },
+        "extract": {
+          "kind": "code",
+          "pattern": "验证码[：: ]*([0-9]{6})"
+        }
+      }
+    },
+    "VerificationResult": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": [
+            "code",
+            "link"
+          ],
+          "description": "code 返回验证码字符串；link 返回 HTTPS 链接。"
+        },
+        "value": {
+          "type": "string",
+          "description": "验证码或验证链接；验证码为字符串，保留前导零。"
+        },
+        "messageId": {
+          "type": "string",
+          "maxLength": 128,
+          "minLength": 1,
+          "description": "邮件 ID。"
+        },
+        "receivedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "供应商真实接收时间；仅适配器确认语义后填写。首期 AgentMail 为 null，不用 timestamp、Date 或创建时间替代。",
+          "nullable": true
+        },
+        "observedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "GenAuth 首次持久化观察到邮件的时间，不是供应商接收时间；重复事件和补拉不刷新。用于邮件排序、after/before 筛选及验证码窗口。"
+        }
+      },
+      "required": [
+        "kind",
+        "value",
+        "messageId",
+        "receivedAt",
+        "observedAt"
+      ],
+      "additionalProperties": false,
+      "example": {
+        "kind": "code",
+        "value": "012345",
+        "messageId": "msg_demo",
+        "receivedAt": null,
+        "observedAt": "2026-09-21T06:00:30Z"
+      }
+    },
+    "VerificationRequest": {
+      "type": "object",
+      "properties": {
+        "verificationRequestId": {
+          "type": "string",
+          "maxLength": 128,
+          "minLength": 1,
+          "description": "验证码等待任务 ID。"
+        },
+        "mailboxId": {
+          "type": "string",
+          "maxLength": 128,
+          "minLength": 1,
+          "description": "邮箱 ID；同时也是该邮箱的 resourceId。"
+        },
+        "platformKey": {
+          "type": "string",
+          "description": "平台稳定标识；小写字母、数字、短横线，最长 64 字符。"
+        },
+        "externalRef": {
+          "type": "string",
+          "maxLength": 128,
+          "minLength": 1,
+          "description": "下游业务关联 ID；不得填密码或凭据。"
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "pending",
+            "matched",
+            "ambiguous",
+            "expired",
+            "cancelled",
+            "failed"
+          ],
+          "description": "当前状态；取值与处理方式见状态说明。"
+        },
+        "windowStart": {
+          "type": "string",
+          "format": "date-time",
+          "description": "基线同步完成后创建任务的时间；收到 201 后才能触发第三方邮件。"
+        },
+        "expiresAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "等待截止时间；不能用来判断第三方验证码是否失效。"
+        },
+        "pollAfterSeconds": {
+          "type": "integer",
+          "minimum": 1,
+          "nullable": true,
+          "description": "建议下次查询间隔，单位秒；终态为 null。"
+        },
+        "resultAvailableUntil": {
+          "type": "string",
+          "format": "date-time",
+          "nullable": true,
+          "description": "敏感结果保留截止时间；尚无结果为 null。"
+        },
+        "resultExpired": {
+          "type": "boolean",
+          "description": "敏感结果是否已清理；true 时 result 为 null。"
+        },
+        "result": {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "enum": [
+                "code",
+                "link"
+              ],
+              "description": "code 返回验证码字符串；link 返回 HTTPS 链接。"
+            },
+            "value": {
+              "type": "string",
+              "description": "验证码或验证链接；验证码为字符串，保留前导零。"
+            },
+            "messageId": {
+              "type": "string",
+              "maxLength": 128,
+              "minLength": 1,
+              "description": "邮件 ID。"
+            },
+            "receivedAt": {
+              "type": "string",
+              "format": "date-time",
+              "description": "供应商真实接收时间；仅适配器确认语义后填写。首期 AgentMail 为 null，不用 timestamp、Date 或创建时间替代。",
+              "nullable": true
+            },
+            "observedAt": {
+              "type": "string",
+              "format": "date-time",
+              "description": "GenAuth 首次持久化观察到邮件的时间，不是供应商接收时间；重复事件和补拉不刷新。用于邮件排序、after/before 筛选及验证码窗口。"
+            }
+          },
+          "required": [
+            "kind",
+            "value",
+            "messageId",
+            "receivedAt",
+            "observedAt"
+          ],
+          "additionalProperties": false,
+          "nullable": true,
+          "description": "执行或提取结果；未产生时为 null。"
+        },
+        "candidateMessageIds": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 1
+          },
+          "description": "无法唯一匹配时的候选邮件 ID；不返回候选验证码。"
+        },
+        "error": {
+          "type": "object",
+          "properties": {
+            "code": {
+              "type": "string",
+              "description": "稳定的机器可读错误码。"
+            },
+            "retryable": {
+              "type": "boolean",
+              "description": "是否允许按重试规则重试；不能据此对 unknown 换键重发。"
+            },
+            "requiresManualReview": {
+              "type": "boolean",
+              "description": "是否需要人工核对供应商结果。"
+            }
+          },
+          "required": [
+            "code",
+            "retryable"
+          ],
+          "additionalProperties": false,
+          "nullable": true,
+          "description": "任务错误；无错误时为 null。"
+        }
+      },
+      "required": [
+        "verificationRequestId",
+        "mailboxId",
+        "platformKey",
+        "externalRef",
+        "status",
+        "windowStart",
+        "expiresAt",
+        "pollAfterSeconds",
+        "resultAvailableUntil",
+        "resultExpired",
+        "result",
+        "error"
+      ],
+      "additionalProperties": false,
+      "example": {
+        "verificationRequestId": "vr_demo",
+        "mailboxId": "mbx_demo",
+        "platformKey": "demo-platform",
+        "externalRef": "registration-attempt-001",
+        "status": "pending",
+        "windowStart": "2026-09-21T06:00:00Z",
+        "expiresAt": "2026-09-21T06:03:00Z",
+        "pollAfterSeconds": 3,
+        "resultAvailableUntil": null,
+        "resultExpired": false,
+        "result": null,
+        "error": null
+      }
+    },
+    "Binding": {
+      "type": "object",
+      "properties": {
+        "resourceId": {
+          "type": "string",
+          "maxLength": 128,
+          "minLength": 1,
+          "description": "通信资源 ID；邮箱资源使用 mailboxId 的同一值。"
+        },
+        "purposes": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "registration",
+              "login",
+              "recovery",
+              "contact"
+            ]
+          },
+          "minItems": 1,
+          "maxItems": 4,
+          "uniqueItems": true,
+          "description": "资源用途：registration 注册、login 登录、recovery 找回、contact 联系。"
+        },
+        "isCurrent": {
+          "type": "boolean",
+          "description": "是否为当前有效渠道；历史注册渠道可保留为 false。"
+        }
+      },
+      "required": [
+        "resourceId",
+        "purposes",
+        "isCurrent"
+      ],
+      "additionalProperties": false,
+      "example": {
+        "resourceId": "mbx_demo",
+        "purposes": [
+          "registration",
+          "login"
+        ],
+        "isCurrent": true
+      }
+    },
+    "CreateExternalAccount": {
+      "type": "object",
+      "properties": {
+        "platformKey": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9-]{0,63}$",
+          "description": "平台稳定标识；小写字母、数字、短横线，最长 64 字符。"
+        },
+        "externalRef": {
+          "type": "string",
+          "maxLength": 128,
+          "minLength": 1,
+          "description": "下游账号记录 ID；在用户池和身份范围内唯一。"
+        },
+        "platformAccountId": {
+          "type": "string",
+          "maxLength": 256,
+          "nullable": true,
+          "description": "平台分配的稳定账号 ID；与 platformKey、platformScope 一起识别账号。"
+        },
+        "platformScope": {
+          "type": "string",
+          "maxLength": 256,
+          "nullable": true,
+          "description": "平台账号 ID 的命名空间，如平台租户；全局唯一账号可省略。"
+        },
+        "username": {
+          "type": "string",
+          "maxLength": 128,
+          "minLength": 1,
+          "nullable": true,
+          "description": "平台用户名。"
+        },
+        "profileUrl": {
+          "type": "string",
+          "format": "uri",
+          "pattern": "^https://",
+          "nullable": true,
+          "description": "平台账号主页，仅允许 HTTPS。",
+          "maxLength": 2048
+        },
+        "registrationResult": {
+          "type": "string",
+          "enum": [
+            "registered",
+            "recorded"
+          ],
+          "description": "registered 为下游确认已注册；recorded 为仅登记，均非 GenAuth 平台核验。"
+        },
+        "registeredAt": {
+          "type": "string",
+          "format": "date-time",
+          "nullable": true,
+          "description": "实际注册时间；未知时省略或 null。"
+        },
+        "notes": {
+          "type": "string",
+          "maxLength": 1024,
+          "nullable": true,
+          "description": "账号备注，不保存密码、Cookie、Token。"
+        },
+        "bindings": {
+          "type": "array",
+          "items": {
+            "$ref": "#/components/schemas/Binding"
+          },
+          "maxItems": 20,
+          "description": "关联通信资源；必须属于该身份。PATCH 时整体替换。"
+        },
+        "recordStatus": {
+          "type": "string",
+          "enum": [
+            "active",
+            "archived"
+          ],
+          "default": "active",
+          "description": "active 正常记录；archived 已归档，均不操作第三方账号。"
+        }
+      },
+      "required": [
+        "platformKey",
+        "externalRef",
+        "registrationResult"
+      ],
+      "additionalProperties": false,
+      "anyOf": [
+        {
+          "required": [
+            "platformAccountId"
+          ],
+          "properties": {
+            "platformAccountId": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        },
+        {
+          "required": [
+            "username"
+          ],
+          "properties": {
+            "username": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        },
+        {
+          "required": [
+            "profileUrl"
+          ],
+          "properties": {
+            "profileUrl": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        }
+      ],
+      "example": {
+        "platformKey": "demo-platform",
+        "externalRef": "business-account-001",
+        "platformAccountId": "platform-user-001",
+        "username": "assistant-demo",
+        "registrationResult": "registered",
+        "registeredAt": "2026-09-21T06:00:30Z",
+        "bindings": [
+          {
+            "resourceId": "mbx_demo",
+            "purposes": [
+              "registration",
+              "login"
+            ],
+            "isCurrent": true
+          }
+        ]
+      }
+    },
+    "UpdateExternalAccount": {
+      "type": "object",
+      "properties": {
+        "platformAccountId": {
+          "type": "string",
+          "maxLength": 256,
+          "nullable": true,
+          "description": "平台分配的稳定账号 ID；与 platformKey、platformScope 一起识别账号。"
+        },
+        "platformScope": {
+          "type": "string",
+          "maxLength": 256,
+          "nullable": true,
+          "description": "平台账号 ID 的命名空间，如平台租户；全局唯一账号可省略。"
+        },
+        "username": {
+          "type": "string",
+          "maxLength": 128,
+          "minLength": 1,
+          "nullable": true,
+          "description": "平台用户名。"
+        },
+        "profileUrl": {
+          "type": "string",
+          "format": "uri",
+          "pattern": "^https://",
+          "nullable": true,
+          "description": "平台账号主页，仅允许 HTTPS。",
+          "maxLength": 2048
+        },
+        "registrationResult": {
+          "type": "string",
+          "enum": [
+            "registered",
+            "recorded"
+          ],
+          "description": "registered 为下游确认已注册；recorded 为仅登记，均非 GenAuth 平台核验。"
+        },
+        "registeredAt": {
+          "type": "string",
+          "format": "date-time",
+          "nullable": true,
+          "description": "实际注册时间；未知时省略或 null。"
+        },
+        "notes": {
+          "type": "string",
+          "maxLength": 1024,
+          "nullable": true,
+          "description": "账号备注，不保存密码、Cookie、Token。"
+        },
+        "bindings": {
+          "type": "array",
+          "items": {
+            "$ref": "#/components/schemas/Binding"
+          },
+          "maxItems": 20,
+          "description": "关联通信资源；必须属于该身份。PATCH 时整体替换。"
+        },
+        "recordStatus": {
+          "type": "string",
+          "enum": [
+            "active",
+            "archived"
+          ],
+          "description": "active 正常记录；archived 已归档，均不操作第三方账号。"
+        }
+      },
+      "additionalProperties": false,
+      "minProperties": 1,
+      "description": "更新后 platformAccountId、username、profileUrl 至少一个非空；bindings 整体替换。",
+      "example": {
+        "recordStatus": "archived",
+        "notes": "业务已结束，保留注册记录"
+      }
+    },
+    "ExternalAccount": {
+      "type": "object",
+      "properties": {
+        "platformKey": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9-]{0,63}$",
+          "description": "平台稳定标识；小写字母、数字、短横线，最长 64 字符。"
+        },
+        "externalRef": {
+          "type": "string",
+          "maxLength": 128,
+          "minLength": 1,
+          "description": "下游账号记录 ID；在用户池和身份范围内唯一。"
+        },
+        "platformAccountId": {
+          "type": "string",
+          "maxLength": 256,
+          "nullable": true,
+          "description": "平台分配的稳定账号 ID；与 platformKey、platformScope 一起识别账号。"
+        },
+        "platformScope": {
+          "type": "string",
+          "maxLength": 256,
+          "nullable": true,
+          "description": "平台账号 ID 的命名空间，如平台租户；全局唯一账号可省略。"
+        },
+        "username": {
+          "type": "string",
+          "maxLength": 128,
+          "minLength": 1,
+          "nullable": true,
+          "description": "平台用户名。"
+        },
+        "profileUrl": {
+          "type": "string",
+          "format": "uri",
+          "pattern": "^https://",
+          "nullable": true,
+          "description": "平台账号主页，仅允许 HTTPS。",
+          "maxLength": 2048
+        },
+        "registrationResult": {
+          "type": "string",
+          "enum": [
+            "registered",
+            "recorded"
+          ],
+          "description": "registered 为下游确认已注册；recorded 为仅登记，均非 GenAuth 平台核验。"
+        },
+        "registeredAt": {
+          "type": "string",
+          "format": "date-time",
+          "nullable": true,
+          "description": "实际注册时间；未知时省略或 null。"
+        },
+        "notes": {
+          "type": "string",
+          "maxLength": 1024,
+          "nullable": true,
+          "description": "账号备注，不保存密码、Cookie、Token。"
+        },
+        "bindings": {
+          "type": "array",
+          "items": {
+            "$ref": "#/components/schemas/Binding"
+          },
+          "maxItems": 20,
+          "description": "关联通信资源；必须属于该身份。PATCH 时整体替换。"
+        },
+        "recordStatus": {
+          "type": "string",
+          "enum": [
+            "active",
+            "archived"
+          ],
+          "default": "active",
+          "description": "active 正常记录；archived 已归档，均不操作第三方账号。"
+        },
+        "accountId": {
+          "type": "string",
+          "maxLength": 128,
+          "minLength": 1,
+          "description": "GenAuth 账号档案 ID。"
+        },
+        "personaId": {
+          "type": "string",
+          "maxLength": 128,
+          "minLength": 1,
+          "description": "拟人身份 ID；与旧 Agent Identity 的 agentId 无关。"
+        },
+        "source": {
+          "type": "string",
+          "description": "档案来源；本模块 OpenAPI 登记为 api，管理端登记为 manual。"
+        },
+        "reportedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "本次登记或回写时间。"
+        },
+        "revision": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "当前版本号；修改时使用响应 ETag。"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "创建时间。"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "最后更新时间。"
+        }
+      },
+      "required": [
+        "accountId",
+        "personaId",
+        "platformKey",
+        "externalRef",
+        "registrationResult",
+        "bindings",
+        "recordStatus",
+        "source",
+        "reportedAt",
+        "revision",
+        "createdAt",
+        "updatedAt"
+      ],
+      "additionalProperties": false,
+      "example": {
+        "platformKey": "demo-platform",
+        "externalRef": "business-account-001",
+        "platformAccountId": "platform-user-001",
+        "username": "assistant-demo",
+        "registrationResult": "registered",
+        "registeredAt": "2026-09-21T06:00:30Z",
+        "bindings": [
+          {
+            "resourceId": "mbx_demo",
+            "purposes": [
+              "registration",
+              "login"
+            ],
+            "isCurrent": true
+          }
+        ],
+        "accountId": "acct_demo",
+        "personaId": "persona_demo",
+        "platformScope": null,
+        "profileUrl": null,
+        "notes": null,
+        "recordStatus": "active",
+        "source": "api",
+        "reportedAt": "2026-09-21T06:00:30Z",
+        "revision": 1,
+        "createdAt": "2026-09-21T06:00:30Z",
+        "updatedAt": "2026-09-21T06:00:30Z"
+      }
+    },
+    "PersonaPage": {
+      "type": "object",
+      "properties": {
+        "items": {
+          "type": "array",
+          "items": {
+            "$ref": "#/components/schemas/Persona"
+          },
+          "description": "当前页对象列表。"
+        },
+        "nextCursor": {
+          "type": "string",
+          "nullable": true,
+          "description": "下一页游标；末页为 null，不自行解析。"
+        }
+      },
+      "required": [
+        "items",
+        "nextCursor"
+      ],
+      "additionalProperties": false,
+      "example": {
+        "items": [
+          {
+            "personaId": "persona_demo",
+            "displayName": "运营助手",
+            "avatar": null,
+            "status": "Activated",
+            "externalRef": "business-persona-001",
+            "revision": 1,
+            "createdAt": "2026-09-21T06:00:00Z",
+            "updatedAt": "2026-09-21T06:00:00Z"
+          }
+        ],
+        "nextCursor": null
+      }
+    },
+    "ProviderConfigSummaryPage": {
+      "type": "object",
+      "properties": {
+        "items": {
+          "type": "array",
+          "items": {
+            "$ref": "#/components/schemas/ProviderConfigSummary"
+          },
+          "description": "当前页对象列表。"
+        },
+        "nextCursor": {
+          "type": "string",
+          "nullable": true,
+          "description": "下一页游标；末页为 null，不自行解析。"
+        }
+      },
+      "required": [
+        "items",
+        "nextCursor"
+      ],
+      "additionalProperties": false,
+      "example": {
+        "items": [
+          {
+            "configId": "mail_primary",
+            "name": "AgentMail 主配置",
+            "providerType": "agentmail",
+            "capabilities": [
+              "mailbox.create",
+              "mail.receive",
+              "mail.send"
+            ],
+            "allowedDomains": [
+              "mail.example.com"
+            ],
+            "defaultDomain": "mail.example.com",
+            "isDefault": true,
+            "acceptNewMailboxes": true
+          }
+        ],
+        "nextCursor": null
+      }
+    },
+    "ResourcePage": {
+      "type": "object",
+      "properties": {
+        "items": {
+          "type": "array",
+          "items": {
+            "$ref": "#/components/schemas/Resource"
+          },
+          "description": "当前页对象列表。"
+        },
+        "nextCursor": {
+          "type": "string",
+          "nullable": true,
+          "description": "下一页游标；末页为 null，不自行解析。"
+        }
+      },
+      "required": [
+        "items",
+        "nextCursor"
+      ],
+      "additionalProperties": false,
+      "example": {
+        "items": [
+          {
+            "resourceId": "phone_demo",
+            "personaId": "persona_demo",
+            "type": "phone",
+            "address": "+12025550123",
+            "source": "manual",
+            "status": "active",
+            "providerConfigId": null,
+            "label": "平台注册号码",
+            "createdAt": "2026-09-21T06:00:00Z"
+          }
+        ],
+        "nextCursor": null
+      }
+    },
+    "MessageSummaryPage": {
+      "type": "object",
+      "properties": {
+        "items": {
+          "type": "array",
+          "items": {
+            "$ref": "#/components/schemas/MessageSummary"
+          },
+          "description": "当前页对象列表。"
+        },
+        "nextCursor": {
+          "type": "string",
+          "nullable": true,
+          "description": "下一页游标；末页为 null，不自行解析。"
+        }
+      },
+      "required": [
+        "items",
+        "nextCursor"
+      ],
+      "additionalProperties": false,
+      "example": {
+        "items": [
+          {
+            "messageId": "msg_demo",
+            "mailboxId": "mbx_demo",
+            "direction": "inbound",
+            "from": "noreply@demo.example.com",
+            "to": [
+              "assistant-demo@mail.example.com"
+            ],
+            "subject": "注册验证码",
+            "receivedAt": null,
+            "sentAt": null,
+            "deliveryStatus": null,
+            "observedAt": "2026-09-21T06:00:30Z",
+            "contentStatus": "available"
+          }
+        ],
+        "nextCursor": null
+      }
+    },
+    "ExternalAccountPage": {
+      "type": "object",
+      "properties": {
+        "items": {
+          "type": "array",
+          "items": {
+            "$ref": "#/components/schemas/ExternalAccount"
+          },
+          "description": "当前页对象列表。"
+        },
+        "nextCursor": {
+          "type": "string",
+          "nullable": true,
+          "description": "下一页游标；末页为 null，不自行解析。"
+        }
+      },
+      "required": [
+        "items",
+        "nextCursor"
+      ],
+      "additionalProperties": false,
+      "example": {
+        "items": [
+          {
+            "platformKey": "demo-platform",
+            "externalRef": "business-account-001",
+            "platformAccountId": "platform-user-001",
+            "username": "assistant-demo",
+            "registrationResult": "registered",
+            "registeredAt": "2026-09-21T06:00:30Z",
+            "bindings": [
+              {
+                "resourceId": "mbx_demo",
+                "purposes": [
+                  "registration",
+                  "login"
+                ],
+                "isCurrent": true
+              }
+            ],
+            "accountId": "acct_demo",
+            "personaId": "persona_demo",
+            "platformScope": null,
+            "profileUrl": null,
+            "notes": null,
+            "recordStatus": "active",
+            "source": "api",
+            "reportedAt": "2026-09-21T06:00:30Z",
+            "revision": 1,
+            "createdAt": "2026-09-21T06:00:30Z",
+            "updatedAt": "2026-09-21T06:00:30Z"
+          }
+        ],
+        "nextCursor": null
+      }
+    },
+    "ManagementTokenRequest": {
+      "type": "object",
+      "properties": {
+        "accessKeyId": {
+          "type": "string",
+          "description": "GenAuth 用户池或协作管理员 AccessKey ID，仅在业务服务端使用。"
+        },
+        "accessKeySecret": {
+          "type": "string",
+          "writeOnly": true,
+          "description": "接入密钥，仅在业务服务端使用，不记录日志。"
+        }
+      },
+      "required": [
+        "accessKeyId",
+        "accessKeySecret"
+      ],
+      "additionalProperties": false,
+      "example": {
+        "accessKeyId": "YOUR_ACCESS_KEY_ID",
+        "accessKeySecret": "YOUR_ACCESS_KEY_SECRET"
+      }
+    },
+    "ManagementTokenResponse": {
+      "type": "object",
+      "properties": {
+        "statusCode": {
+          "type": "integer",
+          "description": "新接口与 HTTP 状态码一致；现有令牌接口保持原契约。"
+        },
+        "message": {
+          "type": "string",
+          "description": "面向人的结果描述；业务判断使用状态或错误码。"
+        },
+        "data": {
+          "type": "object",
+          "properties": {
+            "access_token": {
+              "type": "string"
+            },
+            "expires_in": {
+              "type": "integer"
+            }
+          },
+          "required": [
+            "access_token",
+            "expires_in"
+          ],
+          "additionalProperties": false,
+          "description": "成功响应数据。"
+        }
+      },
+      "required": [
+        "statusCode",
+        "message",
+        "data"
+      ],
+      "additionalProperties": false,
+      "example": {
+        "statusCode": 200,
+        "message": "获取成功",
+        "data": {
+          "access_token": "YOUR_ACCESS_TOKEN",
+          "expires_in": 3600
+        }
+      }
+    }
+  },
+  "routes": [
+    {
+      "name": "agentMail.personas.create",
+      "method": "POST",
+      "path": "/api/v3/agent-personas",
+      "input": {
+        "allOf": [
+          {
+            "type": "object",
+            "properties": {},
+            "required": [],
+            "additionalProperties": false
+          },
+          {
+            "$ref": "#/components/schemas/CreatePersona"
+          }
+        ]
+      },
+      "result": {
+        "$ref": "#/components/schemas/Persona"
+      },
+      "queryKeys": [],
+      "idempotency": true,
+      "revision": false,
+      "bodySchema": "CreatePersona"
+    },
+    {
+      "name": "agentMail.personas.list",
+      "method": "GET",
+      "path": "/api/v3/agent-personas",
+      "input": {
+        "type": "object",
+        "properties": {
+          "keyword": {
+            "type": "string"
+          },
+          "cursor": {
+            "type": "string"
+          },
+          "limit": {
+            "type": "integer",
+            "default": 20,
+            "minimum": 1,
+            "maximum": 100
+          }
+        },
+        "required": [],
+        "additionalProperties": false
+      },
+      "result": {
+        "$ref": "#/components/schemas/PersonaPage"
+      },
+      "queryKeys": [
+        "keyword",
+        "cursor",
+        "limit"
+      ],
+      "idempotency": false,
+      "revision": false,
+      "bodySchema": null
+    },
+    {
+      "name": "agentMail.personas.get",
+      "method": "GET",
+      "path": "/api/v3/agent-personas/{personaId}",
+      "input": {
+        "type": "object",
+        "properties": {
+          "personaId": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 1
+          }
+        },
+        "required": [
+          "personaId"
+        ],
+        "additionalProperties": false
+      },
+      "result": {
+        "$ref": "#/components/schemas/Persona"
+      },
+      "queryKeys": [],
+      "idempotency": false,
+      "revision": false,
+      "bodySchema": null
+    },
+    {
+      "name": "agentMail.personas.update",
+      "method": "PATCH",
+      "path": "/api/v3/agent-personas/{personaId}",
+      "input": {
+        "allOf": [
+          {
+            "type": "object",
+            "properties": {
+              "personaId": {
+                "type": "string",
+                "maxLength": 128,
+                "minLength": 1
+              }
+            },
+            "required": [
+              "personaId"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "$ref": "#/components/schemas/UpdatePersona"
+          }
+        ]
+      },
+      "result": {
+        "$ref": "#/components/schemas/Persona"
+      },
+      "queryKeys": [],
+      "idempotency": false,
+      "revision": true,
+      "bodySchema": "UpdatePersona"
+    },
+    {
+      "name": "agentMail.providers.list",
+      "method": "GET",
+      "path": "/api/v3/agent-personas/provider-configs",
+      "input": {
+        "type": "object",
+        "properties": {
+          "capability": {
+            "type": "string"
+          },
+          "cursor": {
+            "type": "string"
+          },
+          "limit": {
+            "type": "integer",
+            "default": 20,
+            "minimum": 1,
+            "maximum": 100
+          }
+        },
+        "required": [],
+        "additionalProperties": false
+      },
+      "result": {
+        "$ref": "#/components/schemas/ProviderConfigSummaryPage"
+      },
+      "queryKeys": [
+        "capability",
+        "cursor",
+        "limit"
+      ],
+      "idempotency": false,
+      "revision": false,
+      "bodySchema": null
+    },
+    {
+      "name": "agentMail.resources.list",
+      "method": "GET",
+      "path": "/api/v3/agent-personas/{personaId}/resources",
+      "input": {
+        "type": "object",
+        "properties": {
+          "personaId": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 1
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "email",
+              "phone"
+            ]
+          },
+          "status": {
+            "type": "string"
+          },
+          "cursor": {
+            "type": "string"
+          },
+          "limit": {
+            "type": "integer",
+            "default": 20,
+            "minimum": 1,
+            "maximum": 100
+          }
+        },
+        "required": [
+          "personaId"
+        ],
+        "additionalProperties": false
+      },
+      "result": {
+        "$ref": "#/components/schemas/ResourcePage"
+      },
+      "queryKeys": [
+        "type",
+        "status",
+        "cursor",
+        "limit"
+      ],
+      "idempotency": false,
+      "revision": false,
+      "bodySchema": null
+    },
+    {
+      "name": "agentMail.resources.registerPhone",
+      "method": "POST",
+      "path": "/api/v3/agent-personas/{personaId}/phone-resources",
+      "input": {
+        "allOf": [
+          {
+            "type": "object",
+            "properties": {
+              "personaId": {
+                "type": "string",
+                "maxLength": 128,
+                "minLength": 1
+              }
+            },
+            "required": [
+              "personaId"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "$ref": "#/components/schemas/RegisterPhone"
+          }
+        ]
+      },
+      "result": {
+        "$ref": "#/components/schemas/Resource"
+      },
+      "queryKeys": [],
+      "idempotency": true,
+      "revision": false,
+      "bodySchema": "RegisterPhone"
+    },
+    {
+      "name": "agentMail.mailboxes.create",
+      "method": "POST",
+      "path": "/api/v3/agent-personas/{personaId}/mailboxes",
+      "input": {
+        "allOf": [
+          {
+            "type": "object",
+            "properties": {
+              "personaId": {
+                "type": "string",
+                "maxLength": 128,
+                "minLength": 1
+              }
+            },
+            "required": [
+              "personaId"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "$ref": "#/components/schemas/CreateMailbox"
+          }
+        ]
+      },
+      "result": {
+        "$ref": "#/components/schemas/OperationAccepted"
+      },
+      "queryKeys": [],
+      "idempotency": true,
+      "revision": false,
+      "bodySchema": "CreateMailbox"
+    },
+    {
+      "name": "agentMail.mailboxes.get",
+      "method": "GET",
+      "path": "/api/v3/agent-personas/{personaId}/mailboxes/{mailboxId}",
+      "input": {
+        "type": "object",
+        "properties": {
+          "personaId": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 1
+          },
+          "mailboxId": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 1
+          }
+        },
+        "required": [
+          "personaId",
+          "mailboxId"
+        ],
+        "additionalProperties": false
+      },
+      "result": {
+        "$ref": "#/components/schemas/Mailbox"
+      },
+      "queryKeys": [],
+      "idempotency": false,
+      "revision": false,
+      "bodySchema": null
+    },
+    {
+      "name": "agentMail.operations.get",
+      "method": "GET",
+      "path": "/api/v3/agent-personas/operations/{operationId}",
+      "input": {
+        "type": "object",
+        "properties": {
+          "operationId": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 1
+          }
+        },
+        "required": [
+          "operationId"
+        ],
+        "additionalProperties": false
+      },
+      "result": {
+        "$ref": "#/components/schemas/Operation"
+      },
+      "queryKeys": [],
+      "idempotency": false,
+      "revision": false,
+      "bodySchema": null
+    },
+    {
+      "name": "agentMail.messages.list",
+      "method": "GET",
+      "path": "/api/v3/agent-personas/{personaId}/mailboxes/{mailboxId}/messages",
+      "input": {
+        "type": "object",
+        "properties": {
+          "personaId": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 1
+          },
+          "mailboxId": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 1
+          },
+          "direction": {
+            "type": "string",
+            "enum": [
+              "inbound",
+              "outbound"
+            ]
+          },
+          "after": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "before": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "cursor": {
+            "type": "string"
+          },
+          "limit": {
+            "type": "integer",
+            "default": 20,
+            "minimum": 1,
+            "maximum": 100
+          }
+        },
+        "required": [
+          "personaId",
+          "mailboxId"
+        ],
+        "additionalProperties": false
+      },
+      "result": {
+        "$ref": "#/components/schemas/MessageSummaryPage"
+      },
+      "queryKeys": [
+        "direction",
+        "after",
+        "before",
+        "cursor",
+        "limit"
+      ],
+      "idempotency": false,
+      "revision": false,
+      "bodySchema": null
+    },
+    {
+      "name": "agentMail.messages.send",
+      "method": "POST",
+      "path": "/api/v3/agent-personas/{personaId}/mailboxes/{mailboxId}/messages",
+      "input": {
+        "allOf": [
+          {
+            "type": "object",
+            "properties": {
+              "personaId": {
+                "type": "string",
+                "maxLength": 128,
+                "minLength": 1
+              },
+              "mailboxId": {
+                "type": "string",
+                "maxLength": 128,
+                "minLength": 1
+              }
+            },
+            "required": [
+              "personaId",
+              "mailboxId"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "$ref": "#/components/schemas/SendMessage"
+          }
+        ]
+      },
+      "result": {
+        "$ref": "#/components/schemas/OperationAccepted"
+      },
+      "queryKeys": [],
+      "idempotency": true,
+      "revision": false,
+      "bodySchema": "SendMessage"
+    },
+    {
+      "name": "agentMail.messages.get",
+      "method": "GET",
+      "path": "/api/v3/agent-personas/{personaId}/mailboxes/{mailboxId}/messages/{messageId}",
+      "input": {
+        "type": "object",
+        "properties": {
+          "personaId": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 1
+          },
+          "mailboxId": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 1
+          },
+          "messageId": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 1
+          }
+        },
+        "required": [
+          "personaId",
+          "mailboxId",
+          "messageId"
+        ],
+        "additionalProperties": false
+      },
+      "result": {
+        "$ref": "#/components/schemas/MessageDetail"
+      },
+      "queryKeys": [],
+      "idempotency": false,
+      "revision": false,
+      "bodySchema": null
+    },
+    {
+      "name": "agentMail.verifications.create",
+      "method": "POST",
+      "path": "/api/v3/agent-personas/{personaId}/mailboxes/{mailboxId}/verification-requests",
+      "input": {
+        "allOf": [
+          {
+            "type": "object",
+            "properties": {
+              "personaId": {
+                "type": "string",
+                "maxLength": 128,
+                "minLength": 1
+              },
+              "mailboxId": {
+                "type": "string",
+                "maxLength": 128,
+                "minLength": 1
+              }
+            },
+            "required": [
+              "personaId",
+              "mailboxId"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "$ref": "#/components/schemas/CreateVerificationRequest"
+          }
+        ]
+      },
+      "result": {
+        "$ref": "#/components/schemas/VerificationRequest"
+      },
+      "queryKeys": [],
+      "idempotency": true,
+      "revision": false,
+      "bodySchema": "CreateVerificationRequest"
+    },
+    {
+      "name": "agentMail.verifications.get",
+      "method": "GET",
+      "path": "/api/v3/agent-personas/{personaId}/mailboxes/{mailboxId}/verification-requests/{verificationRequestId}",
+      "input": {
+        "type": "object",
+        "properties": {
+          "personaId": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 1
+          },
+          "mailboxId": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 1
+          },
+          "verificationRequestId": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 1
+          }
+        },
+        "required": [
+          "personaId",
+          "mailboxId",
+          "verificationRequestId"
+        ],
+        "additionalProperties": false
+      },
+      "result": {
+        "$ref": "#/components/schemas/VerificationRequest"
+      },
+      "queryKeys": [],
+      "idempotency": false,
+      "revision": false,
+      "bodySchema": null
+    },
+    {
+      "name": "agentMail.verifications.cancel",
+      "method": "POST",
+      "path": "/api/v3/agent-personas/{personaId}/mailboxes/{mailboxId}/verification-requests/{verificationRequestId}/cancel",
+      "input": {
+        "type": "object",
+        "properties": {
+          "personaId": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 1
+          },
+          "mailboxId": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 1
+          },
+          "verificationRequestId": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 1
+          }
+        },
+        "required": [
+          "personaId",
+          "mailboxId",
+          "verificationRequestId"
+        ],
+        "additionalProperties": false
+      },
+      "result": {
+        "$ref": "#/components/schemas/VerificationRequest"
+      },
+      "queryKeys": [],
+      "idempotency": true,
+      "revision": false,
+      "bodySchema": null
+    },
+    {
+      "name": "agentMail.externalAccounts.create",
+      "method": "POST",
+      "path": "/api/v3/agent-personas/{personaId}/external-accounts",
+      "input": {
+        "allOf": [
+          {
+            "type": "object",
+            "properties": {
+              "personaId": {
+                "type": "string",
+                "maxLength": 128,
+                "minLength": 1
+              }
+            },
+            "required": [
+              "personaId"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "$ref": "#/components/schemas/CreateExternalAccount"
+          }
+        ]
+      },
+      "result": {
+        "$ref": "#/components/schemas/ExternalAccount"
+      },
+      "queryKeys": [],
+      "idempotency": true,
+      "revision": false,
+      "bodySchema": "CreateExternalAccount"
+    },
+    {
+      "name": "agentMail.externalAccounts.list",
+      "method": "GET",
+      "path": "/api/v3/agent-personas/{personaId}/external-accounts",
+      "input": {
+        "type": "object",
+        "properties": {
+          "personaId": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 1
+          },
+          "platformKey": {
+            "type": "string"
+          },
+          "resourceId": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 1
+          },
+          "recordStatus": {
+            "type": "string",
+            "enum": [
+              "active",
+              "archived"
+            ]
+          },
+          "cursor": {
+            "type": "string"
+          },
+          "limit": {
+            "type": "integer",
+            "default": 20,
+            "minimum": 1,
+            "maximum": 100
+          }
+        },
+        "required": [
+          "personaId"
+        ],
+        "additionalProperties": false
+      },
+      "result": {
+        "$ref": "#/components/schemas/ExternalAccountPage"
+      },
+      "queryKeys": [
+        "platformKey",
+        "resourceId",
+        "recordStatus",
+        "cursor",
+        "limit"
+      ],
+      "idempotency": false,
+      "revision": false,
+      "bodySchema": null
+    },
+    {
+      "name": "agentMail.externalAccounts.get",
+      "method": "GET",
+      "path": "/api/v3/agent-personas/{personaId}/external-accounts/{accountId}",
+      "input": {
+        "type": "object",
+        "properties": {
+          "personaId": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 1
+          },
+          "accountId": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 1
+          }
+        },
+        "required": [
+          "personaId",
+          "accountId"
+        ],
+        "additionalProperties": false
+      },
+      "result": {
+        "$ref": "#/components/schemas/ExternalAccount"
+      },
+      "queryKeys": [],
+      "idempotency": false,
+      "revision": false,
+      "bodySchema": null
+    },
+    {
+      "name": "agentMail.externalAccounts.update",
+      "method": "PATCH",
+      "path": "/api/v3/agent-personas/{personaId}/external-accounts/{accountId}",
+      "input": {
+        "allOf": [
+          {
+            "type": "object",
+            "properties": {
+              "personaId": {
+                "type": "string",
+                "maxLength": 128,
+                "minLength": 1
+              },
+              "accountId": {
+                "type": "string",
+                "maxLength": 128,
+                "minLength": 1
+              }
+            },
+            "required": [
+              "personaId",
+              "accountId"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "$ref": "#/components/schemas/UpdateExternalAccount"
+          }
+        ]
+      },
+      "result": {
+        "$ref": "#/components/schemas/ExternalAccount"
+      },
+      "queryKeys": [],
+      "idempotency": false,
+      "revision": true,
+      "bodySchema": "UpdateExternalAccount"
+    },
+    {
+      "name": "agentMail.admin.providers.list",
+      "method": "GET",
+      "path": "/api/v3/agent-mail/admin/provider-configs",
+      "input": "GenAuthCursorInput",
+      "result": "GenAuthCursorPage<GenAuthMailProviderConfig>",
+      "queryKeys": [
+        "cursor",
+        "limit"
+      ],
+      "idempotency": false,
+      "revision": false,
+      "bodySchema": null
+    },
+    {
+      "name": "agentMail.admin.templates.list",
+      "method": "GET",
+      "path": "/api/v3/agent-mail/admin/templates",
+      "input": "GenAuthCursorInput",
+      "result": "GenAuthCursorPage<GenAuthMailTemplate>",
+      "queryKeys": [
+        "cursor",
+        "limit"
+      ],
+      "idempotency": false,
+      "revision": false,
+      "bodySchema": null
+    },
+    {
+      "name": "agentMail.admin.personas.list",
+      "method": "GET",
+      "path": "/api/v3/agent-mail/admin/personas",
+      "input": "GenAuthCursorInput",
+      "result": "GenAuthCursorPage<GenAuthMailPersona>",
+      "queryKeys": [
+        "cursor",
+        "limit"
+      ],
+      "idempotency": false,
+      "revision": false,
+      "bodySchema": null
+    },
+    {
+      "name": "agentMail.admin.retainedPersonas.list",
+      "method": "GET",
+      "path": "/api/v3/agent-mail/admin/retained-personas",
+      "input": "GenAuthCursorInput",
+      "result": "GenAuthCursorPage<GenAuthMailRetainedPersona>",
+      "queryKeys": [
+        "cursor",
+        "limit"
+      ],
+      "idempotency": false,
+      "revision": false,
+      "bodySchema": null
+    },
+    {
+      "name": "agentMail.admin.deletionJobs.list",
+      "method": "GET",
+      "path": "/api/v3/agent-mail/admin/deletion-jobs",
+      "input": "GenAuthCursorInput",
+      "result": "GenAuthCursorPage<GenAuthMailDeletionJob>",
+      "queryKeys": [
+        "cursor",
+        "limit"
+      ],
+      "idempotency": false,
+      "revision": false,
+      "bodySchema": null
+    },
+    {
+      "name": "agentMail.admin.operations.list",
+      "method": "GET",
+      "path": "/api/v3/agent-mail/admin/operations",
+      "input": "GenAuthCursorInput",
+      "result": "GenAuthCursorPage<GenAuthMailOperation>",
+      "queryKeys": [
+        "cursor",
+        "limit"
+      ],
+      "idempotency": false,
+      "revision": false,
+      "bodySchema": null
+    },
+    {
+      "name": "agentMail.admin.events.list",
+      "method": "GET",
+      "path": "/api/v3/agent-mail/admin/events",
+      "input": "GenAuthCursorInput",
+      "result": "GenAuthCursorPage<GenAuthMailEvent>",
+      "queryKeys": [
+        "cursor",
+        "limit"
+      ],
+      "idempotency": false,
+      "revision": false,
+      "bodySchema": null
+    },
+    {
+      "name": "agentMail.admin.audit.list",
+      "method": "GET",
+      "path": "/api/v3/agent-mail/admin/audit",
+      "input": "GenAuthCursorInput",
+      "result": "GenAuthCursorPage<GenAuthMailAuditEvent>",
+      "queryKeys": [
+        "cursor",
+        "limit"
+      ],
+      "idempotency": false,
+      "revision": false,
+      "bodySchema": null
+    },
+    {
+      "name": "agentMail.admin.providers.create",
+      "method": "POST",
+      "path": "/api/v3/agent-mail/admin/provider-configs",
+      "input": "GenAuthMailProviderCreate",
+      "result": "GenAuthMailProviderConfig",
+      "queryKeys": [],
+      "idempotency": false,
+      "revision": false,
+      "bodySchema": null
+    },
+    {
+      "name": "agentMail.admin.providers.update",
+      "method": "PATCH",
+      "path": "/api/v3/agent-mail/admin/provider-configs/{configId}",
+      "input": "GenAuthMailProviderUpdate & {configId:string}",
+      "result": "GenAuthMailProviderConfig",
+      "queryKeys": [],
+      "idempotency": false,
+      "revision": true,
+      "bodySchema": null
+    },
+    {
+      "name": "agentMail.admin.providers.rotateCredentials",
+      "method": "POST",
+      "path": "/api/v3/agent-mail/admin/provider-configs/{configId}/credentials",
+      "input": "{configId:string;apiKey?:string;webhookSecret?:string}",
+      "result": "GenAuthMailProviderConfig",
+      "queryKeys": [],
+      "idempotency": false,
+      "revision": true,
+      "bodySchema": null
+    },
+    {
+      "name": "agentMail.admin.providers.test",
+      "method": "POST",
+      "path": "/api/v3/agent-mail/admin/provider-configs/{configId}/test",
+      "input": "{configId:string}",
+      "result": "{connected:boolean;namespaceVerified:boolean;createsMailbox:false}",
+      "queryKeys": [],
+      "idempotency": false,
+      "revision": false,
+      "bodySchema": null
+    },
+    {
+      "name": "agentMail.admin.templates.create",
+      "method": "POST",
+      "path": "/api/v3/agent-mail/admin/templates",
+      "input": "GenAuthMailTemplateInput",
+      "result": "GenAuthMailTemplate",
+      "queryKeys": [],
+      "idempotency": false,
+      "revision": false,
+      "bodySchema": null
+    },
+    {
+      "name": "agentMail.admin.templates.update",
+      "method": "PATCH",
+      "path": "/api/v3/agent-mail/admin/templates/{templateId}",
+      "input": "GenAuthMailTemplateInput & {templateId:string;version:number}",
+      "result": "GenAuthMailTemplate",
+      "queryKeys": [],
+      "idempotency": false,
+      "revision": false,
+      "bodySchema": null
+    },
+    {
+      "name": "agentMail.admin.templates.test",
+      "method": "POST",
+      "path": "/api/v3/agent-mail/admin/templates/test",
+      "input": "GenAuthMailTemplateTest",
+      "result": "{status:\"matched\"|\"ambiguous\"|\"unmatched\";values:string[]}",
+      "queryKeys": [],
+      "idempotency": false,
+      "revision": false,
+      "bodySchema": null
+    },
+    {
+      "name": "agentMail.admin.personas.create",
+      "method": "POST",
+      "path": "/api/v3/agent-mail/admin/personas",
+      "input": "GenAuthMailCreatePersona",
+      "result": "GenAuthMailPersona",
+      "queryKeys": [],
+      "idempotency": false,
+      "revision": false,
+      "bodySchema": null
+    },
+    {
+      "name": "agentMail.admin.personas.get",
+      "method": "GET",
+      "path": "/api/v3/agent-mail/admin/personas/{personaId}",
+      "input": "{personaId:string}",
+      "result": "GenAuthMailAdminPersona",
+      "queryKeys": [],
+      "idempotency": false,
+      "revision": false,
+      "bodySchema": null
+    },
+    {
+      "name": "agentMail.admin.personas.registerPhone",
+      "method": "POST",
+      "path": "/api/v3/agent-mail/admin/personas/{personaId}/phone-resources",
+      "input": "GenAuthMailRegisterPhone & {personaId:string}",
+      "result": "GenAuthMailResource",
+      "queryKeys": [],
+      "idempotency": false,
+      "revision": false,
+      "bodySchema": null
+    },
+    {
+      "name": "agentMail.admin.personas.createExternalAccount",
+      "method": "POST",
+      "path": "/api/v3/agent-mail/admin/personas/{personaId}/external-accounts",
+      "input": "GenAuthMailCreateExternalAccount & {personaId:string}",
+      "result": "GenAuthMailExternalAccount",
+      "queryKeys": [],
+      "idempotency": false,
+      "revision": false,
+      "bodySchema": null
+    },
+    {
+      "name": "agentMail.admin.personas.setStatus",
+      "method": "POST",
+      "path": "/api/v3/agent-mail/admin/personas/{personaId}/status",
+      "input": "{personaId:string;status:GenAuthPersonaStatus;reason:string}",
+      "result": "{personaId:string;status:GenAuthPersonaStatus;revision:number}",
+      "queryKeys": [],
+      "idempotency": false,
+      "revision": true,
+      "bodySchema": null
+    },
+    {
+      "name": "agentMail.admin.personas.delete",
+      "method": "POST",
+      "path": "/api/v3/agent-mail/admin/personas/{personaId}/deletion-jobs",
+      "input": "{personaId:string;reason:string;mode?:\"retain_mailboxes\"|\"delete_mailboxes\";mailboxIds?:string[]}",
+      "result": "{jobId:string;status:\"pending\";mode:\"retain_mailboxes\"|\"delete_mailboxes\"}",
+      "queryKeys": [],
+      "idempotency": false,
+      "revision": true,
+      "bodySchema": null
+    },
+    {
+      "name": "agentMail.admin.administrators.setPermissions",
+      "method": "POST",
+      "path": "/api/v3/agent-mail/admin/administrators/{administratorId}/permissions",
+      "input": "{administratorId:string;actions:GenAuthMailAdminAction[]}",
+      "result": "{userId:string;actions:GenAuthMailAdminAction[]}",
+      "queryKeys": [],
+      "idempotency": false,
+      "revision": false,
+      "bodySchema": null
+    },
+    {
+      "name": "agentMail.admin.operations.reconcile",
+      "method": "POST",
+      "path": "/api/v3/agent-mail/admin/operations/{operationId}/reconcile",
+      "input": "{operationId:string}",
+      "result": "{operationId:string;status:string;reconcileScheduled:true}",
+      "queryKeys": [],
+      "idempotency": false,
+      "revision": false,
+      "bodySchema": null
+    },
+    {
+      "name": "agentMail.admin.operations.resolveSend",
+      "method": "POST",
+      "path": "/api/v3/agent-mail/admin/operations/{operationId}/resolve-send",
+      "input": "{operationId:string;outcome:\"confirmed_sent\"|\"confirmed_not_sent\";evidenceRef:string;providerMessageId?:string}",
+      "result": "GenAuthMailOperation",
+      "queryKeys": [],
+      "idempotency": false,
+      "revision": false,
+      "bodySchema": null
+    },
+    {
+      "name": "agentMail.admin.health.get",
+      "method": "GET",
+      "path": "/api/v3/agent-mail/admin/health",
+      "input": "{}",
+      "result": "{pendingOperations:number;unknownOperations:number;pendingEvents:number;pendingVerifications:number}",
+      "queryKeys": [],
+      "idempotency": false,
+      "revision": false,
+      "bodySchema": null
+    },
+    {
+      "name": "agentPhone.numbers.list",
+      "method": "GET",
+      "path": "/api/v3/agent-phone/personas/{personaId}/numbers",
+      "input": "GenAuthPhoneNumberListInput & {personaId:string}",
+      "result": "GenAuthPhoneNumberPage",
+      "queryKeys": [
+        "q",
+        "state",
+        "page",
+        "limit"
+      ],
+      "idempotency": false,
+      "revision": false,
+      "bodySchema": null
+    },
+    {
+      "name": "agentPhone.numbers.get",
+      "method": "GET",
+      "path": "/api/v3/agent-phone/personas/{personaId}/numbers/{resourceId}",
+      "input": "{resourceId:string} & {personaId:string}",
+      "result": "GenAuthPhoneNumber",
+      "queryKeys": [],
+      "idempotency": false,
+      "revision": false,
+      "bodySchema": null
+    },
+    {
+      "name": "agentPhone.numbers.messages",
+      "method": "GET",
+      "path": "/api/v3/agent-phone/personas/{personaId}/numbers/{resourceId}/messages",
+      "input": "{resourceId:string} & {personaId:string}",
+      "result": "GenAuthItems<GenAuthPhoneMessage>",
+      "queryKeys": [],
+      "idempotency": false,
+      "revision": false,
+      "bodySchema": null
+    },
+    {
+      "name": "agentPhone.numbers.send",
+      "method": "POST",
+      "path": "/api/v3/agent-phone/personas/{personaId}/numbers/{resourceId}/sends",
+      "input": "{resourceId:string} & GenAuthPhoneSendInput & {personaId:string}",
+      "result": "GenAuthPhoneOperation",
+      "queryKeys": [],
+      "idempotency": true,
+      "revision": false,
+      "bodySchema": null
+    },
+    {
+      "name": "agentPhone.numbers.release",
+      "method": "POST",
+      "path": "/api/v3/agent-phone/personas/{personaId}/numbers/{resourceId}/releases",
+      "input": "{resourceId:string;reason:string} & {personaId:string}",
+      "result": "GenAuthPhoneOperation",
+      "queryKeys": [],
+      "idempotency": true,
+      "revision": true,
+      "bodySchema": null
+    },
+    {
+      "name": "agentPhone.candidates.list",
+      "method": "GET",
+      "path": "/api/v3/agent-phone/personas/{personaId}/candidates",
+      "input": "{providerConfigId:string;country:string} & {personaId:string}",
+      "result": "GenAuthItems<GenAuthPhoneCandidate>",
+      "queryKeys": [
+        "providerConfigId",
+        "country"
+      ],
+      "idempotency": false,
+      "revision": false,
+      "bodySchema": null
+    },
+    {
+      "name": "agentPhone.catalog.list",
+      "method": "GET",
+      "path": "/api/v3/agent-phone/personas/{personaId}/catalog",
+      "input": "{providerConfigId:string;country:string} & {personaId:string}",
+      "result": "GenAuthItems<GenAuthPhoneCatalogEntry>",
+      "queryKeys": [
+        "providerConfigId",
+        "country"
+      ],
+      "idempotency": false,
+      "revision": false,
+      "bodySchema": null
+    },
+    {
+      "name": "agentPhone.quotes.create",
+      "method": "POST",
+      "path": "/api/v3/agent-phone/personas/{personaId}/quotes",
+      "input": "GenAuthPhoneQuoteInput & {personaId:string}",
+      "result": "GenAuthPhoneQuote",
+      "queryKeys": [],
+      "idempotency": false,
+      "revision": false,
+      "bodySchema": null
+    },
+    {
+      "name": "agentPhone.numbers.acquire",
+      "method": "POST",
+      "path": "/api/v3/agent-phone/personas/{personaId}/number-acquisitions",
+      "input": "GenAuthPhonePurchaseInput & {personaId:string}",
+      "result": "GenAuthPhoneOperation",
+      "queryKeys": [],
+      "idempotency": true,
+      "revision": false,
+      "bodySchema": null
+    },
+    {
+      "name": "agentPhone.activations.create",
+      "method": "POST",
+      "path": "/api/v3/agent-phone/personas/{personaId}/activations",
+      "input": "GenAuthPhonePurchaseInput & {personaId:string}",
+      "result": "GenAuthPhoneOperation",
+      "queryKeys": [],
+      "idempotency": true,
+      "revision": false,
+      "bodySchema": null
+    },
+    {
+      "name": "agentPhone.activations.list",
+      "method": "GET",
+      "path": "/api/v3/agent-phone/personas/{personaId}/activations",
+      "input": "{} & {personaId:string}",
+      "result": "GenAuthItems<GenAuthPhoneActivation>",
+      "queryKeys": [],
+      "idempotency": false,
+      "revision": false,
+      "bodySchema": null
+    },
+    {
+      "name": "agentPhone.activations.get",
+      "method": "GET",
+      "path": "/api/v3/agent-phone/personas/{personaId}/activations/{taskId}",
+      "input": "{taskId:string} & {personaId:string}",
+      "result": "GenAuthPhoneActivation",
+      "queryKeys": [],
+      "idempotency": false,
+      "revision": false,
+      "bodySchema": null
+    },
+    {
+      "name": "agentPhone.activations.messages",
+      "method": "GET",
+      "path": "/api/v3/agent-phone/personas/{personaId}/activations/{taskId}/messages",
+      "input": "{taskId:string} & {personaId:string}",
+      "result": "GenAuthItems<GenAuthPhoneMessage>",
+      "queryKeys": [],
+      "idempotency": false,
+      "revision": false,
+      "bodySchema": null
+    },
+    {
+      "name": "agentPhone.messages.content",
+      "method": "GET",
+      "path": "/api/v3/agent-phone/personas/{personaId}/messages/{messageId}/content",
+      "input": "{messageId:string} & {personaId:string}",
+      "result": "{body:string}",
+      "queryKeys": [],
+      "idempotency": false,
+      "revision": false,
+      "bodySchema": null
+    },
+    {
+      "name": "agentPhone.verifications.create",
+      "method": "POST",
+      "path": "/api/v3/agent-phone/personas/{personaId}/verifications",
+      "input": "GenAuthPhoneVerificationInput & {personaId:string}",
+      "result": "GenAuthPhoneVerification",
+      "queryKeys": [],
+      "idempotency": false,
+      "revision": false,
+      "bodySchema": null
+    },
+    {
+      "name": "agentPhone.verifications.list",
+      "method": "GET",
+      "path": "/api/v3/agent-phone/personas/{personaId}/verifications",
+      "input": "{resourceId?:string} & {personaId:string}",
+      "result": "GenAuthItems<GenAuthPhoneVerification>",
+      "queryKeys": [
+        "resourceId"
+      ],
+      "idempotency": false,
+      "revision": false,
+      "bodySchema": null
+    },
+    {
+      "name": "agentPhone.verifications.get",
+      "method": "GET",
+      "path": "/api/v3/agent-phone/personas/{personaId}/verifications/{taskId}",
+      "input": "{taskId:string} & {personaId:string}",
+      "result": "GenAuthPhoneVerification",
+      "queryKeys": [],
+      "idempotency": false,
+      "revision": false,
+      "bodySchema": null
+    },
+    {
+      "name": "agentPhone.operations.list",
+      "method": "GET",
+      "path": "/api/v3/agent-phone/personas/{personaId}/operations",
+      "input": "{} & {personaId:string}",
+      "result": "GenAuthItems<GenAuthPhoneOperation>",
+      "queryKeys": [],
+      "idempotency": false,
+      "revision": false,
+      "bodySchema": null
+    },
+    {
+      "name": "agentPhone.operations.get",
+      "method": "GET",
+      "path": "/api/v3/agent-phone/personas/{personaId}/operations/{operationId}",
+      "input": "{operationId:string} & {personaId:string}",
+      "result": "GenAuthPhoneOperation",
+      "queryKeys": [],
+      "idempotency": false,
+      "revision": false,
+      "bodySchema": null
+    },
+    {
+      "name": "agentPhone.verifications.candidates",
+      "method": "GET",
+      "path": "/api/v3/agent-phone/personas/{personaId}/verifications/{taskId}/candidates",
+      "input": "{taskId:string} & {personaId:string}",
+      "result": "GenAuthPhoneResultPage",
+      "queryKeys": [],
+      "idempotency": false,
+      "revision": false,
+      "bodySchema": null
+    },
+    {
+      "name": "agentPhone.verifications.cancel",
+      "method": "POST",
+      "path": "/api/v3/agent-phone/personas/{personaId}/verifications/{taskId}/cancel",
+      "input": "{taskId:string} & {personaId:string}",
+      "result": "{id:string;status:\"revoked\"}",
+      "queryKeys": [],
+      "idempotency": true,
+      "revision": true,
+      "bodySchema": null
+    },
+    {
+      "name": "agentPhone.verifications.consume",
+      "method": "POST",
+      "path": "/api/v3/agent-phone/personas/{personaId}/verifications/{taskId}/consume",
+      "input": "{taskId:string} & {candidateId?:string} & {personaId:string}",
+      "result": "GenAuthPhoneResult",
+      "queryKeys": [],
+      "idempotency": true,
+      "revision": false,
+      "bodySchema": null
+    },
+    {
+      "name": "agentPhone.activations.candidates",
+      "method": "GET",
+      "path": "/api/v3/agent-phone/personas/{personaId}/activations/{taskId}/candidates",
+      "input": "{taskId:string} & {personaId:string}",
+      "result": "GenAuthPhoneResultPage",
+      "queryKeys": [],
+      "idempotency": false,
+      "revision": false,
+      "bodySchema": null
+    },
+    {
+      "name": "agentPhone.activations.cancel",
+      "method": "POST",
+      "path": "/api/v3/agent-phone/personas/{personaId}/activations/{taskId}/cancel",
+      "input": "{taskId:string} & {personaId:string}",
+      "result": "GenAuthPhoneOperation",
+      "queryKeys": [],
+      "idempotency": true,
+      "revision": true,
+      "bodySchema": null
+    },
+    {
+      "name": "agentPhone.activations.finish",
+      "method": "POST",
+      "path": "/api/v3/agent-phone/personas/{personaId}/activations/{taskId}/finish",
+      "input": "{taskId:string} & {personaId:string}",
+      "result": "GenAuthPhoneOperation",
+      "queryKeys": [],
+      "idempotency": true,
+      "revision": true,
+      "bodySchema": null
+    },
+    {
+      "name": "agentPhone.activations.consume",
+      "method": "POST",
+      "path": "/api/v3/agent-phone/personas/{personaId}/activations/{taskId}/consume",
+      "input": "{taskId:string} & {candidateId?:string} & {personaId:string}",
+      "result": "GenAuthPhoneResult",
+      "queryKeys": [],
+      "idempotency": true,
+      "revision": false,
+      "bodySchema": null
+    },
+    {
+      "name": "agentPhone.admin.numbers.list",
+      "method": "GET",
+      "path": "/api/v3/agent-phone/admin/numbers",
+      "input": "GenAuthPhoneNumberListInput & {personaId?:string}",
+      "result": "GenAuthPhoneNumberPage",
+      "queryKeys": [
+        "q",
+        "state",
+        "page",
+        "limit",
+        "personaId"
+      ],
+      "idempotency": false,
+      "revision": false,
+      "bodySchema": null
+    },
+    {
+      "name": "agentPhone.admin.numbers.get",
+      "method": "GET",
+      "path": "/api/v3/agent-phone/admin/numbers/{resourceId}",
+      "input": "{resourceId:string}",
+      "result": "GenAuthPhoneNumber",
+      "queryKeys": [],
+      "idempotency": false,
+      "revision": false,
+      "bodySchema": null
+    },
+    {
+      "name": "agentPhone.admin.numbers.messages",
+      "method": "GET",
+      "path": "/api/v3/agent-phone/admin/numbers/{resourceId}/messages",
+      "input": "{resourceId:string}",
+      "result": "GenAuthItems<GenAuthPhoneMessage>",
+      "queryKeys": [],
+      "idempotency": false,
+      "revision": false,
+      "bodySchema": null
+    },
+    {
+      "name": "agentPhone.admin.numbers.send",
+      "method": "POST",
+      "path": "/api/v3/agent-phone/admin/numbers/{resourceId}/sends",
+      "input": "{resourceId:string} & GenAuthPhoneSendInput",
+      "result": "GenAuthPhoneOperation",
+      "queryKeys": [],
+      "idempotency": true,
+      "revision": false,
+      "bodySchema": null
+    },
+    {
+      "name": "agentPhone.admin.numbers.release",
+      "method": "POST",
+      "path": "/api/v3/agent-phone/admin/numbers/{resourceId}/releases",
+      "input": "{resourceId:string;reason:string}",
+      "result": "GenAuthPhoneOperation",
+      "queryKeys": [],
+      "idempotency": true,
+      "revision": true,
+      "bodySchema": null
+    },
+    {
+      "name": "agentPhone.admin.candidates.list",
+      "method": "GET",
+      "path": "/api/v3/agent-phone/admin/candidates",
+      "input": "{providerConfigId:string;country:string} & {personaId?:string}",
+      "result": "GenAuthItems<GenAuthPhoneCandidate>",
+      "queryKeys": [
+        "providerConfigId",
+        "country",
+        "personaId"
+      ],
+      "idempotency": false,
+      "revision": false,
+      "bodySchema": null
+    },
+    {
+      "name": "agentPhone.admin.catalog.list",
+      "method": "GET",
+      "path": "/api/v3/agent-phone/admin/catalog",
+      "input": "{providerConfigId:string;country:string} & {personaId?:string}",
+      "result": "GenAuthItems<GenAuthPhoneCatalogEntry>",
+      "queryKeys": [
+        "providerConfigId",
+        "country",
+        "personaId"
+      ],
+      "idempotency": false,
+      "revision": false,
+      "bodySchema": null
+    },
+    {
+      "name": "agentPhone.admin.quotes.create",
+      "method": "POST",
+      "path": "/api/v3/agent-phone/admin/quotes",
+      "input": "GenAuthPhoneQuoteInput & {personaId:string}",
+      "result": "GenAuthPhoneQuote",
+      "queryKeys": [],
+      "idempotency": false,
+      "revision": false,
+      "bodySchema": null
+    },
+    {
+      "name": "agentPhone.admin.numbers.acquire",
+      "method": "POST",
+      "path": "/api/v3/agent-phone/admin/number-acquisitions",
+      "input": "GenAuthPhonePurchaseInput",
+      "result": "GenAuthPhoneOperation",
+      "queryKeys": [],
+      "idempotency": true,
+      "revision": false,
+      "bodySchema": null
+    },
+    {
+      "name": "agentPhone.admin.activations.create",
+      "method": "POST",
+      "path": "/api/v3/agent-phone/admin/activations",
+      "input": "GenAuthPhonePurchaseInput",
+      "result": "GenAuthPhoneOperation",
+      "queryKeys": [],
+      "idempotency": true,
+      "revision": false,
+      "bodySchema": null
+    },
+    {
+      "name": "agentPhone.admin.activations.list",
+      "method": "GET",
+      "path": "/api/v3/agent-phone/admin/activations",
+      "input": "{} & {personaId?:string}",
+      "result": "GenAuthItems<GenAuthPhoneActivation>",
+      "queryKeys": [
+        "personaId"
+      ],
+      "idempotency": false,
+      "revision": false,
+      "bodySchema": null
+    },
+    {
+      "name": "agentPhone.admin.activations.get",
+      "method": "GET",
+      "path": "/api/v3/agent-phone/admin/activations/{taskId}",
+      "input": "{taskId:string}",
+      "result": "GenAuthPhoneActivation",
+      "queryKeys": [],
+      "idempotency": false,
+      "revision": false,
+      "bodySchema": null
+    },
+    {
+      "name": "agentPhone.admin.activations.messages",
+      "method": "GET",
+      "path": "/api/v3/agent-phone/admin/activations/{taskId}/messages",
+      "input": "{taskId:string}",
+      "result": "GenAuthItems<GenAuthPhoneMessage>",
+      "queryKeys": [],
+      "idempotency": false,
+      "revision": false,
+      "bodySchema": null
+    },
+    {
+      "name": "agentPhone.admin.messages.content",
+      "method": "GET",
+      "path": "/api/v3/agent-phone/admin/messages/{messageId}/content",
+      "input": "{messageId:string}",
+      "result": "{body:string}",
+      "queryKeys": [],
+      "idempotency": false,
+      "revision": false,
+      "bodySchema": null
+    },
+    {
+      "name": "agentPhone.admin.verifications.create",
+      "method": "POST",
+      "path": "/api/v3/agent-phone/admin/verifications",
+      "input": "GenAuthPhoneVerificationInput & {personaId?:string}",
+      "result": "GenAuthPhoneVerification",
+      "queryKeys": [],
+      "idempotency": false,
+      "revision": false,
+      "bodySchema": null
+    },
+    {
+      "name": "agentPhone.admin.verifications.list",
+      "method": "GET",
+      "path": "/api/v3/agent-phone/admin/verifications",
+      "input": "{resourceId?:string} & {personaId?:string}",
+      "result": "GenAuthItems<GenAuthPhoneVerification>",
+      "queryKeys": [
+        "resourceId",
+        "personaId"
+      ],
+      "idempotency": false,
+      "revision": false,
+      "bodySchema": null
+    },
+    {
+      "name": "agentPhone.admin.verifications.get",
+      "method": "GET",
+      "path": "/api/v3/agent-phone/admin/verifications/{taskId}",
+      "input": "{taskId:string}",
+      "result": "GenAuthPhoneVerification",
+      "queryKeys": [],
+      "idempotency": false,
+      "revision": false,
+      "bodySchema": null
+    },
+    {
+      "name": "agentPhone.admin.operations.list",
+      "method": "GET",
+      "path": "/api/v3/agent-phone/admin/operations",
+      "input": "{} & {personaId?:string}",
+      "result": "GenAuthItems<GenAuthPhoneOperation>",
+      "queryKeys": [
+        "personaId"
+      ],
+      "idempotency": false,
+      "revision": false,
+      "bodySchema": null
+    },
+    {
+      "name": "agentPhone.admin.operations.get",
+      "method": "GET",
+      "path": "/api/v3/agent-phone/admin/operations/{operationId}",
+      "input": "{operationId:string}",
+      "result": "GenAuthPhoneOperation",
+      "queryKeys": [],
+      "idempotency": false,
+      "revision": false,
+      "bodySchema": null
+    },
+    {
+      "name": "agentPhone.admin.verifications.candidates",
+      "method": "GET",
+      "path": "/api/v3/agent-phone/admin/verifications/{taskId}/candidates",
+      "input": "{taskId:string}",
+      "result": "GenAuthPhoneResultPage",
+      "queryKeys": [],
+      "idempotency": false,
+      "revision": false,
+      "bodySchema": null
+    },
+    {
+      "name": "agentPhone.admin.verifications.cancel",
+      "method": "POST",
+      "path": "/api/v3/agent-phone/admin/verifications/{taskId}/cancel",
+      "input": "{taskId:string}",
+      "result": "{id:string;status:\"revoked\"}",
+      "queryKeys": [],
+      "idempotency": true,
+      "revision": true,
+      "bodySchema": null
+    },
+    {
+      "name": "agentPhone.admin.verifications.consume",
+      "method": "POST",
+      "path": "/api/v3/agent-phone/admin/verifications/{taskId}/consume",
+      "input": "{taskId:string} & {candidateId?:string}",
+      "result": "GenAuthPhoneResult",
+      "queryKeys": [],
+      "idempotency": true,
+      "revision": false,
+      "bodySchema": null
+    },
+    {
+      "name": "agentPhone.admin.activations.candidates",
+      "method": "GET",
+      "path": "/api/v3/agent-phone/admin/activations/{taskId}/candidates",
+      "input": "{taskId:string}",
+      "result": "GenAuthPhoneResultPage",
+      "queryKeys": [],
+      "idempotency": false,
+      "revision": false,
+      "bodySchema": null
+    },
+    {
+      "name": "agentPhone.admin.activations.cancel",
+      "method": "POST",
+      "path": "/api/v3/agent-phone/admin/activations/{taskId}/cancel",
+      "input": "{taskId:string}",
+      "result": "GenAuthPhoneOperation",
+      "queryKeys": [],
+      "idempotency": true,
+      "revision": true,
+      "bodySchema": null
+    },
+    {
+      "name": "agentPhone.admin.activations.finish",
+      "method": "POST",
+      "path": "/api/v3/agent-phone/admin/activations/{taskId}/finish",
+      "input": "{taskId:string}",
+      "result": "GenAuthPhoneOperation",
+      "queryKeys": [],
+      "idempotency": true,
+      "revision": true,
+      "bodySchema": null
+    },
+    {
+      "name": "agentPhone.admin.activations.consume",
+      "method": "POST",
+      "path": "/api/v3/agent-phone/admin/activations/{taskId}/consume",
+      "input": "{taskId:string} & {candidateId?:string}",
+      "result": "GenAuthPhoneResult",
+      "queryKeys": [],
+      "idempotency": true,
+      "revision": false,
+      "bodySchema": null
+    },
+    {
+      "name": "agentPhone.admin.personas.list",
+      "method": "GET",
+      "path": "/api/v3/agent-phone/admin/personas",
+      "input": "{}",
+      "result": "GenAuthItems<GenAuthPhonePersona>",
+      "queryKeys": [],
+      "idempotency": false,
+      "revision": false,
+      "bodySchema": null
+    },
+    {
+      "name": "agentPhone.admin.personas.create",
+      "method": "POST",
+      "path": "/api/v3/agent-phone/admin/personas",
+      "input": "{displayName:string;externalRef?:string}",
+      "result": "GenAuthPhonePersona",
+      "queryKeys": [],
+      "idempotency": false,
+      "revision": false,
+      "bodySchema": null
+    },
+    {
+      "name": "agentPhone.admin.providers.list",
+      "method": "GET",
+      "path": "/api/v3/agent-phone/admin/providers",
+      "input": "{}",
+      "result": "GenAuthItems<GenAuthPhoneProvider>",
+      "queryKeys": [],
+      "idempotency": false,
+      "revision": false,
+      "bodySchema": null
+    },
+    {
+      "name": "agentPhone.admin.providers.create",
+      "method": "POST",
+      "path": "/api/v3/agent-phone/admin/providers",
+      "input": "GenAuthPhoneProviderCreate",
+      "result": "GenAuthPhoneProvider",
+      "queryKeys": [],
+      "idempotency": false,
+      "revision": false,
+      "bodySchema": null
+    },
+    {
+      "name": "agentPhone.admin.providers.update",
+      "method": "PATCH",
+      "path": "/api/v3/agent-phone/admin/providers/{configId}",
+      "input": "{configId:string} & GenAuthPhoneProviderUpdate",
+      "result": "GenAuthPhoneProvider",
+      "queryKeys": [],
+      "idempotency": false,
+      "revision": true,
+      "bodySchema": null
+    },
+    {
+      "name": "agentPhone.admin.providers.test",
+      "method": "POST",
+      "path": "/api/v3/agent-phone/admin/providers/{configId}/test",
+      "input": "{configId:string}",
+      "result": "GenAuthPhoneOperation",
+      "queryKeys": [],
+      "idempotency": true,
+      "revision": true,
+      "bodySchema": null
+    },
+    {
+      "name": "agentPhone.admin.numbers.register",
+      "method": "POST",
+      "path": "/api/v3/agent-phone/admin/numbers/manual",
+      "input": "{personaId:string;phone:string;label?:string}",
+      "result": "GenAuthPhoneNumber",
+      "queryKeys": [],
+      "idempotency": false,
+      "revision": false,
+      "bodySchema": null
+    },
+    {
+      "name": "agentPhone.admin.numbers.update",
+      "method": "PATCH",
+      "path": "/api/v3/agent-phone/admin/numbers/{resourceId}",
+      "input": "{resourceId:string;label:string}",
+      "result": "{id:string;revision:number}",
+      "queryKeys": [],
+      "idempotency": false,
+      "revision": true,
+      "bodySchema": null
+    },
+    {
+      "name": "agentPhone.admin.numbers.archive",
+      "method": "POST",
+      "path": "/api/v3/agent-phone/admin/numbers/{resourceId}/archive",
+      "input": "{resourceId:string;reason:string}",
+      "result": "{id:string;revision:number}",
+      "queryKeys": [],
+      "idempotency": false,
+      "revision": true,
+      "bodySchema": null
+    },
+    {
+      "name": "agentPhone.admin.numbers.bindings",
+      "method": "GET",
+      "path": "/api/v3/agent-phone/admin/numbers/{resourceId}/bindings",
+      "input": "{resourceId:string}",
+      "result": "GenAuthPhoneBindings",
+      "queryKeys": [],
+      "idempotency": false,
+      "revision": false,
+      "bodySchema": null
+    },
+    {
+      "name": "agentPhone.admin.operations.reconcile",
+      "method": "POST",
+      "path": "/api/v3/agent-phone/admin/operations/{operationId}/reconcile",
+      "input": "{operationId:string;providerObjectId?:string;evidenceRef?:string}",
+      "result": "GenAuthPhoneOperation",
+      "queryKeys": [],
+      "idempotency": false,
+      "revision": false,
+      "bodySchema": null
+    },
+    {
+      "name": "agentPhone.admin.policies.list",
+      "method": "GET",
+      "path": "/api/v3/agent-phone/admin/policies",
+      "input": "{}",
+      "result": "GenAuthItems<GenAuthPhonePolicy>",
+      "queryKeys": [],
+      "idempotency": false,
+      "revision": false,
+      "bodySchema": null
+    },
+    {
+      "name": "agentPhone.admin.policies.create",
+      "method": "POST",
+      "path": "/api/v3/agent-phone/admin/policies",
+      "input": "GenAuthPhonePolicyInput",
+      "result": "GenAuthPhonePolicy",
+      "queryKeys": [],
+      "idempotency": false,
+      "revision": false,
+      "bodySchema": null
+    },
+    {
+      "name": "agentPhone.admin.policies.update",
+      "method": "PATCH",
+      "path": "/api/v3/agent-phone/admin/policies/{policyId}",
+      "input": "{policyId:string} & GenAuthPhonePolicyInput",
+      "result": "GenAuthPhonePolicy",
+      "queryKeys": [],
+      "idempotency": false,
+      "revision": true,
+      "bodySchema": null
+    }
+  ],
+  "controllerRoutes": [
+    {
+      "method": "POST",
+      "path": "/api/v3/agent-personas"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/agent-personas"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/agent-personas/provider-configs"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/agent-personas/operations/{operationId}"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/agent-personas/{personaId}"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/v3/agent-personas/{personaId}"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/agent-personas/{personaId}/resources"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v3/agent-personas/{personaId}/phone-resources"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v3/agent-personas/{personaId}/mailboxes"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/agent-personas/{personaId}/mailboxes/{mailboxId}"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/agent-personas/{personaId}/mailboxes/{mailboxId}/messages"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v3/agent-personas/{personaId}/mailboxes/{mailboxId}/messages"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/agent-personas/{personaId}/mailboxes/{mailboxId}/messages/{messageId}"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v3/agent-personas/{personaId}/mailboxes/{mailboxId}/verification-requests"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v3/agent-personas/{personaId}/external-accounts"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/agent-personas/{personaId}/external-accounts"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/agent-personas/{personaId}/external-accounts/{accountId}"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/v3/agent-personas/{personaId}/external-accounts/{accountId}"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v3/agent-mail/admin/administrators/{id}/permissions"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/agent-mail/admin/provider-configs"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v3/agent-mail/admin/provider-configs"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/v3/agent-mail/admin/provider-configs/{id}"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v3/agent-mail/admin/provider-configs/{id}/credentials"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v3/agent-mail/admin/provider-configs/{id}/test"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/agent-mail/admin/templates"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v3/agent-mail/admin/templates"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/v3/agent-mail/admin/templates/{id}"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v3/agent-mail/admin/templates/test"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/agent-mail/admin/personas"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/agent-mail/admin/retained-personas"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v3/agent-mail/admin/personas"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/agent-mail/admin/personas/{id}"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v3/agent-mail/admin/personas/{id}/phone-resources"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v3/agent-mail/admin/personas/{id}/external-accounts"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v3/agent-mail/admin/personas/{id}/status"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v3/agent-mail/admin/personas/{id}/deletion-jobs"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/agent-mail/admin/deletion-jobs"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/agent-mail/admin/operations"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v3/agent-mail/admin/operations/{id}/reconcile"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v3/agent-mail/admin/operations/{id}/resolve-send"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/agent-mail/admin/events"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/agent-mail/admin/audit"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/agent-mail/admin/health"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/agent-phone/personas/{personaId}/numbers"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/agent-phone/personas/{personaId}/numbers/{resourceId}"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/agent-phone/personas/{personaId}/numbers/{resourceId}/messages"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v3/agent-phone/personas/{personaId}/numbers/{resourceId}/sends"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v3/agent-phone/personas/{personaId}/numbers/{resourceId}/releases"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/agent-phone/personas/{personaId}/candidates"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/agent-phone/personas/{personaId}/catalog"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v3/agent-phone/personas/{personaId}/quotes"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v3/agent-phone/personas/{personaId}/number-acquisitions"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v3/agent-phone/personas/{personaId}/activations"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/agent-phone/personas/{personaId}/activations"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/agent-phone/personas/{personaId}/activations/{taskId}"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/agent-phone/personas/{personaId}/activations/{taskId}/messages"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/agent-phone/personas/{personaId}/messages/{messageId}/content"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v3/agent-phone/personas/{personaId}/verifications"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/agent-phone/personas/{personaId}/verifications"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/agent-phone/personas/{personaId}/verifications/{taskId}"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/agent-phone/personas/{personaId}/operations"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/agent-phone/personas/{personaId}/operations/{operationId}"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v3/agent-phone/personas/{personaId}/verifications/{taskId}/cancel"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v3/agent-phone/personas/{personaId}/verifications/{taskId}/consume"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v3/agent-phone/personas/{personaId}/activations/{taskId}/cancel"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v3/agent-phone/personas/{personaId}/activations/{taskId}/finish"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v3/agent-phone/personas/{personaId}/activations/{taskId}/consume"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/agent-phone/personas/{personaId}/verifications/{taskId}/candidates"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/agent-phone/personas/{personaId}/activations/{taskId}/candidates"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/agent-phone/admin/personas"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v3/agent-phone/admin/personas"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/agent-phone/admin/providers"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v3/agent-phone/admin/providers"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/v3/agent-phone/admin/providers/{configId}"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v3/agent-phone/admin/providers/{configId}/test"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/agent-phone/admin/numbers"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v3/agent-phone/admin/numbers/manual"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/agent-phone/admin/numbers/{resourceId}"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/v3/agent-phone/admin/numbers/{resourceId}"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v3/agent-phone/admin/numbers/{resourceId}/archive"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/agent-phone/admin/numbers/{resourceId}/bindings"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/agent-phone/admin/numbers/{resourceId}/messages"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v3/agent-phone/admin/numbers/{resourceId}/sends"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v3/agent-phone/admin/numbers/{resourceId}/releases"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/agent-phone/admin/candidates"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/agent-phone/admin/catalog"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v3/agent-phone/admin/quotes"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v3/agent-phone/admin/number-acquisitions"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v3/agent-phone/admin/activations"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/agent-phone/admin/activations"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/agent-phone/admin/activations/{taskId}"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/agent-phone/admin/activations/{taskId}/messages"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/agent-phone/admin/messages/{messageId}/content"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v3/agent-phone/admin/verifications"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/agent-phone/admin/verifications"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/agent-phone/admin/verifications/{taskId}"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/agent-phone/admin/operations"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/agent-phone/admin/operations/{operationId}"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v3/agent-phone/admin/operations/{operationId}/reconcile"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/agent-phone/admin/policies"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v3/agent-phone/admin/policies"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/v3/agent-phone/admin/policies/{policyId}"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v3/agent-phone/admin/verifications/{taskId}/cancel"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v3/agent-phone/admin/verifications/{taskId}/consume"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v3/agent-phone/admin/activations/{taskId}/cancel"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v3/agent-phone/admin/activations/{taskId}/finish"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v3/agent-phone/admin/activations/{taskId}/consume"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/agent-phone/admin/verifications/{taskId}/candidates"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/agent-phone/admin/activations/{taskId}/candidates"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v3/agent-personas/{personaId}/mailboxes/{mailboxId}/verification-requests/{verificationRequestId}"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v3/agent-personas/{personaId}/mailboxes/{mailboxId}/verification-requests/{verificationRequestId}/cancel"
+    }
+  ]
+}

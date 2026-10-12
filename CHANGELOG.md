@@ -1,5 +1,21 @@
 # Changelog
 
+## Unreleased — GenAuth communication
+
+- Add 111 Agent Mail/Phone runtime and administration methods with typed inputs/results.
+- Add native GenAuth credential exchange, bounded polling, idempotency and revision headers, and nested communication error codes.
+- Add bilingual SDK reference content and read-only live acceptance checks; current hosted Phone routes remain unavailable.
+
+
+## Unreleased
+
+- Add 591 GenAuth / Authing v3 management methods across 35 namespaces, aligned with all 496 JSON management methods in the official Authing Node SDK 4.0.2 plus GenAuth extensions and compatibility names. Include typed inputs/results, domain shortcuts and the flat `genauth.management` migration entry.
+- Preserve official SDK defaults and method names; support management PUT operations and safely interpolate DELETE path identifiers. Pin the upstream contract and include its MIT notice.
+- Add `genauth.users.iterate` for streaming paginated user lists and management request cancellation.
+- Coalesce concurrent management-token exchanges, honor JWT expiry and refresh once after automatic-token auth rejection.
+- Surface HTTP-200 GenAuth business errors even with `data`, preserving numeric Authing API codes and request IDs.
+- Preserve the existing user helpers; add generated contract/catalog maintenance, isolated live management acceptance and integration documentation.
+
 ## Unreleased — next version: 0.10.0
 
 These public API changes require **0.10.0**, not a 0.9.x patch. This work does

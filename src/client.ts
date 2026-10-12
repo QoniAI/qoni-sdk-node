@@ -38,6 +38,7 @@ import {
   type RequestPayload,
 } from "./types";
 import type { GenAuthAccessTokenInput } from "./genauth";
+import type { GenAuthAdminToken } from "./genauth-management";
 import { createWebSearchNamespace } from "./web-search";
 
 const DEFAULT_QONI_HOST = "https://dashboard.qoni.ai";
@@ -50,6 +51,7 @@ export class Qoni {
   private readonly secretKey: string;
   private readonly host: string;
   private runtimeConfigPromise?: Promise<ResolvedRuntimeConfig>;
+  private genAuthAdminTokenPromise?: Promise<GenAuthAdminToken>;
   private genAuthAdminTokenCache?: { accessToken: string; userPoolId: string; expiresAt: number };
 
   readonly gumem: ReturnType<typeof createGumemNamespace>;
@@ -83,8 +85,10 @@ export class Qoni {
       webAgentSSE: (...args) => this.webAgentSSE(...args),
     };
     this.genauth = createGenAuthNamespace(transport, {
-      adminTokenFor: () => this.genauthAdminTokenFor(),
+      communicationCredentials: options.genauthCommunicationCredentials,
+      adminTokenFor: (rejectedAccessToken) => this.genauthAdminTokenFor(rejectedAccessToken),
       delegateTokenFor: (input) => this.delegateToken(input),
+      signedPost: (pathname, body, signal) => this.signedPost(pathname, body, signal),
     });
     this.qoni = createQoniNamespace(
       transport,
@@ -352,7 +356,7 @@ export class Qoni {
     }
   }
 
-  private async signedPost<T>(pathname: string, body: object): Promise<QoniResponse<T>> {
+  private async signedPost<T>(pathname: string, body: object, signal?: AbortSignal): Promise<QoniResponse<T>> {
     const payload = toRecord(body);
     const headers = buildSignedHeaders(
       {
@@ -369,6 +373,7 @@ export class Qoni {
       headers,
       service: "qoni",
       signed: true,
+      signal,
     });
   }
 
@@ -399,7 +404,7 @@ export class Qoni {
         `Qoni request failed with HTTP ${response.status}`,
       );
     }
-    const envelopeStatus = errorEnvelopeStatus(payload);
+    const envelopeStatus = errorEnvelopeStatus(payload, options.service);
     if (envelopeStatus !== undefined) {
       throw errorFromPayload(
         envelopeStatus,
@@ -407,7 +412,13 @@ export class Qoni {
         `Qoni request failed with statusCode ${envelopeStatus}`,
       );
     }
-    return normalizeResponse<T>(payload, options.service);
+    const normalized = normalizeResponse<T>(payload, options.service);
+    if (options.service === 'genauth' && /^\/api\/v3\/agent-(personas|phone|mail)(?:\/|$)/.test(pathname)) normalized.meta.httpStatus = response.status;
+    const etag = response.headers.get('etag');
+    if (etag) normalized.meta.etag = etag;
+    const requestId = response.headers.get('x-request-id');
+    if (requestId && !normalized.meta.requestId) normalized.meta.requestId = requestId;
+    return normalized;
   }
 
   // Reconnecting wrapper: yields events from a fresh connection, and on a
@@ -720,32 +731,42 @@ export class Qoni {
     return accessToken;
   }
 
-  private async genauthAdminTokenFor(): Promise<{ accessToken: string; userPoolId: string }> {
+  private async genauthAdminTokenFor(rejectedAccessToken?: string): Promise<GenAuthAdminToken> {
+    if (rejectedAccessToken && this.genAuthAdminTokenCache?.accessToken === rejectedAccessToken) {
+      this.genAuthAdminTokenCache = undefined;
+    }
     const cached = this.genAuthAdminTokenCache;
     if (cached && cached.expiresAt > Date.now() + 30_000) {
       return { accessToken: cached.accessToken, userPoolId: cached.userPoolId };
     }
+    if (!this.genAuthAdminTokenPromise) {
+      this.genAuthAdminTokenPromise = this.exchangeGenAuthAdminToken();
+    }
+    const pending = this.genAuthAdminTokenPromise;
+    try {
+      return await pending;
+    } finally {
+      if (this.genAuthAdminTokenPromise === pending) this.genAuthAdminTokenPromise = undefined;
+    }
+  }
 
+  private async exchangeGenAuthAdminToken(): Promise<GenAuthAdminToken> {
     const response = await this.signedPost<unknown>("/api/v3/eak/genauth/admin-token", {});
     const payload = response.data;
     const accessToken = readAccessToken(payload);
-    const userPoolId =
-      readString(payload, "userPoolId") ??
-      readString(payload, "userpoolId") ??
-      readString(payload, "user_pool_id");
+    const userPoolId = readString(payload, "userPoolId") ?? readString(payload, "userpoolId") ?? readString(payload, "user_pool_id");
     if (!accessToken || !userPoolId) {
-      throw errorFromPayload(
-        502,
-        payload,
-        "Qoni GenAuth admin-token response did not include accessToken and userPoolId",
-      );
+      throw errorFromPayload(502, payload, "Qoni GenAuth admin-token response did not include accessToken and userPoolId");
     }
-
-    this.genAuthAdminTokenCache = {
-      accessToken,
-      userPoolId,
-      expiresAt: Date.now() + Math.max(0, readExpiresIn(payload) ?? 3600) * 1000,
-    };
+    const receivedAt = Date.now();
+    const lifetime = readExpiresIn(payload);
+    const jwtExpiry = safeDecodeJwtPayload(accessToken)?.exp;
+    const expiresAt = Math.min(
+      lifetime !== undefined ? receivedAt + Math.max(0, lifetime) * 1000 : Infinity,
+      typeof jwtExpiry === "number" && Number.isFinite(jwtExpiry) ? jwtExpiry * 1000 : Infinity,
+      receivedAt + 3600_000,
+    );
+    this.genAuthAdminTokenCache = { accessToken, userPoolId, expiresAt };
     return { accessToken, userPoolId };
   }
 }
@@ -991,7 +1012,13 @@ function toRecord(value: object): JsonObject {
 }
 
 function normalizeDelegateTokenInput(input: DelegateTokenInput): JsonObject {
+  if (input.mode !== undefined && input.mode !== "silent" && input.mode !== "interactive") {
+    throw new QoniValidationError('delegateToken: mode must be "silent" or "interactive"');
+  }
   const body = toRecord(input);
+  if (input.agentId !== undefined && (!(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/).test(input.agentId) || input.agent !== undefined || input.agentKey !== undefined)) {
+    throw new QoniValidationError('delegateToken: formal agentId must be a UUID and cannot be combined with an audit label');
+  }
   if (input.deniedScopes !== undefined) {
     throw new QoniValidationError(
       "delegateToken: deniedScopes is not supported by the delegation service. " +
@@ -1017,11 +1044,27 @@ function normalizeDelegateTokenInput(input: DelegateTokenInput): JsonObject {
         "does not need one.",
     );
   }
-  body.agent = input.agent ?? input.agentKey ?? "sdk";
+  if (input.agentId === undefined) body.agent = input.agent ?? input.agentKey ?? "sdk";
   delete body.agentKey;
   if (input.expiresIn !== undefined) body.expiresIn = delegationDurationSeconds(input.expiresIn);
-  body.scopes = resolveDelegationScopes(input.scopes, input.products);
+  if (input.scopes !== undefined && (!Array.isArray(input.scopes) || input.scopes.some(scope => typeof scope !== "string"))) {
+    throw new QoniValidationError("delegateToken: scopes must be an array of strings");
+  }
+  if (input.scopes?.includes("*")) {
+    if (input.scopes.length !== 1 || typeof input.agentId !== "string" || input.mode === "interactive" || input.products !== undefined) {
+      throw new QoniValidationError('delegateToken: ["*"] requires a formal agentId in silent mode and cannot be mixed with scopes or products');
+    }
+    // The server resolves current approved authority; the SDK never expands or caches it.
+    body.scopes = ["*"];
+  } else {
+    body.scopes = resolveDelegationScopes(input.scopes, input.products);
+  }
+  if (input.agentId === undefined && (body.scopes as string[]).some(scope => scope.startsWith('agent.mail:'))) throw new QoniValidationError('delegateToken: personal mailbox scopes require a verified formal agentId');
   delete body.products;
+  if (input.mode === "interactive") {
+    delete body.user;
+    delete body.userId;
+  }
   return body;
 }
 
@@ -1099,11 +1142,11 @@ function validateScopeFormat(scope: string): void {
   }
 }
 
-function errorEnvelopeStatus(payload: unknown): number | undefined {
+function errorEnvelopeStatus(payload: unknown, service?: QoniService): number | undefined {
   if (!isJsonObject(payload)) return undefined;
   const statusCode = payload.statusCode;
   if (typeof statusCode !== "number" || statusCode < 400) return undefined;
-  if ("data" in payload && payload.data !== undefined) return undefined;
+  if (service !== "genauth" && "data" in payload && payload.data !== undefined) return undefined;
   return statusCode;
 }
 

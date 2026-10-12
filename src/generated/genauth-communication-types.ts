@@ -1,0 +1,452 @@
+// Generated from scripts/contracts/genauth-communication.json. Do not edit.
+import type { QoniResponse } from '../types';
+import type { GenAuthCommunicationCredentials, GenAuthCommunicationAuthInput, GenAuthCommunicationAdminInput, GenAuthCommunicationRequestOptions, GenAuthCommunicationWaitOptions, GenAuthCommunicationRecord, GenAuthItems, GenAuthCursorInput, GenAuthCursorPage, GenAuthPersonaStatus, GenAuthMailAdminAction, GenAuthMailRetainedPersona, GenAuthMailDeletionJob, GenAuthMailAuditEvent, GenAuthMailEvent, GenAuthMailProviderSettings, GenAuthMailProviderCreate, GenAuthMailProviderUpdate, GenAuthMailProviderConfig, GenAuthMailTemplateInput, GenAuthMailTemplate, GenAuthMailTemplateTest, GenAuthMailAdminPersona, GenAuthPhoneCost, GenAuthPhonePurchaseInput, GenAuthPhoneSendInput, GenAuthPhoneQuoteInput, GenAuthPhoneVerificationInput, GenAuthPhoneNumberListInput, GenAuthPhonePersona, GenAuthPhoneNumber, GenAuthPhoneNumberPage, GenAuthPhoneMessage, GenAuthPhoneVerification, GenAuthPhoneActivation, GenAuthPhoneOperation, GenAuthPhoneResult, GenAuthPhoneResultPage, GenAuthPhoneBindings, GenAuthPhoneCandidate, GenAuthPhoneCatalogEntry, GenAuthPhoneQuote, GenAuthPhoneProviderSettings, GenAuthPhoneProviderCreate, GenAuthPhoneProviderUpdate, GenAuthPhoneProvider, GenAuthPhoneAction, GenAuthPhonePolicyInput, GenAuthPhonePolicy } from '../genauth-communication-types';
+export type GenAuthMailApiError = { "code": string; "retryable": boolean; "requiresManualReview"?: boolean; };
+export type GenAuthMailErrorEnvelope = { "statusCode": number; "message": string; "requestId": string; "error": GenAuthMailApiError; };
+export type GenAuthMailPersona = { "personaId": string; "displayName": string; "avatar"?: (string) | null; "status": string; "externalRef"?: (string) | null; "revision": number; "createdAt": string; "updatedAt": string; };
+export type GenAuthMailCreatePersona = { "displayName": string; "avatar"?: string; "externalRef"?: string; };
+export type GenAuthMailUpdatePersona = { "displayName"?: string; "avatar"?: (string) | null; };
+export type GenAuthMailProviderConfigSummary = { "configId": string; "name": string; "providerType": string; "capabilities": (string)[]; "allowedDomains": (string)[]; "defaultDomain": string; "isDefault": boolean; "acceptNewMailboxes": boolean; };
+export type GenAuthMailResource = { "resourceId": string; "personaId": string; "type": "email" | "phone"; "address": (string) | null; "source": "provider" | "manual"; "status": string; "providerConfigId"?: (string) | null; "label"?: (string) | null; "createdAt": string; } & ({ "type"?: "phone"; "address"?: string; } | { "type"?: "email"; "status"?: "active"; "address"?: string; } | { "type"?: "email"; "status"?: "provisioning" | "failed" | "unavailable" | "deleting" | "deleted"; "address"?: (string) | null; });
+export type GenAuthMailRegisterPhone = { "phone": string; "label"?: string; };
+export type GenAuthMailCreateMailbox = { "providerConfigId"?: string; "localPart"?: string; "displayName"?: string; "domain"?: string; };
+export type GenAuthMailMailbox = { "mailboxId": string; "personaId": string; "type": "email"; "address": (string) | null; "providerConfigId": string; "providerType": string; "status": "provisioning" | "active" | "failed" | "unavailable" | "deleting" | "deleted"; "capabilities": (string)[]; "revision": number; "createdAt": string; } & ({ "status"?: "active"; "address"?: string; } | { "status"?: "provisioning" | "failed" | "unavailable" | "deleting" | "deleted"; });
+export type GenAuthMailOperationAccepted = { "operationId": string; "resourceId": string; "messageId"?: string; "status": "pending"; "pollAfterSeconds": number; };
+export type GenAuthMailOperationResult = { "mailboxId"?: string; "address"?: string; "messageId"?: string; "deliveryStatus"?: "queued" | "accepted" | "delivered" | "bounced" | "rejected" | "unknown"; };
+export type GenAuthMailOperation = { "operationId": string; "type": "mailbox.create" | "mail.send"; "status": "pending" | "running" | "succeeded" | "failed" | "unknown"; "resourceId": string; "createdAt": string; "updatedAt": string; "pollAfterSeconds": (number) | null; "result": ({ "mailboxId"?: string; "address"?: string; "messageId"?: string; "deliveryStatus"?: "queued" | "accepted" | "delivered" | "bounced" | "rejected" | "unknown"; }) | null; "error": ({ "code": string; "retryable": boolean; "requiresManualReview"?: boolean; }) | null; };
+export type GenAuthMailMessageSummary = { "messageId": string; "mailboxId": string; "direction": "inbound" | "outbound"; "from": string; "to": (string)[]; "subject": (string) | null; "receivedAt": (string) | null; "sentAt": (string) | null; "deliveryStatus": ("queued" | "accepted" | "delivered" | "bounced" | "rejected" | "unknown" | null) | null; "observedAt": string; "contentStatus": "available" | "pending" | "expired" | "unavailable"; } & ({ "contentStatus"?: "available"; "subject"?: string; } | { "contentStatus"?: "pending" | "expired" | "unavailable"; "subject"?: (null) | null; });
+export type GenAuthMailMessageDetail = { "messageId": string; "mailboxId": string; "direction": "inbound" | "outbound"; "from": string; "to": (string)[]; "subject": (string) | null; "receivedAt": (string) | null; "sentAt": (string) | null; "deliveryStatus": ("queued" | "accepted" | "delivered" | "bounced" | "rejected" | "unknown" | null) | null; "text": (string) | null; "contentStatus": "available" | "pending" | "expired" | "unavailable"; "observedAt": string; } & ({ "contentStatus"?: "available"; "subject"?: string; "text"?: string; } | { "contentStatus"?: "pending" | "expired" | "unavailable"; "subject"?: (null) | null; "text"?: (null) | null; });
+export type GenAuthMailSendMessage = { "to": string; "subject": string; "text": string; "externalRef"?: string; };
+export type GenAuthMailMatchConditions = { "fromAddresses"?: (string)[]; "fromDomains"?: (string)[]; "subjectContains"?: string; } & ({ "fromAddresses": (string)[]; } | { "fromDomains": (string)[]; });
+export type GenAuthMailExtractRule = { "kind": "code" | "link"; "pattern": string; "allowedLinkDomains"?: (string)[]; } & ({ "kind"?: "code"; } | { "kind"?: "link"; "allowedLinkDomains": (string)[]; });
+export type GenAuthMailCreateVerificationRequest = { "platformKey": string; "externalRef": string; "timeoutSeconds"?: number; "templateId"?: string; "match"?: GenAuthMailMatchConditions; "extract"?: GenAuthMailExtractRule; } & ({ "templateId": string; "match"?: never; "extract"?: never; } | { "match": GenAuthMailMatchConditions; "extract": GenAuthMailExtractRule; "templateId"?: never; });
+export type GenAuthMailVerificationResult = { "kind": "code" | "link"; "value": string; "messageId": string; "receivedAt": (string) | null; "observedAt": string; };
+export type GenAuthMailVerificationRequest = { "verificationRequestId": string; "mailboxId": string; "platformKey": string; "externalRef": string; "status": "pending" | "matched" | "ambiguous" | "expired" | "cancelled" | "failed"; "windowStart": string; "expiresAt": string; "pollAfterSeconds": (number) | null; "resultAvailableUntil": (string) | null; "resultExpired": boolean; "result": ({ "kind": "code" | "link"; "value": string; "messageId": string; "receivedAt": (string) | null; "observedAt": string; }) | null; "candidateMessageIds"?: (string)[]; "error": ({ "code": string; "retryable": boolean; "requiresManualReview"?: boolean; }) | null; };
+export type GenAuthMailBinding = { "resourceId": string; "purposes": ("registration" | "login" | "recovery" | "contact")[]; "isCurrent": boolean; };
+export type GenAuthMailCreateExternalAccount = { "platformKey": string; "externalRef": string; "platformAccountId"?: (string) | null; "platformScope"?: (string) | null; "username"?: (string) | null; "profileUrl"?: (string) | null; "registrationResult": "registered" | "recorded"; "registeredAt"?: (string) | null; "notes"?: (string) | null; "bindings"?: (GenAuthMailBinding)[]; "recordStatus"?: "active" | "archived"; } & ({ "platformAccountId": string; } | { "username": string; } | { "profileUrl": string; });
+export type GenAuthMailUpdateExternalAccount = { "platformAccountId"?: (string) | null; "platformScope"?: (string) | null; "username"?: (string) | null; "profileUrl"?: (string) | null; "registrationResult"?: "registered" | "recorded"; "registeredAt"?: (string) | null; "notes"?: (string) | null; "bindings"?: (GenAuthMailBinding)[]; "recordStatus"?: "active" | "archived"; };
+export type GenAuthMailExternalAccount = { "platformKey": string; "externalRef": string; "platformAccountId"?: (string) | null; "platformScope"?: (string) | null; "username"?: (string) | null; "profileUrl"?: (string) | null; "registrationResult": "registered" | "recorded"; "registeredAt"?: (string) | null; "notes"?: (string) | null; "bindings": (GenAuthMailBinding)[]; "recordStatus": "active" | "archived"; "accountId": string; "personaId": string; "source": string; "reportedAt": string; "revision": number; "createdAt": string; "updatedAt": string; };
+export type GenAuthMailPersonaPage = { "items": (GenAuthMailPersona)[]; "nextCursor": (string) | null; };
+export type GenAuthMailProviderConfigSummaryPage = { "items": (GenAuthMailProviderConfigSummary)[]; "nextCursor": (string) | null; };
+export type GenAuthMailResourcePage = { "items": (GenAuthMailResource)[]; "nextCursor": (string) | null; };
+export type GenAuthMailMessageSummaryPage = { "items": (GenAuthMailMessageSummary)[]; "nextCursor": (string) | null; };
+export type GenAuthMailExternalAccountPage = { "items": (GenAuthMailExternalAccount)[]; "nextCursor": (string) | null; };
+export type GenAuthMailManagementTokenRequest = { "accessKeyId": string; "accessKeySecret": string; };
+export type GenAuthMailManagementTokenResponse = { "statusCode": number; "message": string; "data": { "access_token": string; "expires_in": number; }; };
+export type GenAuthAgentMailPersonasCreateInput = ({  } & GenAuthMailCreatePersona) & GenAuthCommunicationAuthInput & { idempotencyKey: string };
+export type GenAuthAgentMailPersonasCreateResult = GenAuthMailPersona;
+export type GenAuthAgentMailPersonasListInput = ({ "keyword"?: string; "cursor"?: string; "limit"?: number; }) & GenAuthCommunicationAuthInput;
+export type GenAuthAgentMailPersonasListResult = GenAuthMailPersonaPage;
+export type GenAuthAgentMailPersonasGetInput = ({ "personaId": string; }) & GenAuthCommunicationAuthInput;
+export type GenAuthAgentMailPersonasGetResult = GenAuthMailPersona;
+export type GenAuthAgentMailPersonasUpdateInput = ({ "personaId": string; } & GenAuthMailUpdatePersona) & GenAuthCommunicationAuthInput & { revision: number };
+export type GenAuthAgentMailPersonasUpdateResult = GenAuthMailPersona;
+export type GenAuthAgentMailProvidersListInput = ({ "capability"?: string; "cursor"?: string; "limit"?: number; }) & GenAuthCommunicationAuthInput;
+export type GenAuthAgentMailProvidersListResult = GenAuthMailProviderConfigSummaryPage;
+export type GenAuthAgentMailResourcesListInput = ({ "personaId": string; "type"?: "email" | "phone"; "status"?: string; "cursor"?: string; "limit"?: number; }) & GenAuthCommunicationAuthInput;
+export type GenAuthAgentMailResourcesListResult = GenAuthMailResourcePage;
+export type GenAuthAgentMailResourcesRegisterPhoneInput = ({ "personaId": string; } & GenAuthMailRegisterPhone) & GenAuthCommunicationAuthInput & { idempotencyKey: string };
+export type GenAuthAgentMailResourcesRegisterPhoneResult = GenAuthMailResource;
+export type GenAuthAgentMailMailboxesCreateInput = ({ "personaId": string; } & GenAuthMailCreateMailbox) & GenAuthCommunicationAuthInput & { idempotencyKey: string };
+export type GenAuthAgentMailMailboxesCreateResult = GenAuthMailOperationAccepted;
+export type GenAuthAgentMailMailboxesGetInput = ({ "personaId": string; "mailboxId": string; }) & GenAuthCommunicationAuthInput;
+export type GenAuthAgentMailMailboxesGetResult = GenAuthMailMailbox;
+export type GenAuthAgentMailOperationsGetInput = ({ "operationId": string; }) & GenAuthCommunicationAuthInput;
+export type GenAuthAgentMailOperationsGetResult = GenAuthMailOperation;
+export type GenAuthAgentMailMessagesListInput = ({ "personaId": string; "mailboxId": string; "direction"?: "inbound" | "outbound"; "after"?: string; "before"?: string; "cursor"?: string; "limit"?: number; }) & GenAuthCommunicationAuthInput;
+export type GenAuthAgentMailMessagesListResult = GenAuthMailMessageSummaryPage;
+export type GenAuthAgentMailMessagesSendInput = ({ "personaId": string; "mailboxId": string; } & GenAuthMailSendMessage) & GenAuthCommunicationAuthInput & { idempotencyKey: string };
+export type GenAuthAgentMailMessagesSendResult = GenAuthMailOperationAccepted;
+export type GenAuthAgentMailMessagesGetInput = ({ "personaId": string; "mailboxId": string; "messageId": string; }) & GenAuthCommunicationAuthInput;
+export type GenAuthAgentMailMessagesGetResult = GenAuthMailMessageDetail;
+export type GenAuthAgentMailVerificationsCreateInput = ({ "personaId": string; "mailboxId": string; } & GenAuthMailCreateVerificationRequest) & GenAuthCommunicationAuthInput & { idempotencyKey: string };
+export type GenAuthAgentMailVerificationsCreateResult = GenAuthMailVerificationRequest;
+export type GenAuthAgentMailVerificationsGetInput = ({ "personaId": string; "mailboxId": string; "verificationRequestId": string; }) & GenAuthCommunicationAuthInput;
+export type GenAuthAgentMailVerificationsGetResult = GenAuthMailVerificationRequest;
+export type GenAuthAgentMailVerificationsCancelInput = ({ "personaId": string; "mailboxId": string; "verificationRequestId": string; }) & GenAuthCommunicationAuthInput & { idempotencyKey: string };
+export type GenAuthAgentMailVerificationsCancelResult = GenAuthMailVerificationRequest;
+export type GenAuthAgentMailExternalAccountsCreateInput = ({ "personaId": string; } & GenAuthMailCreateExternalAccount) & GenAuthCommunicationAuthInput & { idempotencyKey: string };
+export type GenAuthAgentMailExternalAccountsCreateResult = GenAuthMailExternalAccount;
+export type GenAuthAgentMailExternalAccountsListInput = ({ "personaId": string; "platformKey"?: string; "resourceId"?: string; "recordStatus"?: "active" | "archived"; "cursor"?: string; "limit"?: number; }) & GenAuthCommunicationAuthInput;
+export type GenAuthAgentMailExternalAccountsListResult = GenAuthMailExternalAccountPage;
+export type GenAuthAgentMailExternalAccountsGetInput = ({ "personaId": string; "accountId": string; }) & GenAuthCommunicationAuthInput;
+export type GenAuthAgentMailExternalAccountsGetResult = GenAuthMailExternalAccount;
+export type GenAuthAgentMailExternalAccountsUpdateInput = ({ "personaId": string; "accountId": string; } & GenAuthMailUpdateExternalAccount) & GenAuthCommunicationAuthInput & { revision: number };
+export type GenAuthAgentMailExternalAccountsUpdateResult = GenAuthMailExternalAccount;
+export type GenAuthAgentMailAdminProvidersListInput = (GenAuthCursorInput) & GenAuthCommunicationAdminInput;
+export type GenAuthAgentMailAdminProvidersListResult = GenAuthCursorPage<GenAuthMailProviderConfig>;
+export type GenAuthAgentMailAdminTemplatesListInput = (GenAuthCursorInput) & GenAuthCommunicationAdminInput;
+export type GenAuthAgentMailAdminTemplatesListResult = GenAuthCursorPage<GenAuthMailTemplate>;
+export type GenAuthAgentMailAdminPersonasListInput = (GenAuthCursorInput) & GenAuthCommunicationAdminInput;
+export type GenAuthAgentMailAdminPersonasListResult = GenAuthCursorPage<GenAuthMailPersona>;
+export type GenAuthAgentMailAdminRetainedPersonasListInput = (GenAuthCursorInput) & GenAuthCommunicationAdminInput;
+export type GenAuthAgentMailAdminRetainedPersonasListResult = GenAuthCursorPage<GenAuthMailRetainedPersona>;
+export type GenAuthAgentMailAdminDeletionJobsListInput = (GenAuthCursorInput) & GenAuthCommunicationAdminInput;
+export type GenAuthAgentMailAdminDeletionJobsListResult = GenAuthCursorPage<GenAuthMailDeletionJob>;
+export type GenAuthAgentMailAdminOperationsListInput = (GenAuthCursorInput) & GenAuthCommunicationAdminInput;
+export type GenAuthAgentMailAdminOperationsListResult = GenAuthCursorPage<GenAuthMailOperation>;
+export type GenAuthAgentMailAdminEventsListInput = (GenAuthCursorInput) & GenAuthCommunicationAdminInput;
+export type GenAuthAgentMailAdminEventsListResult = GenAuthCursorPage<GenAuthMailEvent>;
+export type GenAuthAgentMailAdminAuditListInput = (GenAuthCursorInput) & GenAuthCommunicationAdminInput;
+export type GenAuthAgentMailAdminAuditListResult = GenAuthCursorPage<GenAuthMailAuditEvent>;
+export type GenAuthAgentMailAdminProvidersCreateInput = (GenAuthMailProviderCreate) & GenAuthCommunicationAdminInput;
+export type GenAuthAgentMailAdminProvidersCreateResult = GenAuthMailProviderConfig;
+export type GenAuthAgentMailAdminProvidersUpdateInput = (GenAuthMailProviderUpdate & {configId:string}) & GenAuthCommunicationAdminInput & { revision: number };
+export type GenAuthAgentMailAdminProvidersUpdateResult = GenAuthMailProviderConfig;
+export type GenAuthAgentMailAdminProvidersRotateCredentialsInput = ({configId:string;apiKey?:string;webhookSecret?:string}) & GenAuthCommunicationAdminInput & { revision: number };
+export type GenAuthAgentMailAdminProvidersRotateCredentialsResult = GenAuthMailProviderConfig;
+export type GenAuthAgentMailAdminProvidersTestInput = ({configId:string}) & GenAuthCommunicationAdminInput;
+export type GenAuthAgentMailAdminProvidersTestResult = {connected:boolean;namespaceVerified:boolean;createsMailbox:false};
+export type GenAuthAgentMailAdminTemplatesCreateInput = (GenAuthMailTemplateInput) & GenAuthCommunicationAdminInput;
+export type GenAuthAgentMailAdminTemplatesCreateResult = GenAuthMailTemplate;
+export type GenAuthAgentMailAdminTemplatesUpdateInput = (GenAuthMailTemplateInput & {templateId:string;version:number}) & GenAuthCommunicationAdminInput;
+export type GenAuthAgentMailAdminTemplatesUpdateResult = GenAuthMailTemplate;
+export type GenAuthAgentMailAdminTemplatesTestInput = (GenAuthMailTemplateTest) & GenAuthCommunicationAdminInput;
+export type GenAuthAgentMailAdminTemplatesTestResult = {status:"matched"|"ambiguous"|"unmatched";values:string[]};
+export type GenAuthAgentMailAdminPersonasCreateInput = (GenAuthMailCreatePersona) & GenAuthCommunicationAdminInput;
+export type GenAuthAgentMailAdminPersonasCreateResult = GenAuthMailPersona;
+export type GenAuthAgentMailAdminPersonasGetInput = ({personaId:string}) & GenAuthCommunicationAdminInput;
+export type GenAuthAgentMailAdminPersonasGetResult = GenAuthMailAdminPersona;
+export type GenAuthAgentMailAdminPersonasRegisterPhoneInput = (GenAuthMailRegisterPhone & {personaId:string}) & GenAuthCommunicationAdminInput;
+export type GenAuthAgentMailAdminPersonasRegisterPhoneResult = GenAuthMailResource;
+export type GenAuthAgentMailAdminPersonasCreateExternalAccountInput = (GenAuthMailCreateExternalAccount & {personaId:string}) & GenAuthCommunicationAdminInput;
+export type GenAuthAgentMailAdminPersonasCreateExternalAccountResult = GenAuthMailExternalAccount;
+export type GenAuthAgentMailAdminPersonasSetStatusInput = ({personaId:string;status:GenAuthPersonaStatus;reason:string}) & GenAuthCommunicationAdminInput & { revision: number };
+export type GenAuthAgentMailAdminPersonasSetStatusResult = {personaId:string;status:GenAuthPersonaStatus;revision:number};
+export type GenAuthAgentMailAdminPersonasDeleteInput = ({personaId:string;reason:string;mode?:"retain_mailboxes"|"delete_mailboxes";mailboxIds?:string[]}) & GenAuthCommunicationAdminInput & { revision: number };
+export type GenAuthAgentMailAdminPersonasDeleteResult = {jobId:string;status:"pending";mode:"retain_mailboxes"|"delete_mailboxes"};
+export type GenAuthAgentMailAdminAdministratorsSetPermissionsInput = ({administratorId:string;actions:GenAuthMailAdminAction[]}) & GenAuthCommunicationAdminInput;
+export type GenAuthAgentMailAdminAdministratorsSetPermissionsResult = {userId:string;actions:GenAuthMailAdminAction[]};
+export type GenAuthAgentMailAdminOperationsReconcileInput = ({operationId:string}) & GenAuthCommunicationAdminInput;
+export type GenAuthAgentMailAdminOperationsReconcileResult = {operationId:string;status:string;reconcileScheduled:true};
+export type GenAuthAgentMailAdminOperationsResolveSendInput = ({operationId:string;outcome:"confirmed_sent"|"confirmed_not_sent";evidenceRef:string;providerMessageId?:string}) & GenAuthCommunicationAdminInput;
+export type GenAuthAgentMailAdminOperationsResolveSendResult = GenAuthMailOperation;
+export type GenAuthAgentMailAdminHealthGetInput = ({}) & GenAuthCommunicationAdminInput;
+export type GenAuthAgentMailAdminHealthGetResult = {pendingOperations:number;unknownOperations:number;pendingEvents:number;pendingVerifications:number};
+export type GenAuthAgentPhoneNumbersListInput = (GenAuthPhoneNumberListInput & {personaId:string}) & GenAuthCommunicationAuthInput;
+export type GenAuthAgentPhoneNumbersListResult = GenAuthPhoneNumberPage;
+export type GenAuthAgentPhoneNumbersGetInput = ({resourceId:string} & {personaId:string}) & GenAuthCommunicationAuthInput;
+export type GenAuthAgentPhoneNumbersGetResult = GenAuthPhoneNumber;
+export type GenAuthAgentPhoneNumbersMessagesInput = ({resourceId:string} & {personaId:string}) & GenAuthCommunicationAuthInput;
+export type GenAuthAgentPhoneNumbersMessagesResult = GenAuthItems<GenAuthPhoneMessage>;
+export type GenAuthAgentPhoneNumbersSendInput = ({resourceId:string} & GenAuthPhoneSendInput & {personaId:string}) & GenAuthCommunicationAuthInput & { idempotencyKey: string };
+export type GenAuthAgentPhoneNumbersSendResult = GenAuthPhoneOperation;
+export type GenAuthAgentPhoneNumbersReleaseInput = ({resourceId:string;reason:string} & {personaId:string}) & GenAuthCommunicationAuthInput & { idempotencyKey: string } & { revision: number };
+export type GenAuthAgentPhoneNumbersReleaseResult = GenAuthPhoneOperation;
+export type GenAuthAgentPhoneCandidatesListInput = ({providerConfigId:string;country:string} & {personaId:string}) & GenAuthCommunicationAuthInput;
+export type GenAuthAgentPhoneCandidatesListResult = GenAuthItems<GenAuthPhoneCandidate>;
+export type GenAuthAgentPhoneCatalogListInput = ({providerConfigId:string;country:string} & {personaId:string}) & GenAuthCommunicationAuthInput;
+export type GenAuthAgentPhoneCatalogListResult = GenAuthItems<GenAuthPhoneCatalogEntry>;
+export type GenAuthAgentPhoneQuotesCreateInput = (GenAuthPhoneQuoteInput & {personaId:string}) & GenAuthCommunicationAuthInput;
+export type GenAuthAgentPhoneQuotesCreateResult = GenAuthPhoneQuote;
+export type GenAuthAgentPhoneNumbersAcquireInput = (GenAuthPhonePurchaseInput & {personaId:string}) & GenAuthCommunicationAuthInput & { idempotencyKey: string };
+export type GenAuthAgentPhoneNumbersAcquireResult = GenAuthPhoneOperation;
+export type GenAuthAgentPhoneActivationsCreateInput = (GenAuthPhonePurchaseInput & {personaId:string}) & GenAuthCommunicationAuthInput & { idempotencyKey: string };
+export type GenAuthAgentPhoneActivationsCreateResult = GenAuthPhoneOperation;
+export type GenAuthAgentPhoneActivationsListInput = ({} & {personaId:string}) & GenAuthCommunicationAuthInput;
+export type GenAuthAgentPhoneActivationsListResult = GenAuthItems<GenAuthPhoneActivation>;
+export type GenAuthAgentPhoneActivationsGetInput = ({taskId:string} & {personaId:string}) & GenAuthCommunicationAuthInput;
+export type GenAuthAgentPhoneActivationsGetResult = GenAuthPhoneActivation;
+export type GenAuthAgentPhoneActivationsMessagesInput = ({taskId:string} & {personaId:string}) & GenAuthCommunicationAuthInput;
+export type GenAuthAgentPhoneActivationsMessagesResult = GenAuthItems<GenAuthPhoneMessage>;
+export type GenAuthAgentPhoneMessagesContentInput = ({messageId:string} & {personaId:string}) & GenAuthCommunicationAuthInput;
+export type GenAuthAgentPhoneMessagesContentResult = {body:string};
+export type GenAuthAgentPhoneVerificationsCreateInput = (GenAuthPhoneVerificationInput & {personaId:string}) & GenAuthCommunicationAuthInput;
+export type GenAuthAgentPhoneVerificationsCreateResult = GenAuthPhoneVerification;
+export type GenAuthAgentPhoneVerificationsListInput = ({resourceId?:string} & {personaId:string}) & GenAuthCommunicationAuthInput;
+export type GenAuthAgentPhoneVerificationsListResult = GenAuthItems<GenAuthPhoneVerification>;
+export type GenAuthAgentPhoneVerificationsGetInput = ({taskId:string} & {personaId:string}) & GenAuthCommunicationAuthInput;
+export type GenAuthAgentPhoneVerificationsGetResult = GenAuthPhoneVerification;
+export type GenAuthAgentPhoneOperationsListInput = ({} & {personaId:string}) & GenAuthCommunicationAuthInput;
+export type GenAuthAgentPhoneOperationsListResult = GenAuthItems<GenAuthPhoneOperation>;
+export type GenAuthAgentPhoneOperationsGetInput = ({operationId:string} & {personaId:string}) & GenAuthCommunicationAuthInput;
+export type GenAuthAgentPhoneOperationsGetResult = GenAuthPhoneOperation;
+export type GenAuthAgentPhoneVerificationsCandidatesInput = ({taskId:string} & {personaId:string}) & GenAuthCommunicationAuthInput;
+export type GenAuthAgentPhoneVerificationsCandidatesResult = GenAuthPhoneResultPage;
+export type GenAuthAgentPhoneVerificationsCancelInput = ({taskId:string} & {personaId:string}) & GenAuthCommunicationAuthInput & { idempotencyKey: string } & { revision: number };
+export type GenAuthAgentPhoneVerificationsCancelResult = {id:string;status:"revoked"};
+export type GenAuthAgentPhoneVerificationsConsumeInput = ({taskId:string} & {candidateId?:string} & {personaId:string}) & GenAuthCommunicationAuthInput & { idempotencyKey: string };
+export type GenAuthAgentPhoneVerificationsConsumeResult = GenAuthPhoneResult;
+export type GenAuthAgentPhoneActivationsCandidatesInput = ({taskId:string} & {personaId:string}) & GenAuthCommunicationAuthInput;
+export type GenAuthAgentPhoneActivationsCandidatesResult = GenAuthPhoneResultPage;
+export type GenAuthAgentPhoneActivationsCancelInput = ({taskId:string} & {personaId:string}) & GenAuthCommunicationAuthInput & { idempotencyKey: string } & { revision: number };
+export type GenAuthAgentPhoneActivationsCancelResult = GenAuthPhoneOperation;
+export type GenAuthAgentPhoneActivationsFinishInput = ({taskId:string} & {personaId:string}) & GenAuthCommunicationAuthInput & { idempotencyKey: string } & { revision: number };
+export type GenAuthAgentPhoneActivationsFinishResult = GenAuthPhoneOperation;
+export type GenAuthAgentPhoneActivationsConsumeInput = ({taskId:string} & {candidateId?:string} & {personaId:string}) & GenAuthCommunicationAuthInput & { idempotencyKey: string };
+export type GenAuthAgentPhoneActivationsConsumeResult = GenAuthPhoneResult;
+export type GenAuthAgentPhoneAdminNumbersListInput = (GenAuthPhoneNumberListInput & {personaId?:string}) & GenAuthCommunicationAdminInput;
+export type GenAuthAgentPhoneAdminNumbersListResult = GenAuthPhoneNumberPage;
+export type GenAuthAgentPhoneAdminNumbersGetInput = ({resourceId:string}) & GenAuthCommunicationAdminInput;
+export type GenAuthAgentPhoneAdminNumbersGetResult = GenAuthPhoneNumber;
+export type GenAuthAgentPhoneAdminNumbersMessagesInput = ({resourceId:string}) & GenAuthCommunicationAdminInput;
+export type GenAuthAgentPhoneAdminNumbersMessagesResult = GenAuthItems<GenAuthPhoneMessage>;
+export type GenAuthAgentPhoneAdminNumbersSendInput = ({resourceId:string} & GenAuthPhoneSendInput) & GenAuthCommunicationAdminInput & { idempotencyKey: string };
+export type GenAuthAgentPhoneAdminNumbersSendResult = GenAuthPhoneOperation;
+export type GenAuthAgentPhoneAdminNumbersReleaseInput = ({resourceId:string;reason:string}) & GenAuthCommunicationAdminInput & { idempotencyKey: string } & { revision: number };
+export type GenAuthAgentPhoneAdminNumbersReleaseResult = GenAuthPhoneOperation;
+export type GenAuthAgentPhoneAdminCandidatesListInput = ({providerConfigId:string;country:string} & {personaId?:string}) & GenAuthCommunicationAdminInput;
+export type GenAuthAgentPhoneAdminCandidatesListResult = GenAuthItems<GenAuthPhoneCandidate>;
+export type GenAuthAgentPhoneAdminCatalogListInput = ({providerConfigId:string;country:string} & {personaId?:string}) & GenAuthCommunicationAdminInput;
+export type GenAuthAgentPhoneAdminCatalogListResult = GenAuthItems<GenAuthPhoneCatalogEntry>;
+export type GenAuthAgentPhoneAdminQuotesCreateInput = (GenAuthPhoneQuoteInput & {personaId:string}) & GenAuthCommunicationAdminInput;
+export type GenAuthAgentPhoneAdminQuotesCreateResult = GenAuthPhoneQuote;
+export type GenAuthAgentPhoneAdminNumbersAcquireInput = (GenAuthPhonePurchaseInput) & GenAuthCommunicationAdminInput & { idempotencyKey: string };
+export type GenAuthAgentPhoneAdminNumbersAcquireResult = GenAuthPhoneOperation;
+export type GenAuthAgentPhoneAdminActivationsCreateInput = (GenAuthPhonePurchaseInput) & GenAuthCommunicationAdminInput & { idempotencyKey: string };
+export type GenAuthAgentPhoneAdminActivationsCreateResult = GenAuthPhoneOperation;
+export type GenAuthAgentPhoneAdminActivationsListInput = ({} & {personaId?:string}) & GenAuthCommunicationAdminInput;
+export type GenAuthAgentPhoneAdminActivationsListResult = GenAuthItems<GenAuthPhoneActivation>;
+export type GenAuthAgentPhoneAdminActivationsGetInput = ({taskId:string}) & GenAuthCommunicationAdminInput;
+export type GenAuthAgentPhoneAdminActivationsGetResult = GenAuthPhoneActivation;
+export type GenAuthAgentPhoneAdminActivationsMessagesInput = ({taskId:string}) & GenAuthCommunicationAdminInput;
+export type GenAuthAgentPhoneAdminActivationsMessagesResult = GenAuthItems<GenAuthPhoneMessage>;
+export type GenAuthAgentPhoneAdminMessagesContentInput = ({messageId:string}) & GenAuthCommunicationAdminInput;
+export type GenAuthAgentPhoneAdminMessagesContentResult = {body:string};
+export type GenAuthAgentPhoneAdminVerificationsCreateInput = (GenAuthPhoneVerificationInput & {personaId?:string}) & GenAuthCommunicationAdminInput;
+export type GenAuthAgentPhoneAdminVerificationsCreateResult = GenAuthPhoneVerification;
+export type GenAuthAgentPhoneAdminVerificationsListInput = ({resourceId?:string} & {personaId?:string}) & GenAuthCommunicationAdminInput;
+export type GenAuthAgentPhoneAdminVerificationsListResult = GenAuthItems<GenAuthPhoneVerification>;
+export type GenAuthAgentPhoneAdminVerificationsGetInput = ({taskId:string}) & GenAuthCommunicationAdminInput;
+export type GenAuthAgentPhoneAdminVerificationsGetResult = GenAuthPhoneVerification;
+export type GenAuthAgentPhoneAdminOperationsListInput = ({} & {personaId?:string}) & GenAuthCommunicationAdminInput;
+export type GenAuthAgentPhoneAdminOperationsListResult = GenAuthItems<GenAuthPhoneOperation>;
+export type GenAuthAgentPhoneAdminOperationsGetInput = ({operationId:string}) & GenAuthCommunicationAdminInput;
+export type GenAuthAgentPhoneAdminOperationsGetResult = GenAuthPhoneOperation;
+export type GenAuthAgentPhoneAdminVerificationsCandidatesInput = ({taskId:string}) & GenAuthCommunicationAdminInput;
+export type GenAuthAgentPhoneAdminVerificationsCandidatesResult = GenAuthPhoneResultPage;
+export type GenAuthAgentPhoneAdminVerificationsCancelInput = ({taskId:string}) & GenAuthCommunicationAdminInput & { idempotencyKey: string } & { revision: number };
+export type GenAuthAgentPhoneAdminVerificationsCancelResult = {id:string;status:"revoked"};
+export type GenAuthAgentPhoneAdminVerificationsConsumeInput = ({taskId:string} & {candidateId?:string}) & GenAuthCommunicationAdminInput & { idempotencyKey: string };
+export type GenAuthAgentPhoneAdminVerificationsConsumeResult = GenAuthPhoneResult;
+export type GenAuthAgentPhoneAdminActivationsCandidatesInput = ({taskId:string}) & GenAuthCommunicationAdminInput;
+export type GenAuthAgentPhoneAdminActivationsCandidatesResult = GenAuthPhoneResultPage;
+export type GenAuthAgentPhoneAdminActivationsCancelInput = ({taskId:string}) & GenAuthCommunicationAdminInput & { idempotencyKey: string } & { revision: number };
+export type GenAuthAgentPhoneAdminActivationsCancelResult = GenAuthPhoneOperation;
+export type GenAuthAgentPhoneAdminActivationsFinishInput = ({taskId:string}) & GenAuthCommunicationAdminInput & { idempotencyKey: string } & { revision: number };
+export type GenAuthAgentPhoneAdminActivationsFinishResult = GenAuthPhoneOperation;
+export type GenAuthAgentPhoneAdminActivationsConsumeInput = ({taskId:string} & {candidateId?:string}) & GenAuthCommunicationAdminInput & { idempotencyKey: string };
+export type GenAuthAgentPhoneAdminActivationsConsumeResult = GenAuthPhoneResult;
+export type GenAuthAgentPhoneAdminPersonasListInput = ({}) & GenAuthCommunicationAdminInput;
+export type GenAuthAgentPhoneAdminPersonasListResult = GenAuthItems<GenAuthPhonePersona>;
+export type GenAuthAgentPhoneAdminPersonasCreateInput = ({displayName:string;externalRef?:string}) & GenAuthCommunicationAdminInput;
+export type GenAuthAgentPhoneAdminPersonasCreateResult = GenAuthPhonePersona;
+export type GenAuthAgentPhoneAdminProvidersListInput = ({}) & GenAuthCommunicationAdminInput;
+export type GenAuthAgentPhoneAdminProvidersListResult = GenAuthItems<GenAuthPhoneProvider>;
+export type GenAuthAgentPhoneAdminProvidersCreateInput = (GenAuthPhoneProviderCreate) & GenAuthCommunicationAdminInput;
+export type GenAuthAgentPhoneAdminProvidersCreateResult = GenAuthPhoneProvider;
+export type GenAuthAgentPhoneAdminProvidersUpdateInput = ({configId:string} & GenAuthPhoneProviderUpdate) & GenAuthCommunicationAdminInput & { revision: number };
+export type GenAuthAgentPhoneAdminProvidersUpdateResult = GenAuthPhoneProvider;
+export type GenAuthAgentPhoneAdminProvidersTestInput = ({configId:string}) & GenAuthCommunicationAdminInput & { idempotencyKey: string } & { revision: number };
+export type GenAuthAgentPhoneAdminProvidersTestResult = GenAuthPhoneOperation;
+export type GenAuthAgentPhoneAdminNumbersRegisterInput = ({personaId:string;phone:string;label?:string}) & GenAuthCommunicationAdminInput;
+export type GenAuthAgentPhoneAdminNumbersRegisterResult = GenAuthPhoneNumber;
+export type GenAuthAgentPhoneAdminNumbersUpdateInput = ({resourceId:string;label:string}) & GenAuthCommunicationAdminInput & { revision: number };
+export type GenAuthAgentPhoneAdminNumbersUpdateResult = {id:string;revision:number};
+export type GenAuthAgentPhoneAdminNumbersArchiveInput = ({resourceId:string;reason:string}) & GenAuthCommunicationAdminInput & { revision: number };
+export type GenAuthAgentPhoneAdminNumbersArchiveResult = {id:string;revision:number};
+export type GenAuthAgentPhoneAdminNumbersBindingsInput = ({resourceId:string}) & GenAuthCommunicationAdminInput;
+export type GenAuthAgentPhoneAdminNumbersBindingsResult = GenAuthPhoneBindings;
+export type GenAuthAgentPhoneAdminOperationsReconcileInput = ({operationId:string;providerObjectId?:string;evidenceRef?:string}) & GenAuthCommunicationAdminInput;
+export type GenAuthAgentPhoneAdminOperationsReconcileResult = GenAuthPhoneOperation;
+export type GenAuthAgentPhoneAdminPoliciesListInput = ({}) & GenAuthCommunicationAdminInput;
+export type GenAuthAgentPhoneAdminPoliciesListResult = GenAuthItems<GenAuthPhonePolicy>;
+export type GenAuthAgentPhoneAdminPoliciesCreateInput = (GenAuthPhonePolicyInput) & GenAuthCommunicationAdminInput;
+export type GenAuthAgentPhoneAdminPoliciesCreateResult = GenAuthPhonePolicy;
+export type GenAuthAgentPhoneAdminPoliciesUpdateInput = ({policyId:string} & GenAuthPhonePolicyInput) & GenAuthCommunicationAdminInput & { revision: number };
+export type GenAuthAgentPhoneAdminPoliciesUpdateResult = GenAuthPhonePolicy;
+export interface GenAuthCommunicationClient {
+agentMail: {
+personas: {
+create: (input: GenAuthAgentMailPersonasCreateInput, options?: GenAuthCommunicationRequestOptions) => Promise<QoniResponse<GenAuthAgentMailPersonasCreateResult>>;
+list: (input?: GenAuthAgentMailPersonasListInput, options?: GenAuthCommunicationRequestOptions) => Promise<QoniResponse<GenAuthAgentMailPersonasListResult>>;
+get: (input: GenAuthAgentMailPersonasGetInput, options?: GenAuthCommunicationRequestOptions) => Promise<QoniResponse<GenAuthAgentMailPersonasGetResult>>;
+update: (input: GenAuthAgentMailPersonasUpdateInput, options?: GenAuthCommunicationRequestOptions) => Promise<QoniResponse<GenAuthAgentMailPersonasUpdateResult>>;
+};
+providers: {
+list: (input?: GenAuthAgentMailProvidersListInput, options?: GenAuthCommunicationRequestOptions) => Promise<QoniResponse<GenAuthAgentMailProvidersListResult>>;
+};
+resources: {
+list: (input: GenAuthAgentMailResourcesListInput, options?: GenAuthCommunicationRequestOptions) => Promise<QoniResponse<GenAuthAgentMailResourcesListResult>>;
+registerPhone: (input: GenAuthAgentMailResourcesRegisterPhoneInput, options?: GenAuthCommunicationRequestOptions) => Promise<QoniResponse<GenAuthAgentMailResourcesRegisterPhoneResult>>;
+};
+mailboxes: {
+create: (input: GenAuthAgentMailMailboxesCreateInput, options?: GenAuthCommunicationRequestOptions) => Promise<QoniResponse<GenAuthAgentMailMailboxesCreateResult>>;
+get: (input: GenAuthAgentMailMailboxesGetInput, options?: GenAuthCommunicationRequestOptions) => Promise<QoniResponse<GenAuthAgentMailMailboxesGetResult>>;
+};
+operations: {
+get: (input: GenAuthAgentMailOperationsGetInput, options?: GenAuthCommunicationRequestOptions) => Promise<QoniResponse<GenAuthAgentMailOperationsGetResult>>;
+};
+messages: {
+list: (input: GenAuthAgentMailMessagesListInput, options?: GenAuthCommunicationRequestOptions) => Promise<QoniResponse<GenAuthAgentMailMessagesListResult>>;
+send: (input: GenAuthAgentMailMessagesSendInput, options?: GenAuthCommunicationRequestOptions) => Promise<QoniResponse<GenAuthAgentMailMessagesSendResult>>;
+get: (input: GenAuthAgentMailMessagesGetInput, options?: GenAuthCommunicationRequestOptions) => Promise<QoniResponse<GenAuthAgentMailMessagesGetResult>>;
+};
+verifications: {
+create: (input: GenAuthAgentMailVerificationsCreateInput, options?: GenAuthCommunicationRequestOptions) => Promise<QoniResponse<GenAuthAgentMailVerificationsCreateResult>>;
+get: (input: GenAuthAgentMailVerificationsGetInput, options?: GenAuthCommunicationRequestOptions) => Promise<QoniResponse<GenAuthAgentMailVerificationsGetResult>>;
+cancel: (input: GenAuthAgentMailVerificationsCancelInput, options?: GenAuthCommunicationRequestOptions) => Promise<QoniResponse<GenAuthAgentMailVerificationsCancelResult>>;
+};
+externalAccounts: {
+create: (input: GenAuthAgentMailExternalAccountsCreateInput, options?: GenAuthCommunicationRequestOptions) => Promise<QoniResponse<GenAuthAgentMailExternalAccountsCreateResult>>;
+list: (input: GenAuthAgentMailExternalAccountsListInput, options?: GenAuthCommunicationRequestOptions) => Promise<QoniResponse<GenAuthAgentMailExternalAccountsListResult>>;
+get: (input: GenAuthAgentMailExternalAccountsGetInput, options?: GenAuthCommunicationRequestOptions) => Promise<QoniResponse<GenAuthAgentMailExternalAccountsGetResult>>;
+update: (input: GenAuthAgentMailExternalAccountsUpdateInput, options?: GenAuthCommunicationRequestOptions) => Promise<QoniResponse<GenAuthAgentMailExternalAccountsUpdateResult>>;
+};
+admin: {
+providers: {
+list: (input?: GenAuthAgentMailAdminProvidersListInput, options?: GenAuthCommunicationRequestOptions) => Promise<QoniResponse<GenAuthAgentMailAdminProvidersListResult>>;
+create: (input: GenAuthAgentMailAdminProvidersCreateInput, options?: GenAuthCommunicationRequestOptions) => Promise<QoniResponse<GenAuthAgentMailAdminProvidersCreateResult>>;
+update: (input: GenAuthAgentMailAdminProvidersUpdateInput, options?: GenAuthCommunicationRequestOptions) => Promise<QoniResponse<GenAuthAgentMailAdminProvidersUpdateResult>>;
+rotateCredentials: (input: GenAuthAgentMailAdminProvidersRotateCredentialsInput, options?: GenAuthCommunicationRequestOptions) => Promise<QoniResponse<GenAuthAgentMailAdminProvidersRotateCredentialsResult>>;
+test: (input: GenAuthAgentMailAdminProvidersTestInput, options?: GenAuthCommunicationRequestOptions) => Promise<QoniResponse<GenAuthAgentMailAdminProvidersTestResult>>;
+};
+templates: {
+list: (input?: GenAuthAgentMailAdminTemplatesListInput, options?: GenAuthCommunicationRequestOptions) => Promise<QoniResponse<GenAuthAgentMailAdminTemplatesListResult>>;
+create: (input: GenAuthAgentMailAdminTemplatesCreateInput, options?: GenAuthCommunicationRequestOptions) => Promise<QoniResponse<GenAuthAgentMailAdminTemplatesCreateResult>>;
+update: (input: GenAuthAgentMailAdminTemplatesUpdateInput, options?: GenAuthCommunicationRequestOptions) => Promise<QoniResponse<GenAuthAgentMailAdminTemplatesUpdateResult>>;
+test: (input: GenAuthAgentMailAdminTemplatesTestInput, options?: GenAuthCommunicationRequestOptions) => Promise<QoniResponse<GenAuthAgentMailAdminTemplatesTestResult>>;
+};
+personas: {
+list: (input?: GenAuthAgentMailAdminPersonasListInput, options?: GenAuthCommunicationRequestOptions) => Promise<QoniResponse<GenAuthAgentMailAdminPersonasListResult>>;
+create: (input: GenAuthAgentMailAdminPersonasCreateInput, options?: GenAuthCommunicationRequestOptions) => Promise<QoniResponse<GenAuthAgentMailAdminPersonasCreateResult>>;
+get: (input: GenAuthAgentMailAdminPersonasGetInput, options?: GenAuthCommunicationRequestOptions) => Promise<QoniResponse<GenAuthAgentMailAdminPersonasGetResult>>;
+registerPhone: (input: GenAuthAgentMailAdminPersonasRegisterPhoneInput, options?: GenAuthCommunicationRequestOptions) => Promise<QoniResponse<GenAuthAgentMailAdminPersonasRegisterPhoneResult>>;
+createExternalAccount: (input: GenAuthAgentMailAdminPersonasCreateExternalAccountInput, options?: GenAuthCommunicationRequestOptions) => Promise<QoniResponse<GenAuthAgentMailAdminPersonasCreateExternalAccountResult>>;
+setStatus: (input: GenAuthAgentMailAdminPersonasSetStatusInput, options?: GenAuthCommunicationRequestOptions) => Promise<QoniResponse<GenAuthAgentMailAdminPersonasSetStatusResult>>;
+delete: (input: GenAuthAgentMailAdminPersonasDeleteInput, options?: GenAuthCommunicationRequestOptions) => Promise<QoniResponse<GenAuthAgentMailAdminPersonasDeleteResult>>;
+};
+retainedPersonas: {
+list: (input?: GenAuthAgentMailAdminRetainedPersonasListInput, options?: GenAuthCommunicationRequestOptions) => Promise<QoniResponse<GenAuthAgentMailAdminRetainedPersonasListResult>>;
+};
+deletionJobs: {
+list: (input?: GenAuthAgentMailAdminDeletionJobsListInput, options?: GenAuthCommunicationRequestOptions) => Promise<QoniResponse<GenAuthAgentMailAdminDeletionJobsListResult>>;
+};
+operations: {
+list: (input?: GenAuthAgentMailAdminOperationsListInput, options?: GenAuthCommunicationRequestOptions) => Promise<QoniResponse<GenAuthAgentMailAdminOperationsListResult>>;
+reconcile: (input: GenAuthAgentMailAdminOperationsReconcileInput, options?: GenAuthCommunicationRequestOptions) => Promise<QoniResponse<GenAuthAgentMailAdminOperationsReconcileResult>>;
+resolveSend: (input: GenAuthAgentMailAdminOperationsResolveSendInput, options?: GenAuthCommunicationRequestOptions) => Promise<QoniResponse<GenAuthAgentMailAdminOperationsResolveSendResult>>;
+};
+events: {
+list: (input?: GenAuthAgentMailAdminEventsListInput, options?: GenAuthCommunicationRequestOptions) => Promise<QoniResponse<GenAuthAgentMailAdminEventsListResult>>;
+};
+audit: {
+list: (input?: GenAuthAgentMailAdminAuditListInput, options?: GenAuthCommunicationRequestOptions) => Promise<QoniResponse<GenAuthAgentMailAdminAuditListResult>>;
+};
+administrators: {
+setPermissions: (input: GenAuthAgentMailAdminAdministratorsSetPermissionsInput, options?: GenAuthCommunicationRequestOptions) => Promise<QoniResponse<GenAuthAgentMailAdminAdministratorsSetPermissionsResult>>;
+};
+health: {
+get: (input?: GenAuthAgentMailAdminHealthGetInput, options?: GenAuthCommunicationRequestOptions) => Promise<QoniResponse<GenAuthAgentMailAdminHealthGetResult>>;
+};
+};
+};
+agentPhone: {
+numbers: {
+list: (input: GenAuthAgentPhoneNumbersListInput, options?: GenAuthCommunicationRequestOptions) => Promise<QoniResponse<GenAuthAgentPhoneNumbersListResult>>;
+get: (input: GenAuthAgentPhoneNumbersGetInput, options?: GenAuthCommunicationRequestOptions) => Promise<QoniResponse<GenAuthAgentPhoneNumbersGetResult>>;
+messages: (input: GenAuthAgentPhoneNumbersMessagesInput, options?: GenAuthCommunicationRequestOptions) => Promise<QoniResponse<GenAuthAgentPhoneNumbersMessagesResult>>;
+send: (input: GenAuthAgentPhoneNumbersSendInput, options?: GenAuthCommunicationRequestOptions) => Promise<QoniResponse<GenAuthAgentPhoneNumbersSendResult>>;
+release: (input: GenAuthAgentPhoneNumbersReleaseInput, options?: GenAuthCommunicationRequestOptions) => Promise<QoniResponse<GenAuthAgentPhoneNumbersReleaseResult>>;
+acquire: (input: GenAuthAgentPhoneNumbersAcquireInput, options?: GenAuthCommunicationRequestOptions) => Promise<QoniResponse<GenAuthAgentPhoneNumbersAcquireResult>>;
+};
+candidates: {
+list: (input: GenAuthAgentPhoneCandidatesListInput, options?: GenAuthCommunicationRequestOptions) => Promise<QoniResponse<GenAuthAgentPhoneCandidatesListResult>>;
+};
+catalog: {
+list: (input: GenAuthAgentPhoneCatalogListInput, options?: GenAuthCommunicationRequestOptions) => Promise<QoniResponse<GenAuthAgentPhoneCatalogListResult>>;
+};
+quotes: {
+create: (input: GenAuthAgentPhoneQuotesCreateInput, options?: GenAuthCommunicationRequestOptions) => Promise<QoniResponse<GenAuthAgentPhoneQuotesCreateResult>>;
+};
+activations: {
+create: (input: GenAuthAgentPhoneActivationsCreateInput, options?: GenAuthCommunicationRequestOptions) => Promise<QoniResponse<GenAuthAgentPhoneActivationsCreateResult>>;
+list: (input: GenAuthAgentPhoneActivationsListInput, options?: GenAuthCommunicationRequestOptions) => Promise<QoniResponse<GenAuthAgentPhoneActivationsListResult>>;
+get: (input: GenAuthAgentPhoneActivationsGetInput, options?: GenAuthCommunicationRequestOptions) => Promise<QoniResponse<GenAuthAgentPhoneActivationsGetResult>>;
+messages: (input: GenAuthAgentPhoneActivationsMessagesInput, options?: GenAuthCommunicationRequestOptions) => Promise<QoniResponse<GenAuthAgentPhoneActivationsMessagesResult>>;
+candidates: (input: GenAuthAgentPhoneActivationsCandidatesInput, options?: GenAuthCommunicationRequestOptions) => Promise<QoniResponse<GenAuthAgentPhoneActivationsCandidatesResult>>;
+cancel: (input: GenAuthAgentPhoneActivationsCancelInput, options?: GenAuthCommunicationRequestOptions) => Promise<QoniResponse<GenAuthAgentPhoneActivationsCancelResult>>;
+finish: (input: GenAuthAgentPhoneActivationsFinishInput, options?: GenAuthCommunicationRequestOptions) => Promise<QoniResponse<GenAuthAgentPhoneActivationsFinishResult>>;
+consume: (input: GenAuthAgentPhoneActivationsConsumeInput, options?: GenAuthCommunicationRequestOptions) => Promise<QoniResponse<GenAuthAgentPhoneActivationsConsumeResult>>;
+};
+messages: {
+content: (input: GenAuthAgentPhoneMessagesContentInput, options?: GenAuthCommunicationRequestOptions) => Promise<QoniResponse<GenAuthAgentPhoneMessagesContentResult>>;
+};
+verifications: {
+create: (input: GenAuthAgentPhoneVerificationsCreateInput, options?: GenAuthCommunicationRequestOptions) => Promise<QoniResponse<GenAuthAgentPhoneVerificationsCreateResult>>;
+list: (input: GenAuthAgentPhoneVerificationsListInput, options?: GenAuthCommunicationRequestOptions) => Promise<QoniResponse<GenAuthAgentPhoneVerificationsListResult>>;
+get: (input: GenAuthAgentPhoneVerificationsGetInput, options?: GenAuthCommunicationRequestOptions) => Promise<QoniResponse<GenAuthAgentPhoneVerificationsGetResult>>;
+candidates: (input: GenAuthAgentPhoneVerificationsCandidatesInput, options?: GenAuthCommunicationRequestOptions) => Promise<QoniResponse<GenAuthAgentPhoneVerificationsCandidatesResult>>;
+cancel: (input: GenAuthAgentPhoneVerificationsCancelInput, options?: GenAuthCommunicationRequestOptions) => Promise<QoniResponse<GenAuthAgentPhoneVerificationsCancelResult>>;
+consume: (input: GenAuthAgentPhoneVerificationsConsumeInput, options?: GenAuthCommunicationRequestOptions) => Promise<QoniResponse<GenAuthAgentPhoneVerificationsConsumeResult>>;
+};
+operations: {
+list: (input: GenAuthAgentPhoneOperationsListInput, options?: GenAuthCommunicationRequestOptions) => Promise<QoniResponse<GenAuthAgentPhoneOperationsListResult>>;
+get: (input: GenAuthAgentPhoneOperationsGetInput, options?: GenAuthCommunicationRequestOptions) => Promise<QoniResponse<GenAuthAgentPhoneOperationsGetResult>>;
+};
+admin: {
+numbers: {
+list: (input?: GenAuthAgentPhoneAdminNumbersListInput, options?: GenAuthCommunicationRequestOptions) => Promise<QoniResponse<GenAuthAgentPhoneAdminNumbersListResult>>;
+get: (input: GenAuthAgentPhoneAdminNumbersGetInput, options?: GenAuthCommunicationRequestOptions) => Promise<QoniResponse<GenAuthAgentPhoneAdminNumbersGetResult>>;
+messages: (input: GenAuthAgentPhoneAdminNumbersMessagesInput, options?: GenAuthCommunicationRequestOptions) => Promise<QoniResponse<GenAuthAgentPhoneAdminNumbersMessagesResult>>;
+send: (input: GenAuthAgentPhoneAdminNumbersSendInput, options?: GenAuthCommunicationRequestOptions) => Promise<QoniResponse<GenAuthAgentPhoneAdminNumbersSendResult>>;
+release: (input: GenAuthAgentPhoneAdminNumbersReleaseInput, options?: GenAuthCommunicationRequestOptions) => Promise<QoniResponse<GenAuthAgentPhoneAdminNumbersReleaseResult>>;
+acquire: (input: GenAuthAgentPhoneAdminNumbersAcquireInput, options?: GenAuthCommunicationRequestOptions) => Promise<QoniResponse<GenAuthAgentPhoneAdminNumbersAcquireResult>>;
+register: (input: GenAuthAgentPhoneAdminNumbersRegisterInput, options?: GenAuthCommunicationRequestOptions) => Promise<QoniResponse<GenAuthAgentPhoneAdminNumbersRegisterResult>>;
+update: (input: GenAuthAgentPhoneAdminNumbersUpdateInput, options?: GenAuthCommunicationRequestOptions) => Promise<QoniResponse<GenAuthAgentPhoneAdminNumbersUpdateResult>>;
+archive: (input: GenAuthAgentPhoneAdminNumbersArchiveInput, options?: GenAuthCommunicationRequestOptions) => Promise<QoniResponse<GenAuthAgentPhoneAdminNumbersArchiveResult>>;
+bindings: (input: GenAuthAgentPhoneAdminNumbersBindingsInput, options?: GenAuthCommunicationRequestOptions) => Promise<QoniResponse<GenAuthAgentPhoneAdminNumbersBindingsResult>>;
+};
+candidates: {
+list: (input: GenAuthAgentPhoneAdminCandidatesListInput, options?: GenAuthCommunicationRequestOptions) => Promise<QoniResponse<GenAuthAgentPhoneAdminCandidatesListResult>>;
+};
+catalog: {
+list: (input: GenAuthAgentPhoneAdminCatalogListInput, options?: GenAuthCommunicationRequestOptions) => Promise<QoniResponse<GenAuthAgentPhoneAdminCatalogListResult>>;
+};
+quotes: {
+create: (input: GenAuthAgentPhoneAdminQuotesCreateInput, options?: GenAuthCommunicationRequestOptions) => Promise<QoniResponse<GenAuthAgentPhoneAdminQuotesCreateResult>>;
+};
+activations: {
+create: (input: GenAuthAgentPhoneAdminActivationsCreateInput, options?: GenAuthCommunicationRequestOptions) => Promise<QoniResponse<GenAuthAgentPhoneAdminActivationsCreateResult>>;
+list: (input?: GenAuthAgentPhoneAdminActivationsListInput, options?: GenAuthCommunicationRequestOptions) => Promise<QoniResponse<GenAuthAgentPhoneAdminActivationsListResult>>;
+get: (input: GenAuthAgentPhoneAdminActivationsGetInput, options?: GenAuthCommunicationRequestOptions) => Promise<QoniResponse<GenAuthAgentPhoneAdminActivationsGetResult>>;
+messages: (input: GenAuthAgentPhoneAdminActivationsMessagesInput, options?: GenAuthCommunicationRequestOptions) => Promise<QoniResponse<GenAuthAgentPhoneAdminActivationsMessagesResult>>;
+candidates: (input: GenAuthAgentPhoneAdminActivationsCandidatesInput, options?: GenAuthCommunicationRequestOptions) => Promise<QoniResponse<GenAuthAgentPhoneAdminActivationsCandidatesResult>>;
+cancel: (input: GenAuthAgentPhoneAdminActivationsCancelInput, options?: GenAuthCommunicationRequestOptions) => Promise<QoniResponse<GenAuthAgentPhoneAdminActivationsCancelResult>>;
+finish: (input: GenAuthAgentPhoneAdminActivationsFinishInput, options?: GenAuthCommunicationRequestOptions) => Promise<QoniResponse<GenAuthAgentPhoneAdminActivationsFinishResult>>;
+consume: (input: GenAuthAgentPhoneAdminActivationsConsumeInput, options?: GenAuthCommunicationRequestOptions) => Promise<QoniResponse<GenAuthAgentPhoneAdminActivationsConsumeResult>>;
+};
+messages: {
+content: (input: GenAuthAgentPhoneAdminMessagesContentInput, options?: GenAuthCommunicationRequestOptions) => Promise<QoniResponse<GenAuthAgentPhoneAdminMessagesContentResult>>;
+};
+verifications: {
+create: (input: GenAuthAgentPhoneAdminVerificationsCreateInput, options?: GenAuthCommunicationRequestOptions) => Promise<QoniResponse<GenAuthAgentPhoneAdminVerificationsCreateResult>>;
+list: (input?: GenAuthAgentPhoneAdminVerificationsListInput, options?: GenAuthCommunicationRequestOptions) => Promise<QoniResponse<GenAuthAgentPhoneAdminVerificationsListResult>>;
+get: (input: GenAuthAgentPhoneAdminVerificationsGetInput, options?: GenAuthCommunicationRequestOptions) => Promise<QoniResponse<GenAuthAgentPhoneAdminVerificationsGetResult>>;
+candidates: (input: GenAuthAgentPhoneAdminVerificationsCandidatesInput, options?: GenAuthCommunicationRequestOptions) => Promise<QoniResponse<GenAuthAgentPhoneAdminVerificationsCandidatesResult>>;
+cancel: (input: GenAuthAgentPhoneAdminVerificationsCancelInput, options?: GenAuthCommunicationRequestOptions) => Promise<QoniResponse<GenAuthAgentPhoneAdminVerificationsCancelResult>>;
+consume: (input: GenAuthAgentPhoneAdminVerificationsConsumeInput, options?: GenAuthCommunicationRequestOptions) => Promise<QoniResponse<GenAuthAgentPhoneAdminVerificationsConsumeResult>>;
+};
+operations: {
+list: (input?: GenAuthAgentPhoneAdminOperationsListInput, options?: GenAuthCommunicationRequestOptions) => Promise<QoniResponse<GenAuthAgentPhoneAdminOperationsListResult>>;
+get: (input: GenAuthAgentPhoneAdminOperationsGetInput, options?: GenAuthCommunicationRequestOptions) => Promise<QoniResponse<GenAuthAgentPhoneAdminOperationsGetResult>>;
+reconcile: (input: GenAuthAgentPhoneAdminOperationsReconcileInput, options?: GenAuthCommunicationRequestOptions) => Promise<QoniResponse<GenAuthAgentPhoneAdminOperationsReconcileResult>>;
+};
+personas: {
+list: (input?: GenAuthAgentPhoneAdminPersonasListInput, options?: GenAuthCommunicationRequestOptions) => Promise<QoniResponse<GenAuthAgentPhoneAdminPersonasListResult>>;
+create: (input: GenAuthAgentPhoneAdminPersonasCreateInput, options?: GenAuthCommunicationRequestOptions) => Promise<QoniResponse<GenAuthAgentPhoneAdminPersonasCreateResult>>;
+};
+providers: {
+list: (input?: GenAuthAgentPhoneAdminProvidersListInput, options?: GenAuthCommunicationRequestOptions) => Promise<QoniResponse<GenAuthAgentPhoneAdminProvidersListResult>>;
+create: (input: GenAuthAgentPhoneAdminProvidersCreateInput, options?: GenAuthCommunicationRequestOptions) => Promise<QoniResponse<GenAuthAgentPhoneAdminProvidersCreateResult>>;
+update: (input: GenAuthAgentPhoneAdminProvidersUpdateInput, options?: GenAuthCommunicationRequestOptions) => Promise<QoniResponse<GenAuthAgentPhoneAdminProvidersUpdateResult>>;
+test: (input: GenAuthAgentPhoneAdminProvidersTestInput, options?: GenAuthCommunicationRequestOptions) => Promise<QoniResponse<GenAuthAgentPhoneAdminProvidersTestResult>>;
+};
+policies: {
+list: (input?: GenAuthAgentPhoneAdminPoliciesListInput, options?: GenAuthCommunicationRequestOptions) => Promise<QoniResponse<GenAuthAgentPhoneAdminPoliciesListResult>>;
+create: (input: GenAuthAgentPhoneAdminPoliciesCreateInput, options?: GenAuthCommunicationRequestOptions) => Promise<QoniResponse<GenAuthAgentPhoneAdminPoliciesCreateResult>>;
+update: (input: GenAuthAgentPhoneAdminPoliciesUpdateInput, options?: GenAuthCommunicationRequestOptions) => Promise<QoniResponse<GenAuthAgentPhoneAdminPoliciesUpdateResult>>;
+};
+};
+};
+}
