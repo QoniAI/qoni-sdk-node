@@ -1,33 +1,19 @@
 # Changelog
 
-## Unreleased — GenAuth communication
+## 0.9.2 - 2026-10-15
 
-- Add 111 Agent Mail/Phone runtime and administration methods with typed inputs/results.
-- Add native GenAuth credential exchange, bounded polling, idempotency and revision headers, and nested communication error codes.
-- Add bilingual SDK reference content and read-only live acceptance checks; current hosted Phone routes remain unavailable.
+### Fixes found by running the Personal Agent guide in production
 
-
-## Unreleased
-
-- Add 591 GenAuth / Authing v3 management methods across 35 namespaces, aligned with all 496 JSON management methods in the official Authing Node SDK 4.0.2 plus GenAuth extensions and compatibility names. Include typed inputs/results, domain shortcuts and the flat `genauth.management` migration entry.
-- Preserve official SDK defaults and method names; support management PUT operations and safely interpolate DELETE path identifiers. Pin the upstream contract and include its MIT notice.
-- Add `genauth.users.iterate` for streaming paginated user lists and management request cancellation.
-- Coalesce concurrent management-token exchanges, honor JWT expiry and refresh once after automatic-token auth rejection.
-- Surface HTTP-200 GenAuth business errors even with `data`, preserving numeric Authing API codes and request IDs.
-- Preserve the existing user helpers; add generated contract/catalog maintenance, isolated live management acceptance and integration documentation.
-
-## Unreleased — next version: 0.10.0
-
-These public API changes require **0.10.0**, not a 0.9.x patch. This work does
-not bump the packaged version, publish, or release it.
-
+- `doAnything.run({ model })` now sends `model`; the Web Agent create body accepts it and falls back to the platform default. Add `doAnything.api.listModels()` (`GET /do_anything/models`, `{ default_model, items: [{ value, label }] }`).
+- Signed AK/SK requests re-sign and retry, up to three attempts, when GenAuth returns `1306` (signature already consumed). Separate processes sharing an AccessKey could sign an identical request in the same millisecond; GenAuth rejects the reuse before the request runs.
+- Include the Quickstart v5 work below (`taskScopes`, `fill_form` `submit()`/`submitSensitive()`, current-task login scopes, hosted login, pre-run memory, Personal Agent provisioning) together with the GenAuth management and communication APIs from 0.9.1.
 ### Candidate integration documentation
 
 - Add explicit `taskScopes` to `doAnything.run()`, `api.createRun()` and `runWithMemory()` for the task's initial Web Agent token exchange. Defaults remain manage-only. Request `webagent.browser_use:take_control` when the task needs human control; the original delegation and current policy must allow it. The SDK-only option never enters the task body, does not expand an existing product token, and rejects invalid input before any request (including memory recall).
 
 - Document the corrected `runWithMemory` phase/submissionUnknown contract and `QoniTaskSubmissionUnknownError` (`task.submit_unknown`, non-retryable). Other run APIs retain existing error types; unknown writes must never be blindly replayed.
 
-- Clarify that this local candidate is not the npm release, despite retaining version 0.9.0. Add typed hosted-login, exact-interaction, ordinary Profile, opt-in memory and Agent provisioning examples.
+- Add typed hosted-login, exact-interaction, ordinary Profile, opt-in memory and Agent provisioning examples.
 - Correct `recallContext()` to `QoniResponse<MemoryContext>` and the ordinary Profile field boundary. `runWithMemory()` still returns `{ run, memory }`; ordinary `run()` never opts into recall.
 - Separate accepted/pending/unknown writes from success; no automatic POST replay or permission expansion after consent changes. Agent provisioning remains pending backend business validation, and open execution isolation and complete one-hour waiting remain unverified.
 
@@ -199,6 +185,23 @@ not bump the packaged version, publish, or release it.
   artifacts or captured screenshot events. File APIs are unchanged.
 - Live coverage metadata retires old monitor/snapshot success claims; current
   Track mapping is locally verified, with live acceptance pending.
+
+## 0.9.1 - 2026-10-13
+
+### GenAuth communication
+
+- Add 111 Agent Mail/Phone runtime and administration methods with typed inputs/results.
+- Add native GenAuth credential exchange, bounded polling, idempotency and revision headers, and nested communication error codes.
+- Add bilingual SDK reference content and read-only live acceptance checks; current hosted Phone routes remain unavailable.
+
+### GenAuth management
+
+- Add 591 GenAuth / Authing v3 management methods across 35 namespaces, aligned with all 496 JSON management methods in the official Authing Node SDK 4.0.2 plus GenAuth extensions and compatibility names. Include typed inputs/results, domain shortcuts and the flat `genauth.management` migration entry.
+- Preserve official SDK defaults and method names; support management PUT operations and safely interpolate DELETE path identifiers. Pin the upstream contract and include its MIT notice.
+- Add `genauth.users.iterate` for streaming paginated user lists and management request cancellation.
+- Coalesce concurrent management-token exchanges, honor JWT expiry and refresh once after automatic-token auth rejection.
+- Surface HTTP-200 GenAuth business errors even with `data`, preserving numeric Authing API codes and request IDs.
+- Preserve the existing user helpers; add generated contract/catalog maintenance, isolated live management acceptance and integration documentation.
 
 ## 0.9.0 - 2026-10-07
 

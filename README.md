@@ -44,11 +44,10 @@ pnpm add @qoniai/qoni
 yarn add @qoniai/qoni
 ```
 
-> **Unreleased candidate:** hosted login, current-task login, ordinary forms/Profile,
-> pre-run memory and Personal Agent provisioning below require the matching local
-> candidate package and backend. `npm install @qoniai/qoni` does not select this
-> candidate; its source version is 0.10.0-rc.20261010.1. Install the exact reviewed
-> tarball for validation. See the [typed examples](./docs/delivery-examples/README.md).
+> **Requires the matching backend:** hosted login, current-task login, ordinary
+> forms/Profile, pre-run memory and Personal Agent provisioning below ship in 0.9.2
+> and need the matching Qoni backend. Personal Agent provisioning is not enabled in
+> production yet. See the [typed examples](./docs/delivery-examples/README.md).
 
 > This unified local candidate combines those interfaces, the corrected memory
 > error contract, original-key receipt reads and the A1 r2 memory projection.
@@ -188,7 +187,7 @@ console.log(result.output);
 
 This public-page example requests only the product's `read` + `manage` pair. Before using the [browser-control handler below](#interactions-hitl), explicitly add `scopes: [QoniScopes.BROWSER_USE_TAKE_CONTROL]` when requesting its run token, allow that scope in the AccessKey policy, and obtain the user's consent. The site-login handler separately needs `QoniScopes.SITE_LOGIN_REQUEST` and `QoniScopes.SITE_LOGIN_CONFIRM`. Use interactive delegation for these permissions; the `products` shorthand does not request them.
 
-When creating a task that may request human control, pass `taskScopes: [QoniScopes.BROWSER_USE_TAKE_CONTROL]` to `doAnything.run()` (also supported by `api.createRun()` and `runWithMemory()`). Add specific `SITE_LOGIN_*` scopes there only when the task needs them. The SDK always includes manage; omitting `taskScopes` requests only manage. These scopes must already be allowed by the delegation and current policy. Only known concrete Web Agent scopes are accepted, not wildcards. Existing product tokens are passed through unchanged and cannot gain authority through this option. This is an unreleased 0.10.0 API; it is not available in npm 0.9.0.
+When creating a task that may request human control, pass `taskScopes: [QoniScopes.BROWSER_USE_TAKE_CONTROL]` to `doAnything.run()` (also supported by `api.createRun()` and `runWithMemory()`). Add specific `SITE_LOGIN_*` scopes there only when the task needs them. The SDK always includes manage; omitting `taskScopes` requests only manage. These scopes must already be allowed by the delegation and current policy. Only known concrete Web Agent scopes are accepted, not wildcards. Existing product tokens are passed through unchanged and cannot gain authority through this option. Available from 0.9.2.
 
 
 `run()` returns a `RunHandle` typed to the product: `qoni.deepResearch.run()` is a `RunHandle<DeepResearchEvent>`, so its events are narrowed to what Deep Research actually emits. `capture: { screenshots: true }` opts into per-step screenshots, decoded to bytes for you. `wait()` drives the run to its terminal state and settles the result (`result.raw` carries cost, step counts, token usage).
@@ -1060,7 +1059,7 @@ if (handle.interaction.type === "fill_form" && handle.can("submit")) {
 }
 ```
 
-This is task-only collection. Sensitive fields, payment cards and `profileField` writes are unavailable here; passwords use browser sign-in/take-control. Use this locally built SDK with the matching W4 backend. This addition is unreleased; the source version is 0.10.0-rc.20261010.1. Final W6 synthesis and provider acceptance are separate.
+This is task-only collection. Sensitive fields, payment cards and `profileField` writes are unavailable here; passwords use browser sign-in/take-control. It needs the matching W4 backend. Final W6 synthesis and provider acceptance are separate.
 
 **`ask_user` answers are structured.** `answer()` takes the value matching
 `payload.answerType` — `text` → string, `number` → number, `boolean` → boolean,

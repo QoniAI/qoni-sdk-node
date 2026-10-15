@@ -56,7 +56,7 @@ import { Qoni } from "@qoniai/qoni";        // ESM / TypeScript
 const { Qoni } = require("@qoniai/qoni");    // CommonJS
 ```
 
-> **未发布候选：** 下文的托管登录、current_task、普通表单/Profile、运行前记忆和个人 Agent 编排需要配套本地候选包及后端。`npm install @qoniai/qoni` 不会自动选中该候选，源码版本为 0.10.0-rc.20261010.1；验证时安装已核对的固定 tarball。见[可编译示例](./docs/delivery-examples/README.zh-CN.md)。
+> **需要配套后端：** 下文的托管登录、current_task、普通表单/Profile、运行前记忆和个人 Agent 编排从 0.9.2 起包含在 npm 包中，需要配套的 Qoni 后端；个人 Agent 编排在生产环境尚未开通。见[可编译示例](./docs/delivery-examples/README.zh-CN.md)。
 
 本候选的 Personal Agent、formal 委托、wildcard 与错误恢复边界见 [Quickstart v5 合同](./docs/quickstart-v5-contract.md)。该合同给出本分支的实际候选版本。
 > 本统一本地候选已组合这些接口、修订的记忆错误合同、原键回执读取和 A1 r2 记忆投影。仍未发布；请使用其固定归档/DTS 及配套后端合同。
@@ -178,7 +178,7 @@ console.log(result.output);
 
 此公开网页示例只申请产品的 `read` + `manage`。使用下文浏览器接管处理函数前，为该 run 申请 token 时需显式加入 `scopes: [QoniScopes.BROWSER_USE_TAKE_CONTROL]`，在 AccessKey 策略中允许该权限，并取得用户同意。站点登录处理函数另外需要 `QoniScopes.SITE_LOGIN_REQUEST` 和 `QoniScopes.SITE_LOGIN_CONFIRM`。这些权限应通过交互式委托取得；`products` 简写不包含它们。
 
-创建可能发起人类接管的任务时，给 `doAnything.run()` 传入 `taskScopes: [QoniScopes.BROWSER_USE_TAKE_CONTROL]`；`api.createRun()` 和 `runWithMemory()` 也支持此参数。任务需要站点登录权限时，再明确加入对应的 `SITE_LOGIN_*`。SDK 始终包含 manage；省略 `taskScopes` 时只申请 manage。原委托与当前权限策略必须已经允许所列 Scope。只接受 SDK 已知的具体 Web Agent Scope，不接受通配符。直接传入的产品 Token 保持原样，此参数不能给它扩权。这是尚未发布的 0.10.0 接口，npm 0.9.0 不提供。
+创建可能发起人类接管的任务时，给 `doAnything.run()` 传入 `taskScopes: [QoniScopes.BROWSER_USE_TAKE_CONTROL]`；`api.createRun()` 和 `runWithMemory()` 也支持此参数。任务需要站点登录权限时，再明确加入对应的 `SITE_LOGIN_*`。SDK 始终包含 manage；省略 `taskScopes` 时只申请 manage。原委托与当前权限策略必须已经允许所列 Scope。只接受 SDK 已知的具体 Web Agent Scope，不接受通配符。直接传入的产品 Token 保持原样，此参数不能给它扩权。0.9.2 起提供。
 
 
 `run()` 返回一个 `RunHandle`。核心事件（状态、动作、交互、完成）始终默认推送；`capture: { screenshots: true }` 开启逐步截图，并且 SDK 已经把图片解码成字节。`wait()` 把任务跑到终态，并从权威 run envelope 结算结果（成本、步数、token 用量都在 `result.raw` 上）。
@@ -943,7 +943,7 @@ if (handle.interaction.type === "fill_form" && handle.can("submit")) {
 }
 ```
 
-这里不写 Profile；敏感字段、payment_card 和 `profileField` 写入尚未接通。账号密码仍走浏览器登录/接管。这是与本批 W4 后端配套的未发布能力，源码版本为 0.10.0-rc.20261010.1；最终 W6 合成与供应商验收另行完成。
+这里不写 Profile；敏感字段、payment_card 和 `profileField` 写入尚未接通。账号密码仍走浏览器登录/接管。需要配套 W4 后端；最终 W6 合成与供应商验收另行完成。
 
 **`ask_user` 的回答是结构化的。** `answer()` 接收与 `payload.answerType` 对应的值：`text` → 字符串，`number` → 数字，`boolean` → 布尔，`single_choice` → 一个 `options[].value`，`multiple_choice` → 选项 value 数组；不匹配时在发送前就抛出 `QoniValidationError`。线上协议里这个类型仍叫 `clarification`，SDK 统一呈现为 `ask_user`（候选项是 `{ value, label }`）。
 
