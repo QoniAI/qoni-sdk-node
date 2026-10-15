@@ -180,26 +180,25 @@ export class Qoni {
       const pathname = normalizePath(input.path);
       const signaturePayload =
         input.method === "GET" ? (input.query || {}) : (input.body || {});
-      const signedHeaders = buildSignedHeaders(
-        {
-          accessKey: this.accessKey,
-          secretKey: this.secretKey,
-        },
-        input.method,
-        pathname,
-        signaturePayload,
-      );
-      return this.baseUrlFor("qoni").then((baseUrl) => this.jsonRequest<T>(baseUrl, pathname, {
+      return this.baseUrlFor("qoni").then((baseUrl) => retryReusedSignature(() => this.jsonRequest<T>(baseUrl, pathname, {
         method: input.method,
         query: input.query,
         body: input.body,
         headers: {
           ...nonSignatureHeaders(input.headers),
-          ...signedHeaders,
+          ...buildSignedHeaders(
+            {
+              accessKey: this.accessKey,
+              secretKey: this.secretKey,
+            },
+            input.method,
+            pathname,
+            signaturePayload,
+          ),
         },
         service: "qoni",
         signed: true,
-      }));
+      })));
     }
     return this.baseUrlFor("qoni").then((baseUrl) => this.jsonRequest<T>(baseUrl, input.path, {
       method: input.method,
@@ -360,23 +359,23 @@ export class Qoni {
 
   private async signedPost<T>(pathname: string, body: object, signal?: AbortSignal): Promise<QoniResponse<T>> {
     const payload = toRecord(body);
-    const headers = buildSignedHeaders(
-      {
-        accessKey: this.accessKey,
-        secretKey: this.secretKey,
-      },
-      "POST",
-      pathname,
-      payload,
-    );
-    return this.jsonRequest<T>(await this.baseUrlFor("qoni"), pathname, {
+    const baseUrl = await this.baseUrlFor("qoni");
+    return retryReusedSignature(() => this.jsonRequest<T>(baseUrl, pathname, {
       method: "POST",
       body: payload,
-      headers,
+      headers: buildSignedHeaders(
+        {
+          accessKey: this.accessKey,
+          secretKey: this.secretKey,
+        },
+        "POST",
+        pathname,
+        payload,
+      ),
       service: "qoni",
       signed: true,
       signal,
-    });
+    }), signal);
   }
 
   private async jsonRequest<T>(
@@ -636,7 +635,11 @@ export class Qoni {
     return this.runtimeConfigPromise;
   }
 
-  private async fetchRuntimeConfig(): Promise<ResolvedRuntimeConfig> {
+  private fetchRuntimeConfig(): Promise<ResolvedRuntimeConfig> {
+    return retryReusedSignature(() => this.fetchRuntimeConfigOnce());
+  }
+
+  private async fetchRuntimeConfigOnce(): Promise<ResolvedRuntimeConfig> {
     const pathname = "/api/v3/eak/runtime-config";
     const headers = buildSignedHeaders(
       {
@@ -1236,4 +1239,24 @@ function isFetchNetworkError(error: unknown): boolean {
   if (!(error instanceof TypeError)) return false;
   const message = error.message.toLowerCase();
   return message.includes("fetch failed") || message.includes("network");
+}
+
+// GenAuth rejects a reused AK/SK signature (code 1306) during authentication,
+// before the request runs, so signing again with a newer timestamp cannot repeat
+// a side effect. The in-process monotonic clock keeps one process unique, but
+// separate processes sharing an AccessKey (workers, serverless instances) can
+// still sign an identical request in the same millisecond.
+const SIGNATURE_REUSED = "1306";
+const SIGNATURE_ATTEMPTS = 3;
+
+async function retryReusedSignature<T>(send: () => Promise<T>, signal?: AbortSignal): Promise<T> {
+  for (let attempt = 1; ; attempt++) {
+    try {
+      return await send();
+    } catch (error) {
+      if (attempt >= SIGNATURE_ATTEMPTS || !(error instanceof QoniError) || error.code !== SIGNATURE_REUSED) throw error;
+      signal?.throwIfAborted();
+      await new Promise((resolve) => setTimeout(resolve, 1 + Math.floor(Math.random() * 20)));
+    }
+  }
 }

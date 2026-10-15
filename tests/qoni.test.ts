@@ -829,6 +829,52 @@ describe("Qoni", () => {
     );
   });
 
+  it("re-signs once GenAuth reports the signature was already consumed", async () => {
+    // Another process sharing the AccessKey signed the same request in the same
+    // millisecond; GenAuth rejects it during authentication, before it runs.
+    const calls: Array<Record<string, string>> = [];
+    const client = new Qoni({
+      accessKey: "ak_test",
+      secretKey: "sk_test",
+      host: "https://console.example.com",
+      fetch: (async (_url: URL | RequestInfo, init?: RequestInit) => {
+        calls.push(init?.headers as Record<string, string>);
+        if (calls.length === 1) {
+          return jsonResponse({
+            statusCode: 499,
+            apiCode: 1306,
+            message: "Signature is allready be consumed, this request is not allowed.",
+          });
+        }
+        return jsonResponse({ data: { token: "dt", grantId: "g", auditId: "a" } });
+      }) as typeof fetch,
+    });
+
+    await client.request({ method: "POST", path: "/api/v3/eak/delegations", body: { a: 1 } });
+
+    expect(calls).toHaveLength(2);
+    expect(calls[1].authorization).not.toBe(calls[0].authorization);
+    expect(Number(calls[1]["x-authing-date"])).toBeGreaterThan(Number(calls[0]["x-authing-date"]));
+  });
+
+  it("does not retry other authentication failures", async () => {
+    let count = 0;
+    const client = new Qoni({
+      accessKey: "ak_test",
+      secretKey: "sk_test",
+      host: "https://console.example.com",
+      fetch: (async () => {
+        count += 1;
+        return jsonResponse({ statusCode: 499, apiCode: 1300, message: "Invalid signature received" });
+      }) as typeof fetch,
+    });
+
+    await expect(
+      client.request({ method: "POST", path: "/api/v3/eak/delegations", body: { a: 1 } }),
+    ).rejects.toMatchObject({ code: "1300" });
+    expect(count).toBe(1);
+  });
+
   it("signs tokenless raw Qoni requests on the configured host without discovery", async () => {
     const calls: Array<{ url: string; init?: RequestInit }> = [];
     const client = new Qoni({
