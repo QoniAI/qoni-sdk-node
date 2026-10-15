@@ -15,6 +15,7 @@
 export const InteractionTypes = {
   SiteLogin: "site_login",
   Clarification: "clarification",
+  FillForm: "fill_form",
   Confirmation: "confirmation",
   TakeControl: "take_control",
   Wait: "wait",
@@ -50,6 +51,7 @@ export const INTERACTION_STATUS_VALUES: readonly InteractionStatus[] =
  */
 export const ActionKinds = {
   answer: "answer",
+  submit: "submit",
   skip: "skip",
   confirm: "confirm",
   reject: "reject",

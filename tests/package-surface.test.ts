@@ -20,6 +20,7 @@ const publicExports = [
   "QoniRateLimitError",
   "QoniUpstreamError",
   "QoniTimeoutError",
+  "QoniTaskSubmissionUnknownError",
   "buildAuthorization",
   "buildSignature",
   "buildStringToSign",

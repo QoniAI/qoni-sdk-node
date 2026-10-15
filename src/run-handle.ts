@@ -1,3 +1,4 @@
+import type { SensitiveSubmitOptions } from './sensitive-forms';
 import { QoniError, QoniTimeoutError } from "./errors";
 import {
   InteractionHandle,
@@ -114,6 +115,9 @@ export interface RunWaitOptions {
  * with the token + run addressing already bound.
  */
 export interface RunWireOps {
+  submitSensitive?(card:Interaction,values:Record<string,unknown>,options?:SensitiveSubmitOptions):Promise<void>;
+  /** Only DoAnything binds the run ID for the current_task login policy. */
+  taskLoginRunId?: string;
   getDetail(signal?: AbortSignal): Promise<JsonObject>;
   streamEvents(opts: RunEventsOptions): AsyncIterable<QoniEvent<unknown>>;
   /**
@@ -284,6 +288,8 @@ export class RunHandle<E extends RunEvent = RunEvent> {
       interaction,
       (action, body, options) => this.ops.postAction(action, body, options),
       this.#loginSessions,
+      this.ops.taskLoginRunId,
+      this.ops.submitSensitive,
     );
   }
 

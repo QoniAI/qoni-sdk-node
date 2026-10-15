@@ -1,3 +1,5 @@
+import type { SensitiveSubmitOptions } from './sensitive-forms';
+import { checkForm, type FillFormPayload } from "./forms";
 import { QoniError, QoniValidationError } from "./errors";
 import { camelizeRecord } from "./run-events";
 import {
@@ -33,6 +35,7 @@ import { isJsonObject, type JsonObject } from "./types";
  * - `take_control`: operate the browser by hand (captcha, 2FA, …).
  * - `ask_user`: answer a question, shaped by `answerType` / `options`.
  * - `confirmation`: allow or reject an action.
+ * - `fill_form`: collect ordinary fields for this task (unreleased).
  * - `wait`: the system is waiting (rate limit, external event); no decision.
  *
  * The wire may still say `clarification`; the SDK presents it as `ask_user`.
@@ -41,13 +44,14 @@ export const InteractionTypes = {
   SiteLogin: "site_login",
   TakeControl: "take_control",
   AskUser: "ask_user",
+  FillForm: "fill_form",
   Confirmation: "confirmation",
   Wait: "wait",
   /** @deprecated `clarification` is presented as `ask_user`; use `InteractionTypes.AskUser`. */
   Clarification: "ask_user",
 } as const;
 
-export type InteractionType = "site_login" | "take_control" | "ask_user" | "confirmation" | "wait";
+export type InteractionType = "site_login" | "take_control" | "ask_user" | "fill_form" | "confirmation" | "wait";
 
 /** A declared action a consumer can take on an interaction. */
 export interface Action {
@@ -132,6 +136,7 @@ export interface InteractionPayloadByType {
   site_login: SiteLoginPayload;
   take_control: TakeControlPayload;
   ask_user: AskUserPayload;
+  fill_form: FillFormPayload;
   confirmation: ConfirmationPayload;
   wait: WaitPayload;
 }
@@ -193,7 +198,8 @@ function normalizeActions(value: unknown): Action[] {
       method: asString(item.method) ?? "POST",
       endpoint: asString(item.endpoint) ?? "",
     };
-    if (isJsonObject(item.inputSchema)) action.inputSchema = item.inputSchema;
+    const schema = item.input_schema ?? item.inputSchema;
+    if (isJsonObject(schema)) action.inputSchema = schema;
     out.push(action);
   }
   return out;
@@ -280,6 +286,8 @@ function shapePayload(type: string, c: JsonObject): JsonObject {
     }
     case "ask_user":
       return { ...askUserPayload(c) };
+    case "fill_form":
+      return { title: asString(c.title) ?? "", ...(typeof c.description === "string" ? { description: c.description } : {}), fields: Array.isArray(c.fields) ? c.fields : [] };
     case "confirmation":
       return { summary: asString(c.summary) ?? "" };
     case "take_control": {
@@ -327,7 +335,7 @@ export function normalizeInteraction(payload: unknown): Interaction | null {
     status: (asString(c.status) as InteractionStatus) ?? "pending",
     createdAt: asString(c.createdAt) ?? "",
     title: asString(c.title) ?? "",
-    actions: normalizeActions(c.actions),
+    actions: normalizeActions(isJsonObject(payload) ? payload.actions : c.actions),
     payload: shapePayload(type, c),
   } as unknown as Interaction;
   const resolvedAt = asString(c.resolvedAt);
@@ -354,6 +362,8 @@ function isSettlingShell(next: Interaction): boolean {
   switch (next.type) {
     case "ask_user":
       return next.payload.question === "";
+    case "fill_form":
+      return next.payload.fields.length === 0;
     case "site_login":
       return next.payload.sites.every((site) => !site.siteId);
     case "confirmation":
@@ -390,12 +400,14 @@ export type InteractionActionPoster = (
 ) => Promise<unknown>;
 
 /**
- * Scopes the product token must carry to invoke `action`. `open_login` starts
- * an interactive login session on the profiles route, which the backend guards
- * with `webagent.site_login:request`; every other action resolves the
- * interaction inside the product run and needs the product's manage scope.
+ * Default action scopes. Legacy Profile open uses SITE_LOGIN_REQUEST; the
+ * handle overrides these for an exactly bound current_task login. 接管的连接、刷新和交还均要求
+ * 独立接管权限；其他交互仍使用所在产品的 manage 权限。
  */
 export function interactionActionScopes(action: Action, productManageScope: string): string[] {
+  if (action.kind === ActionKinds.connectControl || action.kind === ActionKinds.refreshControl || action.kind === ActionKinds.releaseControl) {
+    return [QoniScopes.BROWSER_USE_TAKE_CONTROL];
+  }
   return action.kind === ActionKinds.openLogin
     ? [QoniScopes.SITE_LOGIN_REQUEST]
     : [productManageScope];
@@ -416,7 +428,7 @@ export interface OpenLoginOptions {
 export interface OpenLoginResult {
   profileId: string;
   siteId: string;
-  /** Login browser session the user signs in through. */
+  /** Login session; in current_task mode this is the fixed control round C, not the browser ID. */
   sessionId: string;
   /** Live view URL of the login browser to show to the user. */
   liveUrl: string;
@@ -451,13 +463,20 @@ export interface OpenLoginResult {
    *   backend session; confirm the newer result instead.
    *
    * Requires `QoniScopes.SITE_LOGIN_CONFIRM`.
+   *
+   * For a declared `current_task` login, this instead performs the same one
+   * save/release/reply request as `confirmSignedIn()`, with the original L/C.
+   * Its result is `state: "saved", active: false, probeResult: "agent_pending"`:
+   * reliable persistence does not prove that the webpage is signed in.
+   * Requires SITE_LOGIN_CONFIRM + BROWSER_USE_TAKE_CONTROL + DO_ANYTHING_MANAGE;
+   * errors, including 409, remain errors and never trigger a Profile fallback.
    */
   confirm(options?: ConfirmLoginOptions): Promise<ConfirmLoginResult>;
 }
 
 /** Options for {@link OpenLoginResult.confirm}. */
 export interface ConfirmLoginOptions {
-  /** Optional human-readable label stored on the profile. */
+  /** Optional human-readable label stored by legacy Profile confirmation. */
   displayLabel?: string;
 }
 
@@ -466,9 +485,9 @@ export interface ConfirmLoginResult {
   profileId: string;
   /** True only when the profile is now `active` (the login was captured). */
   active: boolean;
-  /** Profile state after confirmation: `active`, or `pending_login` when no signed-in session was detected. */
+  /** Profile state, or `saved` for current_task persistence awaiting the agent's page verification. */
   state: string;
-  /** Outcome of the backend's signed-in probe, for example `no_session`. */
+  /** Signed-in probe outcome, or `agent_pending` when only persistence is confirmed. */
   probeResult: string;
   /** Unmodified response body (escape hatch — shape may evolve with the API). */
   raw: JsonObject;
@@ -480,15 +499,17 @@ export interface LoginSession {
   siteId: string;
   /** The backend's login session; reopening may return the same one. */
   sessionId: string;
+  /** Original task login question L and its snapshotted confirm action; sessionId is C. */
+  currentTask?: { interactionId: string; confirmAction: Action };
   /** Latest `openLogin()` call on the interaction that returned it (1, 2, …). */
   call: number;
   /** A newer backend session took over: this one can no longer be saved. */
   replaced?: boolean;
-  /** Saved and rechecked: nothing left to do for this session. */
+  /** Confirmation completed: nothing left to do for this session. */
   completed?: boolean;
   /** The save in flight or done; cleared when it fails so a retry saves again. */
   save?: Promise<ConfirmLoginResult>;
-  /** `confirmSignedIn()` in flight or done: one save and one recheck per session. */
+  /** `confirmSignedIn()` in flight or done; shared across handles. */
   done?: Promise<void>;
 }
 
@@ -597,7 +618,7 @@ function checkAnswer(payload: AskUserPayload, value: unknown): void {
       if (typeof value !== "string") fail("a string");
       return;
     case "number":
-      if (typeof value !== "number" || !Number.isFinite(value)) fail("a finite number");
+      if (typeof value !== "number" || (!Number.isFinite(value) || (Number.isInteger(value) && !Number.isSafeInteger(value)))) fail("a finite number with safe integers");
       return;
     case "boolean":
       if (typeof value !== "boolean") fail("a boolean");
@@ -636,6 +657,9 @@ export class InteractionHandle<T extends InteractionType = InteractionType> {
     interaction: Interaction<T>,
     private readonly post: InteractionActionPoster,
     private readonly loginSessions: LoginSessionStore = new Map(),
+    /** Bound by the DoAnything run, never inferred from an untrusted action URL. */
+    private readonly taskLoginRunId?: string,
+    private readonly protectedSubmit?: (card: Interaction, values: Record<string, unknown>, options?: SensitiveSubmitOptions) => Promise<void>,
   ) {
     this.interaction = interaction;
   }
@@ -671,6 +695,20 @@ export class InteractionHandle<T extends InteractionType = InteractionType> {
     }
     await this.post(action, { response: value });
   }
+  /** Submit ordinary form values under their exact field names; no Profile writes. */
+  async submit(values: Record<string, unknown>): Promise<void> {
+    const action = this.#declaredAction(ActionKinds.submit);
+    if (this.interaction.type !== "fill_form") throw new QoniValidationError("submit() requires a fill_form interaction");
+    if ((this.interaction.payload as FillFormPayload).fields.some(f=>f.name.startsWith("qoni_sensitive_"))) throw new QoniValidationError("Use submitSensitive from trusted UI for protected fields");
+    checkForm((this.interaction.payload as FillFormPayload).fields, values);
+    await this.post(action, { values });
+  }
+  /** Direct GA intake followed by original-card opaque references; trusted UI only. */
+  async submitSensitive(values: Record<string, unknown>, options?: SensitiveSubmitOptions): Promise<void> {
+    this.#declaredAction(ActionKinds.submit);
+    if(this.interaction.type!=="fill_form" || !this.protectedSubmit) throw new QoniValidationError("Protected fill_form requires a DoAnything run");
+    return this.protectedSubmit(this.interaction,values,options);
+  }
   /** Skip / dismiss the interaction (proceed without acting on it). */
   async skip(): Promise<void> {
     await this.invoke(ActionKinds.skip);
@@ -691,10 +729,14 @@ export class InteractionHandle<T extends InteractionType = InteractionType> {
    * and lets the agent continue.
    * The delegation must include `QoniScopes.SITE_LOGIN_REQUEST` and
    * `QoniScopes.SITE_LOGIN_CONFIRM`; the AccessKey policy must allow both.
+   * A declared current_task login uses the existing task browser. Opening also
+   * requires BROWSER_USE_TAKE_CONTROL; confirming also requires that scope
+   * and DO_ANYTHING_MANAGE. sessionId is its fixed control round C.
    */
   async openLogin(options: OpenLoginOptions = {}): Promise<OpenLoginResult> {
     // Undeclared action first: same contract as every other method.
-    this.#declaredAction(ActionKinds.openLogin);
+    const action = { ...this.#declaredAction(ActionKinds.openLogin) };
+    const currentTask = this.#taskLoginPolicy(action);
     const body: JsonObject = { site_id: this.#loginSiteId(options.siteId) };
     if (options.profileId !== undefined) {
       if (typeof options.profileId !== "string" || !options.profileId) {
@@ -709,12 +751,25 @@ export class InteractionHandle<T extends InteractionType = InteractionType> {
     slot.inflight += 1;
     let response: unknown;
     try {
-      response = await this.invoke(ActionKinds.openLogin, body);
+      response = await this.post(action, body, currentTask
+        ? { requiredScopes: [QoniScopes.SITE_LOGIN_REQUEST, QoniScopes.BROWSER_USE_TAKE_CONTROL] }
+        : undefined);
     } finally {
       slot.inflight -= 1;
     }
     const raw = isJsonObject(response) ? response : {};
     const fields = camelizeRecord(raw);
+    if (currentTask) {
+      if (fields.loginMode !== "current_task" || fields.interactionId !== currentTask.interactionId ||
+          typeof fields.profileId !== "string" || !fields.profileId.trim() ||
+          typeof fields.controlInteractionId !== "string" || !fields.controlInteractionId.trim() ||
+          fields.sessionId !== fields.controlInteractionId || fields.siteId !== body.site_id ||
+          typeof fields.liveUrl !== "string" || !fields.liveUrl.trim()) {
+        throw new QoniValidationError("current_task openLogin response must include a non-empty trusted profileId and bind the original question L and control round C");
+      }
+    } else if ("loginMode" in fields) {
+      throw new QoniValidationError("a Profile openLogin response must not declare a task login mode");
+    }
     const profileId = asString(fields.profileId) ?? "";
     const siteId = asString(fields.siteId) ?? String(body.site_id);
     const sessionId = asString(fields.sessionId) ?? "";
@@ -722,11 +777,12 @@ export class InteractionHandle<T extends InteractionType = InteractionType> {
     // Reopening can hand back the very same backend session: share its save.
     const reused =
       current !== undefined && sessionId !== "" && current.sessionId === sessionId &&
-      current.profileId === profileId && current.siteId === siteId;
-    const session: LoginSession = reused ? current : { profileId, siteId, sessionId, call };
+      current.profileId === profileId && current.siteId === siteId &&
+      Boolean(current.currentTask) === Boolean(currentTask);
+    const session: LoginSession = reused ? current : { profileId, siteId, sessionId, call, ...(currentTask ? { currentTask } : {}) };
     if (reused) {
       current.call = Math.max(current.call, call);
-    } else if (profileId && (current?.call ?? 0) < call) {
+    } else if ((currentTask || profileId) && (current?.call ?? 0) < call) {
       if (current) current.replaced = true;
       slot.session = session;
     } else {
@@ -739,7 +795,7 @@ export class InteractionHandle<T extends InteractionType = InteractionType> {
       liveUrl: asString(fields.liveUrl) ?? "",
       raw,
       confirm: async (confirmOptions: ConfirmLoginOptions = {}) => {
-        if (!profileId) {
+        if (!currentTask && !profileId) {
           throw new QoniValidationError("openLogin response did not include a profileId to confirm");
         }
         if (session.replaced) {
@@ -760,12 +816,21 @@ export class InteractionHandle<T extends InteractionType = InteractionType> {
    * the agent raises a new `site_login` interaction.
    *
    * Saving needs `QoniScopes.SITE_LOGIN_CONFIRM` on the delegation; without
-   * `openLogin()` on this interaction, only the recheck is sent.
+   * `openLogin()` on a legacy Profile interaction, only the recheck is sent.
+   * For current_task, a successful open is required first. One request using
+   * original L/C saves, releases and replies; no Profile confirm or second
+   * recheck is sent. Saved means persistence, pending the agent's verification.
    */
   async confirmSignedIn(): Promise<void> {
     const action = this.#declaredAction(ActionKinds.confirmSignedIn);
     const session = this.loginSessions.get(this.id)?.session;
     if (!session) {
+      const openAction = this.actions.find((a) => a.kind === ActionKinds.openLogin);
+      // Monitor/legacy confirm-only cards retain their existing recheck. A
+      // bound task policy must never substitute an empty-body confirmation.
+      if (openAction ? this.#taskLoginPolicy(openAction) : this.taskLoginRunId) {
+        throw new QoniValidationError("current_task confirmSignedIn requires a successful openLogin() on this interaction first");
+      }
       await this.post(action, undefined);
       return;
     }
@@ -802,6 +867,7 @@ export class InteractionHandle<T extends InteractionType = InteractionType> {
 
   /** `POST /profiles/{profileId}/confirm` — persist the login of `session`. */
   async #confirmLogin(session: LoginSession, options: ConfirmLoginOptions = {}): Promise<ConfirmLoginResult> {
+    if (session.currentTask) return this.#confirmTaskLogin(session);
     const confirmBody: JsonObject = { site_id: session.siteId };
     if (options.displayLabel !== undefined) confirmBody.display_label = options.displayLabel;
     // The confirm route is not a declared interaction action; it belongs to
@@ -828,6 +894,26 @@ export class InteractionHandle<T extends InteractionType = InteractionType> {
     };
   }
 
+  /** One WA request persists the login, releases C and replies to the original L. */
+  async #confirmTaskLogin(session: LoginSession): Promise<ConfirmLoginResult> {
+    const policy = session.currentTask!;
+    const response = await this.post(policy.confirmAction, { login_session_id: session.sessionId }, {
+      requiredScopes: [QoniScopes.SITE_LOGIN_CONFIRM, QoniScopes.BROWSER_USE_TAKE_CONTROL, QoniScopes.DO_ANYTHING_MANAGE],
+    });
+    const raw = isJsonObject(response) ? response : {};
+    const fields = camelizeRecord(raw);
+    if (fields.loginMode !== "current_task" || fields.saved !== true ||
+        fields.interactionId !== policy.interactionId || fields.sessionId !== session.sessionId ||
+        fields.state !== "saved" || fields.verification !== "agent_pending") {
+      throw new QoniError("current_task confirmation did not acknowledge saved original L/C; retry the same login session", {
+        code: "site_login.invalid_response", retryable: true, body: raw,
+      });
+    }
+    if (session.replaced) this.#loginReplaced();
+    session.completed = true;
+    return { profileId: session.profileId, active: false, state: "saved", probeResult: "agent_pending", raw };
+  }
+
   /** The save for `session`, started once; a failed attempt is forgotten so a retry saves again. */
   #saveOnce(session: LoginSession, options?: ConfirmLoginOptions): Promise<ConfirmLoginResult> {
     session.save ??= this.#confirmLogin(session, options).then(
@@ -837,7 +923,7 @@ export class InteractionHandle<T extends InteractionType = InteractionType> {
       },
       (err: unknown) => {
         // 409 no_pending_login is final: the backend already saved or dropped it.
-        if (!isNoPendingLogin(err)) session.save = undefined;
+        if (session.currentTask || !isNoPendingLogin(err)) session.save = undefined;
         throw err;
       },
     );
@@ -851,6 +937,10 @@ export class InteractionHandle<T extends InteractionType = InteractionType> {
    * throws a retryable error instead of telling the agent to go on.
    */
   async #saveThenRecheck(session: LoginSession, action: Action): Promise<void> {
+    if (session.currentTask) {
+      await this.#saveOnce(session);
+      return;
+    }
     let result: ConfirmLoginResult | undefined;
     try {
       result = await this.#saveOnce(session);
@@ -867,13 +957,33 @@ export class InteractionHandle<T extends InteractionType = InteractionType> {
     // The user reopened the login while this one was being saved: the newer
     // session is not saved yet, so do not tell the agent to go on.
     if (session.replaced) {
-      throw new QoniError(
-        "the login was reopened while it was being saved; call confirmSignedIn() again to save the newer login",
-        { code: "site_login.session_replaced", retryable: true },
-      );
+      this.#loginReplaced();
     }
     await this.post(action, undefined);
     session.completed = true;
+  }
+
+  #loginReplaced(): never {
+    throw new QoniError(
+      "the login was reopened while it was being saved; call confirmSignedIn() again to save the newer login",
+      { code: "site_login.session_replaced", retryable: true },
+    );
+  }
+
+  /** Only the exact bound task route or the legacy Profile route is a known policy. */
+  #taskLoginPolicy(action: Action): LoginSession["currentTask"] {
+    if (action.endpoint === "/profiles/login") return undefined;
+    const runId = this.taskLoginRunId;
+    if (!runId?.trim() || !this.id.trim() || this.type !== "site_login") {
+      throw new QoniValidationError("openLogin task action must belong to a bound DoAnything run and login interaction");
+    }
+    const base = `/do_anything/runs/${encodeURIComponent(runId)}/interactions/${encodeURIComponent(this.id)}`;
+    const confirmAction = this.#declaredAction(ActionKinds.confirmSignedIn);
+    if (action.endpoint !== `${base}/open_login` || action.method.toUpperCase() !== "POST" ||
+        confirmAction.endpoint !== `${base}/confirm_signed_in` || confirmAction.method.toUpperCase() !== "POST") {
+      throw new QoniValidationError("current_task login actions must POST to the same original run and interaction L");
+    }
+    return { interactionId: this.id, confirmAction: { ...confirmAction } };
   }
 
   #loginSlot(): LoginSessionSlot {
@@ -933,3 +1043,6 @@ export class InteractionHandle<T extends InteractionType = InteractionType> {
     return action;
   }
 }
+
+/** A handle narrowed to ordinary fill_form. */
+export type FormHandle = InteractionHandle<"fill_form">;

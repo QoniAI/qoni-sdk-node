@@ -1,0 +1,5 @@
+{
+  "name": "qoni-sdk-candidate-examples", "private": true, "type": "module",
+  "scripts": {"typecheck": "tsc -p tsconfig.json", "smoke": "npm run typecheck && node local-consumer.mjs"},
+  "devDependencies": {"typescript": "5.9.3", "@types/node": "20.19.41"}
+}

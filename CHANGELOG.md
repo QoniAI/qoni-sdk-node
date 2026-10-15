@@ -21,7 +21,145 @@
 These public API changes require **0.10.0**, not a 0.9.x patch. This work does
 not bump the packaged version, publish, or release it.
 
+### Candidate integration documentation
+
+- Add explicit `taskScopes` to `doAnything.run()`, `api.createRun()` and `runWithMemory()` for the task's initial Web Agent token exchange. Defaults remain manage-only. Request `webagent.browser_use:take_control` when the task needs human control; the original delegation and current policy must allow it. The SDK-only option never enters the task body, does not expand an existing product token, and rejects invalid input before any request (including memory recall).
+
+- Document the corrected `runWithMemory` phase/submissionUnknown contract and `QoniTaskSubmissionUnknownError` (`task.submit_unknown`, non-retryable). Other run APIs retain existing error types; unknown writes must never be blindly replayed.
+
+- Clarify that this local candidate is not the npm release, despite retaining version 0.9.0. Add typed hosted-login, exact-interaction, ordinary Profile, opt-in memory and Agent provisioning examples.
+- Correct `recallContext()` to `QoniResponse<MemoryContext>` and the ordinary Profile field boundary. `runWithMemory()` still returns `{ run, memory }`; ordinary `run()` never opts into recall.
+- Separate accepted/pending/unknown writes from success; no automatic POST replay or permission expansion after consent changes. Agent provisioning remains pending backend business validation, and open execution isolation and complete one-hour waiting remain unverified.
+
+### Pre-run memory context
+
+- Add explicit `doAnything.runWithMemory()` and typed `gumem.recallContext()`
+  using the original delegation source and existing resource exchanges. Recall
+  must succeed before Task creation; empty recall preserves the prompt, with
+  bounded quoted reference data, cancellation/deadline support and no write retry.
+- Keep actual history message IDs and optional safe stored `metadata.source_url`;
+  never forward arbitrary metadata or infer fact URLs from text. Flattened GUM
+  facts/summary explicitly report unavailable provenance until backend projection.
+- Keep ordinary `run()` defaults, package version and released history unchanged.
+
+
+### Ordinary structured forms
+
+- Add `InteractionTypes.FillForm`, narrowed `FillFormPayload`/`FormHandle`, `FormField`, `FormAddress`, `FormValues`, and `InteractionHandle.submit(values)` using the declared submit route.
+- Preserve ordinary field names and JSON values; check required fields, types, option values, NUL and finite numbers before transport. The matching W4 backend validates its current durable card again. Existing typed `answer()` and login/control lifecycle stay compatible.
+- Task-only collection: sensitive fields, payment cards and Profile writes remain unavailable. Package version and released 0.9.0 history are unchanged; final W6 synthesis/provider acceptance is separate.
+
+### Fixed
+
+- Internal task facade run/message IDs reject all C1 controls, including NEL,
+  before permission or HTTP. Message role/content reject unpaired surrogates
+  without normalizing valid strings, using a Node 18 compatible check. Whole
+  batches bind IDs on synchronous submission, including batches not yet sent;
+  provider rejection or timeout before HTTP keeps that binding, and the original
+  content can be explicitly retried. Invalid batches bind no IDs.
+
+### Added
+
+- `genauth.auth.createLoginUrl({ redirectUri, state, screen? })` and
+  `genauth.auth.exchangeLoginCode({ code, redirectUri })` send users to the
+  Qoni-hosted GenAuth sign-up/sign-in page for the AccessKey's registered
+  business app and exchange the callback code on the server. `expiresAt` is the
+  server deadline fixed at creation (600 seconds); a URL completes at most once
+  and a code is exchanged at most once, with no automatic retry. `isNewUser`
+  comes from the actual registration in that sign-in. The app keeps and checks
+  `state` itself. Inputs reject undeclared fields (client ID, secret, issuer,
+  token URL) before HTTP, and responses are validated without invented
+  defaults.
+- Internal Pi hosts can use `createTaskClient` without AK/SK to create the fixed
+  run Session and append immutable identified messages. The entry reuses GUMem
+  mappings and JSON transport, checks current permission per call, bounds provider
+  and HTTP with one timeout/abort, refuses redirects and never retries POST.
+  Stable ordered batches use an internal request ID for existing usage-outbox
+  deduplication. Runtime/type allowlists reject identity/token/header/path overrides;
+  responses and typed errors exclude private raw payloads. Resource-server run
+  isolation, G6/WA issuance, durable Pi recovery and offline acceptance remain
+  dependencies. This local task facade build is separate from the frozen current-task
+  integration archive; version and released history remain unchanged.
+
 ### Breaking
+
+- Declared DoAnything task-login actions now use the unreleased `current_task`
+  policy. `openLogin()` uses the existing task browser and requires
+  SITE_LOGIN_REQUEST + BROWSER_USE_TAKE_CONTROL; `confirmSignedIn()` requires
+  SITE_LOGIN_CONFIRM + BROWSER_USE_TAKE_CONTROL + DO_ANYTHING_MANAGE. Enable
+  these AccessKey policies and obtain user consent before the coordinated cutover
+  below. Product `manage` cannot replace login or control permission.
+  The SDK binds the original login question L and open's control round C
+  (`session_id === control_interaction_id`), then makes one declared confirm
+  POST `{login_session_id:C}` for reliable save, release and reply. It does not
+  call Profile confirm or send another recheck. `login.confirm()` shares that
+  same request. A saved result is `state: "saved", active: false,
+  probeResult: "agent_pending"`; the agent must still verify the page.
+  Missing/unknown mode or mismatched L/C fails closed. Confirmation requires a
+  successful open on this run/interaction; 409 remains a failure, including
+  `no_pending_login`, without ID replacement or reopening. Save failures and
+  uncertain/invalid responses permit an explicit retry of the original L/C;
+  only the backend's exact successful history can acknowledge a lost response.
+  Legacy `/profiles/login` and Profile confirm retain their paths, single scopes
+  and result semantics. Update application UI that treats `active: false` as
+  always signed out: current-task `saved/agent_pending` means persistence only.
+- Raw `doAnything.api.intervene()` refresh/release calls must carry this
+  control round's `interactionId` (wire alias `interaction_id`). A first
+  user-initiated take may omit it only when no marker is active; reconnecting
+  to an active round must match its ID. Save `interaction_id` from the new
+  Web Agent take/refresh response. Missing, ended, expired or mismatched IDs
+  return server HTTP 409 without side effects; never fetch a current ID and
+  retry an old action. Card methods keep their declared path ID and old
+  `ControlSession` objects are not rebound to new cards. Conflicting aliases
+  and explicit non-string/empty IDs fail SDK validation; omission still reaches
+  the server. `requestId` remains the separate input-question identifier.
+- Browser connection, refresh and release now require the independent
+  `webagent.browser_use:take_control` scope
+  (`QoniScopes.BROWSER_USE_TAKE_CONTROL`). Product `manage`, `products` bundles,
+  and legacy control scopes do not grant it. Existing AccessKeys and user
+  delegations must migrate; permissions are not automatically expanded.
+- Migration: first prepare GenAuth scope registration and Console's browser-control
+  and site-login policies; enable the required policies on the AccessKey. Then
+  explicitly request the new scope and obtain new user consent through interactive
+  delegation. Updating the allowlist or renewing an old grant must not add the
+  new permission silently. Request `webagent.site_login:request` and
+  `webagent.site_login:confirm` separately when login is needed.
+- Coordinate the Web Agent and SDK cutover in a maintenance window after finishing
+  or draining existing browser-control tasks. The old Web Agent release endpoint
+  checks product `manage`, while the new SDK requests `take_control` for release;
+  the new Web Agent rejects `manage` as a substitute. A simple sequential upgrade
+  does not guarantee uninterrupted existing sessions. Do not introduce a `manage`
+  compatibility bypass. Verify connect, refresh and release with the new consent,
+  plus rejection when the scope is missing or only legacy control scopes are present.
+  The new Console lists permissions not covered by selected policies separately,
+  including legacy, unknown and partial policy entries. It preserves them by
+  default; removal requires selecting “Remove these permissions when saving”. Inspect the saved
+  allowlist. Preserving a legacy control scope does not grant the independent scope.
+- Raw input answer/skip calls now require the current persisted input ID, waiting
+  state and declared action. Stale or undeclared actions return server 409 without
+  SDK ID replacement or retry. Use declared confirmation/sign-in actions for those
+  interactions; ordinary answer/skip must not stand in for approval or sign-in.
+- Card connect returns a pending round; OBO/API-key `surface` input cannot claim
+  an active Console connection. Releasing it does not resolve a pending login ask.
+  Console active release also leaves current_task login/credential asks unanswered;
+  both are `site_login` cards that end only through `confirmSignedIn()` after
+  reliable save, a declared explicit `skip()`, or expiry. Only legacy `secure_input`
+  asks receive a recheck reply on Console active release, which proves neither
+  sign-in nor persistence. Clarification and confirmation are never answered
+  automatically. Task-login confirmation
+  above is a separate save/release/reply operation; deployment remains pending.
+- Deployment and publication await a separate Owner instruction. The released
+  `0.9.0` history below is unchanged.
+
+### Fixed
+
+- Normalize recall metadata filter aliases into `recall_config.metadata_filters`
+  without mutating the input. Matching duplicate values merge; conflicts,
+  null/non-scalar/non-finite values and system-reserved fields throw a local
+  `QoniValidationError`. Other recall configuration keys pass through unchanged.
+  This SDK validation does not fix backend isolation or verify cross-task recall.
+
+### Track and artifact compatibility — Breaking
 
 - `track.create` requires an explicit schedule. Migrate to an integer
   `{ kind: "interval", intervalSeconds: 600..2592000 }` or an explicit
@@ -47,7 +185,7 @@ not bump the packaged version, publish, or release it.
   interactions, real file artifacts(), or captured screenshot events instead.
 - Pause/delete stop future scheduling and keep an in-flight check running.
 
-### Changed
+### Track and artifact compatibility — Changed
 
 - Track now maps supported operations to `/track/tracks`: prompt → instructions,
   explicit integer intervals of 600–2592000 seconds or daily at/tz (starts

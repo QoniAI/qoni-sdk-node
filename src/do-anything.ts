@@ -1,4 +1,8 @@
-import { QoniUnsupportedError, QoniValidationError } from "./errors";
+import { createSensitiveForms } from './sensitive-forms';
+import {createGumemNamespace,type GumemRecallContextInput} from "./gumem";
+import {validateMemoryContextInput,type MemoryContext} from "./memory-context";
+import { QoniError, QoniTaskSubmissionUnknownError, QoniTimeoutError, QoniUnsupportedError, QoniValidationError, type QoniMemoryRunPhase } from "./errors";
+import { memoryRunLifecycle } from "./memory-run-lifecycle";
 import {
   RunHandle,
   type Artifact,
@@ -8,6 +12,7 @@ import {
 } from "./run-handle";
 import type { DoAnythingEvent } from "./run-events";
 import { interactionActionScopes } from "./interactions";
+import { KNOWN_SCOPES, QoniScopes } from "./scopes";
 import {
   isJsonObject,
   type QoniEvent,
@@ -25,6 +30,13 @@ import {
  * image. The screenshot is one field (an inline reference/data), alongside the
  * metadata and extracted page state captured at that moment.
  */
+export interface OrdinaryTaskProfile {
+  values: Record<string,string|number|boolean>;
+  missing: string[];
+  writable_fields: string[];
+  field_types: Record<string,'STRING'|'NUMBER'|'BOOLEAN'>;
+}
+
 export interface DoAnythingSnapshot {
   /** When the snapshot was captured (ISO 8601). */
   capturedAt?: string;
@@ -68,6 +80,27 @@ export interface RunLimits {
   maxDurationMinutes?: number;
 }
 
+/** 原始 /intervene 参数；其余 wire 字段继续直接透传。 */
+export interface DoAnythingInterveneInput extends RuntimeTokenInput, JsonObject {
+  runId: string;
+  /**
+   * 映射为 interaction_id，固定为本次接管轮次的 ID。
+   * refresh/release 必须提供；已有活动接管的 take 也必须匹配。
+   * 仅首次主动 take 可省略。缺失或旧 ID 由服务端返回 409，SDK 不查询新 ID 重试。
+   */
+  interactionId?: string;
+  /** 原始 wire 别名；与 interactionId 同时提供时必须相同。 */
+  interaction_id?: string;
+}
+
+/** 新 WA take/refresh 的原始响应；保留 wire 命名，调用者保存本轮 ID。 */
+export interface DoAnythingControlResponse {
+  interaction_id: string;
+  standalone_control_url: string;
+  control_token_expires_at?: string;
+  status?: string;
+}
+
 export type BrowserbaseRegion =
   | "us-west-2"
   | "us-east-1"
@@ -84,6 +117,14 @@ export interface BrowserProxyOptions {
 }
 
 export interface DoAnythingRunOptions {
+  signal?: AbortSignal;
+  /** Concrete Web Agent scopes requested for this task's original authority.
+   * manage is always included; the default requests manage only. GenAuth checks
+   * current authorization. Existing product tokens cannot gain authority here. */
+  taskScopes?: readonly string[];
+  /** Stable caller key for this acceptance. Reuse only with the identical payload.
+   * Writes are never retried automatically; read api.getRequest after a lost receipt. */
+  requestId?: string;
   /** Delegation token — passed once here; the returned handle holds it. */
   token: string;
   /** Natural-language task for the agent to carry out. */
@@ -105,6 +146,16 @@ export interface DoAnythingRunOptions {
   [key: string]: unknown;
 }
 
+export interface DoAnythingRunWithMemoryOptions extends DoAnythingRunOptions {
+  memory: Omit<GumemRecallContextInput,"token"|"signal">;
+  /** Overall recall + Task-start deadline; no automatic write retry. */
+  timeoutMs?: number;
+}
+export interface DoAnythingMemoryRun {
+  run: RunHandle<DoAnythingEvent>;
+  memory: MemoryContext;
+}
+
 export interface DoAnythingAttachOptions {
   token: string;
   /**
@@ -114,6 +165,80 @@ export interface DoAnythingAttachOptions {
    */
   session?: SessionRef;
   capture?: CaptureOptions;
+}
+
+/** Original evidence only. This projection never authorizes an action. */
+export interface DoAnythingTrace {
+  run_id: string;
+  session_id: string;
+  project_id: string;
+  owner_user_id: string;
+  run_state: "pending" | "running" | "waiting" | "done" | "failed" | "canceled" | "expired" | "unknown";
+  cancel_requested: boolean;
+  created_at: string | null;
+  ended_at: string | null;
+  run_result: "available" | "pending" | "unavailable";
+  /** Known requires original approval, bound operation result and original finish ACK. */
+  external_result: "unknown" | "pending" | "known";
+  /** False only when every tracked original operation has a definitive bound result and finish ACK. */
+  reconciliation_required: boolean;
+  authorization: {
+    state: "recorded" | "missing" | "unavailable";
+    business_app_id: string | null;
+    agent_id: string | null;
+    grant_id: string | null;
+    consent_id: string | null;
+    consent_epoch: string | null;
+    basis: string | null;
+  };
+  confirmations: Array<{
+    interaction_id: string;
+    state: string;
+    deadline: string | null;
+    /** Bare events retain null; only validated server reply/resource binding supplies these. */
+    action_digest: string | null;
+    operation_id: string | null;
+    evidence_kind: "confirmation_card";
+    /** Omitted without a trusted, validated reply; a trace never grants approval. */
+    approval?: {
+      action_id: string;
+      action_type: string;
+      state: "approved" | "rejected" | "claimed" | "unknown" | "succeeded" | "failed" |
+        "not_dispatched" | "withdrawn" | "expired" | "canceled";
+      approved_by: { user_id: string; business_app_id: string };
+      /** Original fixed epoch milliseconds. */
+      expires_at: number;
+      claimed_at: number | null;
+      evidence_kind: "server_reply";
+    };
+  }>;
+  confirmations_truncated: boolean;
+  /** Read-only safe original associations; never mail content or execution authority. */
+  operations: Array<{
+    action_id: string;
+    interaction_id: string;
+    action_type: string;
+    intent_digest: string;
+    /** Original fixed epoch milliseconds. */
+    expires_at: number;
+    operation_id: string | null;
+    state: "pending" | "succeeded" | "failed" | "unknown" | "unavailable";
+    resource_state: "accepted" | "pending" | "running" | "succeeded" | "completed" | "failed" | "unknown" | null;
+    publication_stop: "finished" | "unknown" | "not_recorded";
+    stopped: boolean | null;
+    no_effect: boolean | null;
+    evidence_kind: "resource_operation" | "approval_only";
+    association_state: "recorded" | "unavailable";
+    /** Server projects only present, verified original fields; missing/empty binding is null. */
+    resource_binding: {
+      owner_user_id?: string | null;
+      business_app_id?: string | null;
+      agent_id?: string | null;
+      persona_id?: string | null;
+      resource_id?: string | null;
+    } | null;
+  }>;
+  operations_state: "unavailable" | "available" | "partial";
 }
 
 // Options the wire create body has no field for — either platform-decided
@@ -173,6 +298,7 @@ function validateBrowserProxyOptions(value: unknown): void {
 }
 
 export function createDoAnythingNamespace(transport: QoniTransport) {
+  const forms=createSensitiveForms(transport);
   /**
    * Wire-level escape hatch — 1:1 with the backend HTTP contract
    * (snake_case fields). Run-scoped methods use the single-ID route family
@@ -193,10 +319,23 @@ export function createDoAnythingNamespace(transport: QoniTransport) {
      * run is a follow-up in that session (409 while the prior run is
      * non-terminal).
      */
-    createRun: <T = unknown>(input: RuntimeTokenInput & JsonObject): Promise<QoniResponse<T>> =>
+    createRun: async <T = unknown>(input: RuntimeTokenInput & JsonObject & {signal?:AbortSignal; taskScopes?:readonly string[]}): Promise<QoniResponse<T>> =>
       transport.webAgentJson("POST", "/do_anything/runs", input.token, {
-        body: normalizeDoAnythingRunInput(omit(input, "token")),
-        requiredScopes: ["webagent.do_anything:manage"],
+        body: normalizeDoAnythingRunInput(omit(input, "token", "signal", "taskScopes")),
+        signal: input.signal,
+        requiredScopes: taskCreationScopes(input),
+      }),
+
+    /** A missing receipt is not evidence that submission never reached the server. */
+    getRequest: <T = unknown>(input: RuntimeTokenInput & {requestId: string; sessionId?: string; signal?: AbortSignal}): Promise<QoniResponse<T>> =>
+      transport.webAgentJson("GET", `/do_anything/requests/${encodeURIComponent(input.requestId)}`, input.token, {
+        query: input.sessionId === undefined ? undefined : {session_id: input.sessionId},
+        signal: input.signal, requiredScopes: ["webagent.do_anything:read"],
+      }),
+
+    getTrace: (input: RuntimeTokenInput & {runId: string; signal?: AbortSignal}): Promise<QoniResponse<DoAnythingTrace>> =>
+      transport.webAgentJson("GET", `/do_anything/runs/${encodeURIComponent(input.runId)}/trace`, input.token, {
+        signal: input.signal, requiredScopes: ["webagent.do_anything:read"],
       }),
 
     getRun: <T = unknown>(
@@ -250,8 +389,8 @@ export function createDoAnythingNamespace(transport: QoniTransport) {
       }
     },
 
-    intervene: <T = unknown>(
-      input: RuntimeTokenInput & { runId: string } & JsonObject,
+    intervene: async <T = unknown>(
+      input: DoAnythingInterveneInput,
     ): Promise<QoniResponse<T>> =>
       transport.webAgentJson(
         "POST",
@@ -259,7 +398,11 @@ export function createDoAnythingNamespace(transport: QoniTransport) {
         input.token,
         {
           body: normalizeDoAnythingInterveneInput(omit(input, "token", "runId")),
-          requiredScopes: ["webagent.do_anything:manage"],
+          requiredScopes: [
+            input.kind === "take_control" || input.kind === "refresh_control_url" || input.kind === "release_control"
+              ? QoniScopes.BROWSER_USE_TAKE_CONTROL
+              : QoniScopes.DO_ANYTHING_MANAGE,
+          ],
         },
       ),
 
@@ -354,6 +497,11 @@ export function createDoAnythingNamespace(transport: QoniTransport) {
     capture: CaptureOptions | undefined,
   ): RunWireOps {
     return {
+      taskLoginRunId: runId,
+      submitSensitive: (interaction, values, options) => {
+        if(!token) throw new QoniValidationError("Original user token required for protected input");
+        return forms.submit({token,runId,interaction,values,...options});
+      },
       listArtifacts: (signal) => artifacts({ token, runId, signal }),
       getDetail: async (signal) => asRecord((await api.getRun<unknown>({ token, runId, signal })).data),
       streamEvents: (opts) =>
@@ -391,10 +539,37 @@ export function createDoAnythingNamespace(transport: QoniTransport) {
     };
   }
 
-  return {
+  const namespace = {
+    /** The immutable formal Agent's own bound mailbox; server checks original Task authority. */
+    mail: {
+      list: (input: {runId:string;token:string;after?:number;limit?:number}) =>
+        transport.webAgentJson<TaskMailList>('POST',`/do_anything/runs/${encodeURIComponent(input.runId)}/mail/read`,input.token,
+          {body:{mail_action:'list',...(input.after!==undefined?{after_ms:input.after}:{}),...(input.limit!==undefined?{limit:input.limit}:{})},requiredScopes:[QoniScopes.DO_ANYTHING_READ]}),
+      message: (input: {runId:string;token:string;messageId:string}) =>
+        transport.webAgentJson<TaskMailMessage>('POST',`/do_anything/runs/${encodeURIComponent(input.runId)}/mail/read`,input.token,
+          {body:{mail_action:'message',message_id:input.messageId},requiredScopes:[QoniScopes.DO_ANYTHING_READ]}),
+      codes: (input: {runId:string;token:string;messageId:string;after:number;fromAddress:string;pattern:string;subjectContains?:string}) =>
+        transport.webAgentJson<TaskMailCode>('POST',`/do_anything/runs/${encodeURIComponent(input.runId)}/mail/read`,input.token,
+          {body:{mail_action:'codes',message_id:input.messageId,after_ms:input.after,from_address:input.fromAddress,code_pattern:input.pattern,...(input.subjectContains!==undefined?{subject_contains:input.subjectContains}:{})},requiredScopes:[QoniScopes.DO_ANYTHING_READ]}),
+      /** Prepare the exact encrypted message and its original-person approval card. This returns pending approval, not send completion; never retries. */
+      send: (input: {runId:string;token:string;to:string;subject:string;text:string}) =>
+        transport.webAgentJson<TaskMailSend>('POST',`/do_anything/runs/${encodeURIComponent(input.runId)}/mail/send`,input.token,
+          {body:{to:input.to,subject:input.subject,text:input.text},requiredScopes:[QoniScopes.DO_ANYTHING_MANAGE]}),
+    },
+    forms,
+    /** Ordinary profile of this Task's original person. Current caller cannot replace its source. */
+    profile: {
+      read: (input: {runId: string; token: string; fields: string[]}) =>
+        transport.webAgentJson<OrdinaryTaskProfile>('POST', `/do_anything/runs/${encodeURIComponent(input.runId)}/profile/read`,
+          input.token, {body:{fields: input.fields},requiredScopes:[QoniScopes.DO_ANYTHING_READ]}),
+      update: (input: {runId: string; token: string; values: Record<string, string | number | boolean>}) =>
+        transport.webAgentJson<OrdinaryTaskProfile>('POST', `/do_anything/runs/${encodeURIComponent(input.runId)}/profile/update`,
+          input.token, {body:{values: input.values},requiredScopes:[QoniScopes.DO_ANYTHING_MANAGE]}),
+    },
     /** Start a run. Returns a handle — see `RunHandle` for the run lifecycle. */
     run: async (input: DoAnythingRunOptions): Promise<RunHandle<DoAnythingEvent>> => {
-      const { token, prompt, capture, limits, session, ...rest } = input;
+      const { token, prompt, capture, limits, session, signal, ...rest } = input;
+      signal?.throwIfAborted();
       if (!prompt || typeof prompt !== "string") {
         throw new QoniValidationError("doAnything.run requires a prompt string");
       }
@@ -416,6 +591,7 @@ export function createDoAnythingNamespace(transport: QoniTransport) {
 
       const created = await api.createRun<{ run_id?: string; id?: string; session_id?: string }>({
         token,
+        signal,
         instructions: prompt,
         ...rest,
         ...(session?.sessionId ? { sessionId: session.sessionId } : {}),
@@ -461,12 +637,109 @@ export function createDoAnythingNamespace(transport: QoniTransport) {
     artifacts,
     api,
   };
+  return {...namespace,
+    runWithMemory: async (input:DoAnythingRunWithMemoryOptions):Promise<DoAnythingMemoryRun> => {
+      let phase: QoniMemoryRunPhase = "recall";
+      let dispatched = false;
+      let rejected = false;
+      const {memory,signal,timeoutMs=30_000,...runInput}=input;
+      const ctl = new AbortController();
+      const cancel = () => ctl.abort(signal?.reason);
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      try {
+        if (!memory || Object.hasOwn(memory,"token") || Object.hasOwn(memory,"signal"))
+          throw new QoniValidationError("Memory uses the original run delegation source");
+        validateMemoryContextInput(memory);
+        if (typeof runInput.prompt!=="string" || !runInput.prompt || typeof runInput.token!=="string" || !runInput.token ||
+            runInput.prompt.includes(runInput.token) || !Number.isSafeInteger(timeoutMs) || timeoutMs<1 || timeoutMs>60_000)
+          throw new QoniValidationError("Memory run requires a prompt, original token and 1..60000ms timeout");
+        if (PLATFORM_DECIDED_RUN_OPTIONS.some(key=>runInput[key]!==undefined))
+          throw new QoniValidationError("Memory run contains platform-decided options");
+        validateBrowserProxyOptions(runInput.browserProxy);
+        taskCreationScopes(runInput);
+        signal?.throwIfAborted();
+        signal?.addEventListener("abort",cancel,{once:true});
+        timer=setTimeout(()=>ctl.abort(new QoniTimeoutError("Memory run deadline exceeded",{retryable:false})),timeoutMs);
+        const recalled=await createGumemNamespace(transport).recallContext({...memory,token:runInput.token,signal:ctl.signal});
+        ctl.signal.throwIfAborted();
+        const prompt=recalled.data.referenceText ? runInput.prompt+"\n\n"+recalled.data.referenceText : runInput.prompt;
+        phase = "task_permission";
+        // Reuse run's validation, wire body and handle. Only this call's Task POST
+        // carries the private observer; later handle operations and ordinary run do not.
+        const scopedTransport: QoniTransport = {
+          ...transport,
+          webAgentJson: (method, path, token, payload) => transport.webAgentJson(method, path, token,
+            method === "POST" && path === "/do_anything/runs" ? {
+              ...payload,
+              [memoryRunLifecycle]: {
+                onDispatch: () => { dispatched = true; phase = "task_submit"; },
+                onRejected: (httpStatus) => {
+                  // An HTTP 5xx may follow an upstream commit. Only 4xx or a
+                  // parsed rejection envelope over successful HTTP is definitive.
+                  rejected = (httpStatus >= 400 && httpStatus < 500) ||
+                    (httpStatus >= 200 && httpStatus < 300);
+                },
+              },
+            } : payload),
+        };
+        const run=await createDoAnythingNamespace(scopedTransport).run({...runInput,prompt,signal:ctl.signal} as DoAnythingRunOptions);
+        return {run,memory:recalled.data};
+      } catch (error) {
+        if (dispatched && !rejected) throw new QoniTaskSubmissionUnknownError();
+        // An AbortSignal reason may be an arbitrary caller object, including secrets.
+        const failure = signal?.aborted && !rejected
+          ? new QoniError("Memory run aborted", {code:"request.aborted",retryable:false})
+          : error instanceof QoniError ? error
+          : new QoniError("Memory run failed", {retryable:false});
+        if (failure.status === undefined) {
+          delete (failure as Error & {cause?: unknown}).cause;
+        }
+        Object.assign(failure, {phase, submissionUnknown:false});
+        throw failure;
+      } finally {
+        clearTimeout(timer);
+        signal?.removeEventListener("abort",cancel);
+      }
+    },
+  };
+}
+
+// Additional task authority must be explicit and re-enter the normal exchange.
+function taskCreationScopes(input: JsonObject): string[] {
+  if (Object.hasOwn(input, "task_scopes")) {
+    throw new QoniValidationError("Use taskScopes, not task_scopes; task authority is requested through token exchange");
+  }
+  const value = input.taskScopes;
+  const scopes = new Set<string>([QoniScopes.DO_ANYTHING_MANAGE]);
+  if (value === undefined) return [...scopes];
+  if (!Array.isArray(value) || value.length > 128) {
+    throw new QoniValidationError("taskScopes must be an array of concrete Web Agent scopes (at most 128)");
+  }
+  for (let i = 0; i < value.length; i++) {
+    const scope: unknown = value[i];
+    if (!Object.hasOwn(value, i) || typeof scope !== "string" || scope.length > 256 ||
+        !scope.startsWith("webagent.") || !KNOWN_SCOPES.includes(scope)) {
+      throw new QoniValidationError("taskScopes accepts known concrete webagent.* scopes; wildcards and other products are not supported");
+    }
+    scopes.add(scope);
+  }
+  if (scopes.size > 128) throw new QoniValidationError("taskScopes including manage must contain at most 128 scopes");
+  return [...scopes].sort();
 }
 
 // camelCase conveniences → the snake_case fields of the wire create body
 // (CreateDoAnythingRunRequest). Keys already in wire shape pass through.
 function normalizeDoAnythingRunInput(input: JsonObject): JsonObject {
+  for (const key of ["requestId", "request_id"] as const) {
+    if (input[key] !== undefined && (typeof input[key] !== "string" || !/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(input[key] as string))) {
+      throw new QoniValidationError(`${key} must be a stable 1-128 character identifier`);
+    }
+  }
+  if (input.requestId !== undefined && input.request_id !== undefined && input.requestId !== input.request_id) {
+    throw new QoniValidationError("requestId and request_id must match");
+  }
   const body = renameKeys(input, {
+    requestId: "request_id",
     sessionId: "session_id",
     profileId: "profile_id",
     keepAlive: "keep_alive",
@@ -482,7 +755,17 @@ function normalizeDoAnythingRunInput(input: JsonObject): JsonObject {
 }
 
 function normalizeDoAnythingInterveneInput(input: JsonObject): JsonObject {
-  const body = renameKeys(input, { requestId: "input_request_id" });
+  for (const alias of ["interactionId", "interaction_id"] as const) {
+    const value = input[alias];
+    if (value !== undefined && (typeof value !== "string" || value.length === 0)) {
+      throw new QoniValidationError(`${alias} 必须是非空字符串`);
+    }
+  }
+  if (input.interactionId !== undefined && input.interaction_id !== undefined &&
+    input.interactionId !== input.interaction_id) {
+    throw new QoniValidationError("interactionId 与 interaction_id 必须相同，不能覆盖接管轮次 ID");
+  }
+  const body = renameKeys(input, { requestId: "input_request_id", interactionId: "interaction_id" });
   if (body.input_request_id !== undefined && body.kind === undefined) {
     body.kind = body.response === undefined ? "skip_input_request" : "answer_input_request";
   }
@@ -519,3 +802,9 @@ function renameKeys(value: JsonObject, mapping: Record<string, string>): JsonObj
   }
   return out;
 }
+
+export interface TaskMailBase {agentId:string;mailbox:{mailboxId:string;address:string};}
+export interface TaskMailList extends TaskMailBase {items:Array<{messageId:string;subject:string|null;contentStatus:string;[key:string]:unknown}>;}
+export interface TaskMailMessage extends TaskMailBase {message:{messageId:string;subject:string|null;text:string|null;[key:string]:unknown};}
+export interface TaskMailCode extends TaskMailBase {messageId:string;state:'matched'|'ambiguous'|'unavailable';code?:string;}
+export interface TaskMailSend {action_id:string;interaction_id:string;intent_digest:string;expires_at:number;state:"pending_approval"|"approved"|"claimed"|"succeeded"|"unknown"|"failed"|"not_dispatched"|"expired"|"canceled"|"superseded"|"withdrawn";outcome?:Record<string,unknown>;draftRef:string;intent:Record<string,unknown>;}

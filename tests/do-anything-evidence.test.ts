@@ -1,8 +1,12 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { createServer } from "node:http";
 import { afterEach, describe, expect, it } from "vitest";
 import type { QoniEvent, RunEvent, RunResult, RunStatus } from "../src";
+import { Qoni, QoniValidationError } from "../src";
+import type { DoAnythingControlResponse } from "../src";
+import { normalizeInteraction } from "../src/interactions";
 import {
   assertCompleteDoAnythingEvidence,
   createDoAnythingEvidenceRecorder,
@@ -336,3 +340,156 @@ function result(): RunResult {
     },
   };
 }
+
+describe("W1 原始 intervene 的本轮接管 ID", () => {
+  const encode = (value: unknown) => Buffer.from(JSON.stringify(value)).toString("base64url");
+  const token = encode({ alg: "none" }) + "." + encode({ aud: "webagent", webagent_tenant_id: "tenant_w1" }) + ".";
+  const runId = "run_w1";
+  const kinds = ["take_control", "refresh_control_url", "release_control"];
+  function clientWithResponse(status = 200) {
+    const calls: { method: string; pathname: string; body: unknown }[] = [];
+    const client = new Qoni({ accessKey: "local-ak", secretKey: "local-sk", host: "https://qoni.example",
+      webAgentBaseUrl: "https://wa.example", fetch: (async (url, init) => {
+        calls.push({ method: init?.method || "GET", pathname: new URL(String(url)).pathname, body: JSON.parse(String(init?.body)) });
+        return new Response(JSON.stringify(status === 409
+          ? { detail: { code: "interaction_conflict", message: "接管轮次已失效" } }
+          : { interaction_id: "tc-old", standalone_control_url: "https://browser.example/old" }),
+        { status, headers: { "content-type": "application/json" } });
+      }) as typeof fetch });
+    return { client, calls };
+  }
+
+  describe.each(kinds)("%s 的参数映射", (kind) => {
+    it.each(["interactionId", "interaction_id"])("%s 精确映射且不改变输入或响应 ID", async (alias) => {
+      const { client, calls } = clientWithResponse();
+      const input = Object.freeze({ token, runId, kind, [alias]: "tc-old" });
+      const before = structuredClone(input);
+      const response = await client.doAnything.api.intervene<DoAnythingControlResponse>(input);
+      expect(calls).toEqual([{ method: "POST", pathname: "/api/v1/projects/tenant_w1/do_anything/runs/run_w1/intervene",
+        body: { kind, interaction_id: "tc-old" } }]);
+      expect(response.data.interaction_id).toBe("tc-old");
+      expect(input).toEqual(before);
+    });
+  });
+
+  it("首次主动 take 不带 ID 时不生成或查询一个 ID", async () => {
+    const { client, calls } = clientWithResponse();
+    const response = await client.doAnything.api.intervene<DoAnythingControlResponse>({ token, runId, kind: "take_control" });
+    expect(calls).toHaveLength(1);
+    expect(calls[0].body).toEqual({ kind: "take_control" });
+    expect(response.data.interaction_id).toBe("tc-old");
+  });
+
+  it("双别名同值只发送一个 wire ID", async () => {
+    const { client, calls } = clientWithResponse();
+    await client.doAnything.api.intervene({ token, runId, kind: "release_control", interactionId: "tc-old", interaction_id: "tc-old" });
+    expect(calls[0].body).toEqual({ kind: "release_control", interaction_id: "tc-old" });
+  });
+
+  it.each([
+    { interactionId: "tc-old", interaction_id: "tc-new" },
+    { interaction_id: "tc-new", interactionId: "tc-old" },
+  ])("冲突 ID 别名在 HTTP 前拒绝，不能选择新轮次", async (ids) => {
+    const { client, calls } = clientWithResponse();
+    await expect(Promise.resolve().then(() => client.doAnything.api.intervene({ token, runId, kind: "release_control", ...ids })))
+      .rejects.toBeInstanceOf(QoniValidationError);
+    expect(calls).toHaveLength(0);
+  });
+
+  describe.each(["interactionId", "interaction_id"])("%s 的输入边界", (alias) => {
+    it.each([null, 42, ""])("拒绝显式无效 ID %j", async (value) => {
+      const { client, calls } = clientWithResponse();
+      await expect(Promise.resolve().then(() => client.doAnything.api.intervene({ token, runId, kind: "release_control", [alias]: value })))
+        .rejects.toBeInstanceOf(QoniValidationError);
+      expect(calls).toHaveLength(0);
+    });
+  });
+
+  describe.each(kinds)("%s 的 409 行为", (kind) => {
+    it.each([undefined, "tc-old"])("缺失或旧 ID %s 仍由服务端拒绝，不读取当前 ID 自动重试", async (id) => {
+      const { client, calls } = clientWithResponse(409);
+      await expect(client.doAnything.api.intervene({ token, runId, kind, ...(id === undefined ? {} : { interaction_id: id }) }))
+        .rejects.toMatchObject({ code: "interaction_conflict", status: 409, retryable: false });
+      expect(calls).toHaveLength(1);
+      expect(calls[0]).toMatchObject({ method: "POST", body: { kind, ...(id === undefined ? {} : { interaction_id: id }) } });
+    });
+  });
+
+  it("旧 ControlSession 和卡片 handle 不升级到新卡 ID，409 后没有补读或重试", async () => {
+    const calls: { method: string; pathname: string }[] = [];
+    let currentId = "tc-old";
+    const client = new Qoni({ accessKey: "local-ak", secretKey: "local-sk", host: "https://qoni.example",
+      webAgentBaseUrl: "https://wa.example", fetch: (async (url, init) => {
+        const pathname = new URL(String(url)).pathname;
+        calls.push({ method: init?.method || "GET", pathname });
+        const stale = pathname.includes("/interactions/tc-old/") && currentId !== "tc-old";
+        return new Response(JSON.stringify(stale ? { detail: { code: "interaction_conflict" } }
+          : pathname.endsWith("/connect_control")
+            ? { interaction_id: "tc-old", standalone_control_url: "https://browser.example/old" }
+            : { run_id: runId, status: "running" }),
+        { status: stale ? 409 : 200, headers: { "content-type": "application/json" } });
+      }) as typeof fetch });
+    const run = await client.doAnything.attach(runId, { token });
+    const handle = run.interactionHandle(normalizeInteraction({ id: "tc-old", type: "take_control", status: "pending",
+      created_at: "2026-10-07T08:00:00Z", live_url: "https://browser.example/old",
+      actions: ["connect_control", "refresh_control", "release_control"].map((kind) => ({
+        kind, label: kind, method: "POST", endpoint: "/do_anything/runs/run_w1/interactions/tc-old/" + kind,
+      })) })!);
+    const control = await handle.connectControl();
+    currentId = "tc-new";
+    const before = calls.length;
+    await expect(handle.refreshControl()).rejects.toMatchObject({ code: "interaction_conflict", status: 409, retryable: false });
+    await expect(handle.releaseControl()).rejects.toMatchObject({ code: "interaction_conflict", status: 409, retryable: false });
+    expect(calls.slice(before)).toEqual([
+      { method: "POST", pathname: "/api/v1/projects/tenant_w1/do_anything/runs/run_w1/interactions/tc-old/refresh_control" },
+      { method: "POST", pathname: "/api/v1/projects/tenant_w1/do_anything/runs/run_w1/interactions/tc-old/release_control" },
+    ]);
+    expect(control.raw.interaction_id).toBe("tc-old");
+    expect(control.liveUrl).toBe("https://browser.example/old");
+    expect(handle.interaction.id).toBe("tc-old");
+  });
+
+  it("默认 fetch 通过真实本地 HTTP 捕获首次响应 ID，后续动作保持本轮 ID", async () => {
+    let marker: string | undefined;
+    let round = 0;
+    const requests: { method?: string; body: Record<string, unknown> }[] = [];
+    const server = createServer(async (request, response) => {
+      let text = "";
+      for await (const chunk of request) text += chunk;
+      const body = JSON.parse(text) as Record<string, unknown>;
+      requests.push({ method: request.method, body });
+      const stale = marker ? body.interaction_id !== marker : body.kind !== "take_control";
+      response.writeHead(stale ? 409 : 200, { "content-type": "application/json" });
+      if (stale) return response.end(JSON.stringify({ detail: { code: "interaction_conflict", message: "旧接管 ID" } }));
+      if (!marker) marker = "tc-" + ++round;
+      const id = marker;
+      if (body.kind === "release_control") marker = undefined;
+      response.end(JSON.stringify({ interaction_id: id, standalone_control_url: "https://browser.example/" + id }));
+    });
+    await new Promise<void>((resolve, reject) => { server.once("error", reject); server.listen(0, "127.0.0.1", resolve); });
+    try {
+      const address = server.address();
+      if (!address || typeof address === "string") throw new Error("本地 HTTP server 未获得 TCP 地址");
+      const baseUrl = "http://127.0.0.1:" + address.port;
+      const client = new Qoni({ accessKey: "local-ak", secretKey: "local-sk", host: baseUrl, webAgentBaseUrl: baseUrl, timeoutMs: 2000 });
+      const first = await client.doAnything.api.intervene<DoAnythingControlResponse>({ token, runId, kind: "take_control" });
+      const interactionId = first.data.interaction_id;
+      expect(interactionId).toBe("tc-1");
+      for (const kind of kinds) await client.doAnything.api.intervene({ token, runId, kind, interactionId });
+      const next = await client.doAnything.api.intervene<DoAnythingControlResponse>({ token, runId, kind: "take_control" });
+      expect(next.data.interaction_id).toBe("tc-2");
+      for (const kind of kinds) {
+        const before = requests.length;
+        await expect(client.doAnything.api.intervene({ token, runId, kind, interactionId }))
+          .rejects.toMatchObject({ code: "interaction_conflict", status: 409, retryable: false });
+        expect(requests).toHaveLength(before + 1);
+        expect(requests.at(-1)).toEqual({ method: "POST", body: { kind, interaction_id: "tc-1" } });
+      }
+      expect(first.data.interaction_id).toBe("tc-1");
+      expect(marker).toBe("tc-2");
+    } finally {
+      server.closeAllConnections();
+      await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+    }
+  });
+});

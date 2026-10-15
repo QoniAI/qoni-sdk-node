@@ -2,7 +2,8 @@ import { describe, expect, it } from "vitest";
 import { Qoni, MonitorHandle, RunHandle } from "../src";
 
 // Anti-drift guard for the frozen public contract
-// (wa/docs/qoni-sdk-public-surface.md §2-§9). The sets below are asserted with
+// (wa/docs/qoni-sdk-public-surface.md §2-§9), plus the approved ordinary-profile
+// extension in docs/ordinary-task-profile.md. The sets below are asserted with
 // EXACT equality on purpose: removing a contract method fails, and so does
 // adding one that the contract doesn't define. If this test is red, either
 // the change is a contract violation, or the contract document was amended
@@ -25,9 +26,9 @@ function prototypeMethods(ctor: { prototype: object }): string[] {
 }
 
 describe("frozen contract surface", () => {
-  it("run products expose lifecycle operations and Do Anything file listing", () => {
+  it("run products expose lifecycle operations and Do Anything file listing/profile", () => {
     for (const product of ["doAnything", "webSearch", "deepResearch"] as const) {
-      expect(publicKeys(client[product]), product).toEqual(product === "doAnything" ? ["api", "artifacts", "attach", "run"] : ["api", "attach", "run"]);
+      expect(publicKeys(client[product]), product).toEqual(product === "doAnything" ? ["api", "artifacts", "attach", "forms", "mail", "profile", "run", "runWithMemory"] : ["api", "attach", "run"]);
     }
   });
 

@@ -1,4 +1,5 @@
 import type { GenAuthCommunicationCredentials } from './genauth-communication-types';
+import { memoryRunLifecycle, type MemoryRunLifecycle } from "./memory-run-lifecycle";
 export type JsonPrimitive = string | number | boolean | null;
 export type JsonValue = JsonPrimitive | JsonObject | JsonValue[];
 export type JsonObject = Record<string, unknown>;
@@ -82,7 +83,7 @@ export interface UserRef {
 }
 
 interface DelegateTokenBaseInput {
-  /** Formal IAM Agent UUID; mutually exclusive with audit labels. */
+  /** Canonical personal IAM Agent UUID. The server verifies authorization for the selected mode; mutually exclusive with audit labels. */
   agentId?: string;
   /** Audit label for this delegation. Defaults to "sdk". */
   agent?: string;
@@ -211,6 +212,8 @@ export interface RawRequestInput extends TokenInput {
 }
 
 export interface RequestPayload {
+  /** @internal Only runWithMemory installs this request-local observer. */
+  [memoryRunLifecycle]?: MemoryRunLifecycle;
   signal?: AbortSignal;
   query?: JsonObject;
   body?: JsonObject | BodyInit;

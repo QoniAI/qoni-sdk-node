@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { getEventListeners } from "node:events";
+import { createServer } from "node:http";
 import {
   QoniError,
   QoniPermissionDeniedError,
@@ -10,6 +11,8 @@ import {
 } from "../src";
 import type { RunEvent } from "../src";
 import type { RunWireOps } from "../src/run-handle";
+import type { GumemRecallInput } from "../src/gumem";
+import type { JsonObject } from "../src";
 import { decodeDataUri } from "../src/run-events";
 
 describe("live browser viewer events", () => {
@@ -1609,5 +1612,184 @@ describe("Do Anything durable artifacts", () => {
     expect(await artifact.refreshDownloadUrl!()).toContain("sig=fresh");
     expect(artifact.downloadUrl).toContain("sig=fresh");
     expect(await client.doAnything.artifacts({ token: TOKEN, runId: "run_1" })).toHaveLength(1);
+  });
+});
+
+describe("GUMem recall 参数映射与 SDK 过滤边界", () => {
+  const token = "local-gumem-product-token";
+  const locations: [string, (filters: JsonObject) => Partial<GumemRecallInput>][] = [
+    ["metadataFilters", (filters) => ({ metadataFilters: filters })],
+    ["metadata_filters", (filters) => ({ metadata_filters: filters })],
+    ["recallConfig.metadataFilters", (filters) => ({ recallConfig: { metadataFilters: filters } })],
+    ["recallConfig.metadata_filters", (filters) => ({ recallConfig: { metadata_filters: filters } })],
+    ["recall_config.metadataFilters", (filters) => ({ recall_config: { metadataFilters: filters } })],
+    ["recall_config.metadata_filters", (filters) => ({ recall_config: { metadata_filters: filters } })],
+  ];
+  const reserved = [
+    "project_id", "projectId", "group_id", "groupId", "user_id", "userId",
+    "thread_id", "threadId", "session_id", "sessionId", "scope", "expired_at", "expiredAt", "validity",
+    " project_id ", "PROJECT_ID",
+  ];
+
+  function makeRecallClient() {
+    const calls: { url: string; method: string; body: unknown }[] = [];
+    const client = new Qoni({
+      accessKey: "local-ak", secretKey: "local-sk",
+      host: "https://qoni.example", gumemBaseUrl: "https://gumem.example",
+      fetch: (async (url, init) => {
+        calls.push({ url: String(url), method: init?.method || "GET", body: JSON.parse(String(init?.body)) });
+        return jsonResponse({ context: { session_id: "session_1", history: [], facts: "", summary: "" } });
+      }) as typeof fetch,
+    });
+    return { client, calls };
+  }
+
+  it("没有召回覆盖项时保留空 body 和默认 Session 路径", async () => {
+    const { client, calls } = makeRecallClient();
+    await client.gumem.recall({ token });
+    expect(calls).toEqual([{ url: "https://gumem.example/api/sessions/default/context?query=&details=false", method: "POST", body: {} }]);
+  });
+
+  it.each(locations)("将 %s 的普通标量条件写入后端实际读取的嵌套位置", async (_location, build) => {
+    const { client, calls } = makeRecallClient();
+    await client.gumem.recall({ token, sessionId: "session/一", query: "历史偏好", details: true,
+      ...build({ businessSpace: "sales", revision: 2, score: 0.5, archived: false }) });
+    expect(calls[0].method).toBe("POST");
+    expect(new URL(calls[0].url).pathname).toBe("/api/sessions/session%2F%E4%B8%80/context");
+    expect(Object.fromEntries(new URL(calls[0].url).searchParams)).toEqual({ query: "历史偏好", details: "true" });
+    expect(calls[0].body).toEqual({ recall_config: {
+      metadata_filters: { businessSpace: "sales", revision: 2, score: 0.5, archived: false },
+    } });
+  });
+
+  it("合并业务收窄条件时保留召回配置且不修改冻结的调用者参数", async () => {
+    const { client, calls } = makeRecallClient();
+    const input = Object.freeze({ token, sessionId: "session_1",
+      recallConfig: Object.freeze({ message_recent_limit: 0, facts_top_k: 3, summaries_top_k: 0,
+        route_intention: false, sparse_keywords: Object.freeze(["客户"]),
+        custom_option: Object.freeze({ label: "保留" }),
+        metadataFilters: Object.freeze({ source: "confirmed" }) }),
+      metadata_filters: Object.freeze({ businessSpace: "sales", count: 0 }),
+    });
+    const before = structuredClone(input);
+    await client.gumem.recall(input);
+    expect(calls[0].body).toEqual({ recall_config: {
+      message_recent_limit: 0, facts_top_k: 3, summaries_top_k: 0, route_intention: false,
+      sparse_keywords: ["客户"], custom_option: { label: "保留" },
+      metadata_filters: { source: "confirmed", businessSpace: "sales", count: 0 },
+    } });
+    expect(input).toEqual(before);
+  });
+
+  it("配置两种别名的非冲突字段都被保留，同值重复条件可合并", async () => {
+    const { client, calls } = makeRecallClient();
+    await client.gumem.recall({ token,
+      recallConfig: { facts_top_k: 3, custom_option: { a: 1, b: [false] }, metadataFilters: { source: "confirmed" } },
+      recall_config: { summaries_top_k: 0, custom_option: { b: [false], a: 1 }, metadata_filters: { businessSpace: "sales" } },
+      metadataFilters: { source: "confirmed" }, metadata_filters: { source: "confirmed", revision: 2 },
+    });
+    expect(calls[0].body).toEqual({ recall_config: {
+      facts_top_k: 3, summaries_top_k: 0, custom_option: { a: 1, b: [false] },
+      metadata_filters: { source: "confirmed", businessSpace: "sales", revision: 2 },
+    } });
+  });
+
+  it.each<[string, Partial<GumemRecallInput>]>([
+    ["顶层过滤别名", { metadataFilters: { source: "one" }, metadata_filters: { source: "two" } }],
+    ["配置别名", { recallConfig: { facts_top_k: 3 }, recall_config: { facts_top_k: 4 } }],
+    ["两种配置的过滤条件", { recallConfig: { metadata_filters: { source: "one" } }, recall_config: { metadataFilters: { source: "two" } } }],
+    ["同一配置内的过滤别名", { recallConfig: { metadataFilters: { source: "one" }, metadata_filters: { source: "two" } } }],
+    ["顶层与嵌套", { recallConfig: { metadata_filters: { source: "one" } }, metadataFilters: { source: "two" } }],
+    ["弃用顶层与嵌套", { recall_config: { metadataFilters: { source: "one" } }, metadata_filters: { source: "two" } }],
+    ["去除空白后的同名条件", { metadataFilters: { " source ": "one", source: "two" } }],
+  ])("拒绝 %s 的冲突并且不发送请求", async (_case, fields) => {
+    const { client, calls } = makeRecallClient();
+    const input = { token, ...fields };
+    const before = structuredClone(input);
+    await expect(Promise.resolve().then(() => client.gumem.recall(input))).rejects.toBeInstanceOf(QoniValidationError);
+    expect(calls).toHaveLength(0);
+    expect(input).toEqual(before);
+  });
+
+  describe.each(locations)("%s 的系统字段防护", (_location, build) => {
+    it.each(reserved)("拒绝保留字段 %s 并在 HTTP 前失败", async (key) => {
+      const { client, calls } = makeRecallClient();
+      await expect(Promise.resolve().then(() => client.gumem.recall({ token, ...build({ [key]: "other" }) })))
+        .rejects.toMatchObject({ name: "QoniValidationError", code: "validation.failed", retryable: false });
+      expect(calls).toHaveLength(0);
+    });
+  });
+
+  it.each<[string, JsonObject]>([
+    ["顶层身份字段", { userId: "other" }],
+    ["配置中的系统字段", { recallConfig: { scope: "user" } }],
+    ["弃用配置中的系统别名", { recall_config: { projectId: "other" } }],
+  ])("拒绝 %s，允许的 sessionId 路径参数不受影响", async (_case, fields) => {
+    const { client, calls } = makeRecallClient();
+    await expect(Promise.resolve().then(() => client.gumem.recall({ token, sessionId: "session_1", ...fields })))
+      .rejects.toBeInstanceOf(QoniValidationError);
+    expect(calls).toHaveLength(0);
+  });
+
+  it.each([null, undefined, ["sales"], { nested: "sales" }, NaN, Infinity])(
+    "拒绝无法作为 JSON 标量精确过滤的值 %j", async (value) => {
+      const { client, calls } = makeRecallClient();
+      await expect(Promise.resolve().then(() => client.gumem.recall({ token, recall_config: { metadata_filters: { source: value } } })))
+        .rejects.toBeInstanceOf(QoniValidationError);
+      expect(calls).toHaveLength(0);
+    },
+  );
+
+  it.each([null, [], "sales"])("拒绝非对象过滤配置 %j", async (value) => {
+    const { client, calls } = makeRecallClient();
+    await expect(Promise.resolve().then(() => client.gumem.recall({ token, metadataFilters: value } as unknown as GumemRecallInput)))
+      .rejects.toBeInstanceOf(QoniValidationError);
+    expect(calls).toHaveLength(0);
+  });
+
+  it.each([null, [], "local"])("拒绝非对象召回配置 %j", async (value) => {
+    const { client, calls } = makeRecallClient();
+    await expect(Promise.resolve().then(() => client.gumem.recall({ token, recallConfig: value } as unknown as GumemRecallInput)))
+      .rejects.toBeInstanceOf(QoniValidationError);
+    expect(calls).toHaveLength(0);
+  });
+
+  it("普通业务键去掉外围空白，保留空字符串、零和 false", async () => {
+    const { client, calls } = makeRecallClient();
+    await client.gumem.recall({ token, metadataFilters: { " source ": "", count: 0, confirmed: false } });
+    expect(calls[0].body).toEqual({ recall_config: { metadata_filters: { source: "", count: 0, confirmed: false } } });
+  });
+
+  it("不因普通业务键与 Object 原型同名而丢弃条件", async () => {
+    const { client, calls } = makeRecallClient();
+    await client.gumem.recall({ token, metadataFilters: JSON.parse('{"constructor":"sales","__proto__":"confirmed"}') });
+    expect(calls[0].body).toEqual(JSON.parse('{"recall_config":{"metadata_filters":{"constructor":"sales","__proto__":"confirmed"}}}'));
+  });
+
+  it("真实本地 HTTP 收到嵌套 body，未配置 fetch mock", async () => {
+    const requests: { url?: string; method?: string; body: unknown; authorization?: string }[] = [];
+    const server = createServer(async (request, response) => {
+      let body = "";
+      for await (const chunk of request) body += chunk;
+      requests.push({ url: request.url, method: request.method, body: JSON.parse(body), authorization: request.headers.authorization });
+      response.writeHead(200, { "content-type": "application/json" });
+      response.end(JSON.stringify({ context: { session_id: "session_1", history: [], facts: "", summary: "" } }));
+    });
+    await new Promise<void>((resolve, reject) => { server.once("error", reject); server.listen(0, "127.0.0.1", resolve); });
+    try {
+      const address = server.address();
+      if (!address || typeof address === "string") throw new Error("本地 HTTP server 未获得 TCP 地址");
+      const baseUrl = "http://127.0.0.1:" + address.port;
+      const client = new Qoni({ accessKey: "local-ak", secretKey: "local-sk", host: baseUrl, gumemBaseUrl: baseUrl, timeoutMs: 2000 });
+      await client.gumem.recall({ token, sessionId: "session_1", query: "客户", details: true,
+        recallConfig: { facts_top_k: 3, metadata_filters: { source: "confirmed" } },
+        metadataFilters: { businessSpace: "sales", revision: 2, archived: false } });
+      expect(requests).toEqual([{ url: "/api/sessions/session_1/context?query=%E5%AE%A2%E6%88%B7&details=true", method: "POST",
+        authorization: "Bearer " + token, body: { recall_config: { facts_top_k: 3,
+          metadata_filters: { source: "confirmed", businessSpace: "sales", revision: 2, archived: false } } } }]);
+    } finally {
+      server.closeAllConnections();
+      await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+    }
   });
 });

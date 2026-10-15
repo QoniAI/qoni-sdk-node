@@ -1,5 +1,10 @@
 export { buildAuthorization, buildSignature, buildStringToSign } from "./signature";
 export { Qoni } from "./client";
+export { createTaskClient } from "./task-client";
+export type {
+  TaskAccessToken, TaskTokenProvider, TaskClientOptions, TaskRequestOptions,
+  TaskMemoryMessage, TaskAddMessagesInput, TaskSessionData, TaskMessagesData, TaskClient,
+} from "./task-client";
 export {
   QoniAuthError,
   QoniDelegationRequiredError,
@@ -7,12 +12,13 @@ export {
   QoniPermissionDeniedError,
   QoniRateLimitError,
   QoniTimeoutError,
+  QoniTaskSubmissionUnknownError,
   QoniTokenExpiredError,
   QoniUpstreamError,
   QoniUnsupportedError,
   QoniValidationError,
 } from "./errors";
-export type { QoniErrorCode, QoniErrorOptions } from "./errors";
+export type { QoniErrorCode, QoniErrorOptions, QoniMemoryRunPhase } from "./errors";
 // `QoniEventTypes` (the curated `event.type` values) is exported from
 // run-events.ts below. The raw 45-entry wire catalog (WireEventTypes) stays
 // internal (events.ts) — it backs the wire→curated mapping + drift tests.
@@ -59,6 +65,7 @@ export type {
   ActionKind,
 } from "./generated/interaction-types";
 export type {
+  FormHandle,
   InteractionType,
   Interaction,
   InteractionBase,
@@ -94,8 +101,17 @@ export type {
   TrackTaskRef,
 } from "./track";
 export type {
+  OrdinaryTaskProfile,
+  TaskMailBase,
+  TaskMailList,
+  TaskMailMessage,
+  TaskMailCode,
+  TaskMailSend,
   DoAnythingAttachOptions,
+  DoAnythingInterveneInput,
+  DoAnythingControlResponse,
   DoAnythingRunOptions,
+  DoAnythingTrace,
   DoAnythingSnapshot,
   BrowserProxyOptions,
   BrowserbaseRegion,
@@ -106,6 +122,8 @@ export type {
 export type { WebSearchAttachOptions, WebSearchRunOptions } from "./web-search";
 export type { DeepResearchAttachOptions, DeepResearchRunOptions } from "./deep-research";
 export type {
+  CreateLoginUrlInput,
+  ExchangeLoginCodeInput,
   GenAuthAccessTokenInput,
   GenAuthAdminToken,
   GenAuthAdminTokenOverrideInput,
@@ -117,6 +135,9 @@ export type {
   GenAuthUserGetInput,
   GenAuthUserListInput,
   GenAuthUserUpdateInput,
+  LoginSession,
+  LoginUrl,
+  SignedInUser,
 } from "./genauth";
 export type {
   CompleteDelegateAgentInput,
@@ -155,8 +176,16 @@ export type { GenAuthAgentMailClient, GenAuthAgentPhoneClient } from './genauth-
 
 export { PersonalAgentCreateError } from './genauth';
 export type {
-  CreateLoginUrlInput, ExchangeLoginCodeInput, LoginSession, LoginUrl, SignedInUser,
   AgentProvisioning, CreatePersonalAgentInput, CreatePersonalAgentPageInput,
   GetPersonalAgentInput, PersonalAgentProvisioning, PersonalAgentReady,
   BindPersonalAgentUserInput, PersonalAgentBinding,
 } from './genauth';
+
+export type { FormField, FormAddress, FormValues, FillFormPayload } from "./forms";
+
+
+export type {GumemRecallInput,GumemRecallContextInput} from "./gumem";
+export type {MemoryContext,MemoryContextItem,MemoryContextLimits,MemoryMessageSource} from "./memory-context";
+export type {DoAnythingRunWithMemoryOptions,DoAnythingMemoryRun} from "./do-anything";
+
+export type { SensitiveReference, SensitiveSubmitOptions } from "./sensitive-forms";

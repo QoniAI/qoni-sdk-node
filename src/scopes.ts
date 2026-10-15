@@ -30,6 +30,8 @@ export const QoniScopes = {
   // Persist that login into the browser profile (`InteractionHandle.confirmSignedIn()`
   // after `openLogin()`).
   SITE_LOGIN_CONFIRM: "webagent.site_login:confirm",
+  // 用户接管浏览器的独立权限；产品 manage 不包含连接、刷新或交还。
+  BROWSER_USE_TAKE_CONTROL: "webagent.browser_use:take_control",
 
   // The delegating user's own data and the Agent's own mailbox (Personal
   // Agent guide). Not part of any product bundle: request them explicitly;

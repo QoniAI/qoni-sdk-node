@@ -420,6 +420,8 @@ describe("typing: switch (interaction.type) narrows the payload", () => {
         case "ask_user":
           expectTypeOf(request.payload.answerType).toEqualTypeOf<AskUserAnswerType>();
           return `${request.payload.question}:${(request.payload.options ?? []).map((o) => o.value).join()}`;
+        case "fill_form":
+          return request.payload.fields.map((field) => field.name).join();
         case "confirmation":
           return request.payload.summary;
         case "wait":
@@ -701,6 +703,14 @@ describe("confirmSignedIn(): one save, one recheck, honest failures", () => {
 // ---------------------------------------------------------------------------
 
 describe("take_control: the control URL comes back from the action", () => {
+  it.each(["take_control", "refresh_control_url", "release_control"])("底层 intervene 的 %s 也使用独立接管权限", async (kind) => {
+    const { client, calls } = makeClient((call) => call.pathname === "/api/v3/eak/token-exchange"
+      ? jsonResponse({ data: { accessToken: PRODUCT_TOKEN, expiresIn: 3600 } })
+      : jsonResponse({ data: {} }));
+    await client.doAnything.api.intervene({ token: DELEGATION_TOKEN, runId: "run_1", kind });
+    expect((calls[0].body as { scopes: string[] }).scopes).toEqual(["webagent.browser_use:take_control"]);
+  });
+
   const takeOver = {
     id: "ix_tc", type: "take_control", status: "pending", created_at: "2026-10-07T08:00:00Z", title: "Take over",
     live_url: "https://live/view", reason: "captcha_required",
@@ -708,6 +718,26 @@ describe("take_control: the control URL comes back from the action", () => {
       kind, label: kind, method: "POST", endpoint: `/do_anything/runs/run_1/interactions/ix_tc/${kind}`,
     })),
   };
+
+  it("接管的连接、刷新和交还只换取独立接管权限", async () => {
+    const { client, calls } = makeClient((call) => {
+      if (call.pathname === "/api/v3/eak/token-exchange") return jsonResponse({ data: { accessToken: PRODUCT_TOKEN, expiresIn: 3600 } });
+      if (call.pathname.endsWith("/do_anything/runs")) return jsonResponse({ data: { run_id: "run_1", status: "running" } });
+      return jsonResponse({ data: { standalone_control_url: "https://live/control", status: "active" } });
+    });
+    const run = await client.doAnything.run({ token: DELEGATION_TOKEN, prompt: "test" });
+    const handle = run.interactionHandle(normalizeInteraction(takeOver)!);
+    await handle.connectControl();
+    await handle.refreshControl();
+    await handle.releaseControl();
+    const exchanges = calls.filter((call) => call.pathname === "/api/v3/eak/token-exchange");
+    expect(exchanges.map((call) => (call.body as { scopes: string[] }).scopes)).toEqual([
+      ["webagent.do_anything:manage"],
+      ["webagent.browser_use:take_control"],
+      ["webagent.browser_use:take_control"],
+      ["webagent.browser_use:take_control"],
+    ]);
+  });
 
   it("connectControl() and refreshControl() return the signed control URL and its expiry", async () => {
     let n = 0;
