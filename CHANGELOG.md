@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.9.3 - 2026-10-15
+
+### Fixes found by running the Personal Agent guide in production
+
+- `run.wait({ onInteraction })` no longer hands out the `take_control` that a sign-in opened (`payload.reason === "site_login"`). `openLogin()` opens the login browser through it, and the `site_login` card drives it. Handed out as a second card, it reached a handler written like the guide after `confirmSignedIn()` had already closed it; `connectControl()` returned 409 and the rejected handler ended `wait()`. `onEvent` and `events()` still see the card.
+- `genauth.agents.create()` names the receipt's `errorCode` in the error message, for example `Personal Agent creation stopped: PROVIDER_CONFIG_REQUIRED` when the workspace has no Agent Mail provider. It used to say only that the operation was not accepted.
+
 ## 0.9.2 - 2026-10-15
 
 ### Fixes found by running the Personal Agent guide in production

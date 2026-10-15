@@ -19,6 +19,11 @@ import {
 } from "./run-events";
 import { isJsonObject, type QoniEvent, type JsonObject } from "./types";
 
+/** A take_control that `openLogin()` or a site_login's `connectControl()` opened: that sign-in's own browser. */
+function opensForLogin(card: Interaction | undefined): boolean {
+  return card?.type === "take_control" && card.payload.reason === "site_login";
+}
+
 /** Opaque reference to a backend browser/context session a run executed in. */
 export interface SessionRef {
   sessionId: string;
@@ -101,6 +106,10 @@ export interface RunWaitOptions {
    * Fires on `event.type === "interaction"` (HITL). The handle exposes typed
    * action methods (`interaction.answer(…)` / `confirmSignedIn()` /
    * `releaseControl()` / …) that post to the action's declared endpoint.
+   * A `take_control` that a sign-in opened (`payload.reason === "site_login"`)
+   * is not handed out: it is that sign-in's own browser, driven from the
+   * `site_login` card with `openLogin()` / `confirmSignedIn()`. `onEvent` and
+   * `events()` still see it.
    */
   onInteraction?: (
     interaction: InteractionHandle,
@@ -156,6 +165,8 @@ export class RunHandle<E extends RunEvent = RunEvent> {
   readonly #loginSessions: LoginSessionStore = new Map();
   /** Latest card per interaction id, so lifecycle updates fold onto it. */
   readonly #interactions = new Map<string, Interaction>();
+  /** take_control cards a sign-in opened; their site_login card drives them. */
+  readonly #loginControls = new Map<string, true>();
 
   constructor(
     private readonly ops: RunWireOps,
@@ -183,9 +194,11 @@ export class RunHandle<E extends RunEvent = RunEvent> {
       let event = normalizeRunEvent(wire, { topRunId: this.id });
       if (!event) continue;
       if (event.type === "interaction") {
-        const card = foldInteraction(this.#interactions.get(event.data.id), event.data);
+        const prior = this.#interactions.get(event.data.id);
+        const card = foldInteraction(prior, event.data);
         rememberBounded(this.#interactions, card.id, card, INTERACTION_MEMORY_LIMIT, interactionSettled);
         markLoginEnded(this.#loginSessions, card);
+        if (opensForLogin(prior) || opensForLogin(card)) rememberBounded(this.#loginControls, card.id, true);
         event = { ...event, data: card };
       }
       if (event.type === "screenshot" && !this.capture.screenshots) continue;
@@ -221,7 +234,7 @@ export class RunHandle<E extends RunEvent = RunEvent> {
           await waitWithSignal(() => opts.onEvent?.(event), signal);
           if (event.type === "screenshot") {
             await waitWithSignal(() => opts.onScreenshot?.(event.image, screenshotIndex++), signal);
-          } else if (event.type === "interaction") {
+          } else if (event.type === "interaction" && !this.#loginControls.has(event.data.id)) {
             await waitWithSignal(() => opts.onInteraction?.(this.interactionHandle(event.data), event), signal);
           }
           if (event.isTerminal) {

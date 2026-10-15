@@ -393,6 +393,36 @@ describe("run handle: an interaction keeps its type across created → resolved"
     ]);
   });
 
+  it("wait() leaves a sign-in's own take_control to its site_login card", async () => {
+    // openLogin() opens the browser through a take_control (reason site_login).
+    // Handed out as a second card, an App following the docs took it over after
+    // confirmSignedIn() had closed it, got 409, and the rejected handler ended wait().
+    const loginControl = (status: string) => ({
+      id: "tc_login", type: "take_control", status, created_at: "2026-10-07T08:01:00Z", title: "Take over",
+      live_url: "https://live/login", reason: "site_login", actions: [],
+    });
+    const captcha = {
+      id: "tc_captcha", type: "take_control", status: "pending", created_at: "2026-10-07T08:02:00Z", title: "Take over",
+      live_url: "https://live/captcha", reason: "captcha_required", actions: [],
+    };
+    const { client } = streamingClient(
+      frame(1, "run.interaction", wireSiteLogin()) +
+        frame(2, "run.interaction", loginControl("pending")) +
+        frame(3, "run.interaction", loginControl("resolved")) +
+        frame(4, "run.interaction", captcha) +
+        frame(5, "run.completed", { terminal_reason: "done" }),
+    );
+    const run = await client.doAnything.run({ token: DELEGATION_TOKEN, prompt: "buy" });
+    const handed: string[] = [];
+    const seen: string[] = [];
+    await run.wait({
+      onEvent: (event) => { if (event.type === "interaction") seen.push(event.data.id); },
+      onInteraction: (handle) => { handed.push(`${handle.interaction.type}/${handle.interaction.id}`); },
+    });
+    expect(handed).toEqual(["site_login/ix_1", "take_control/tc_captcha"]);
+    expect(seen).toContain("tc_login");
+  });
+
   it("a new interaction id is never folded onto an earlier one", async () => {
     const { client } = streamingClient(
       frame(1, "run.interaction", wireSiteLogin()) +

@@ -70,6 +70,10 @@ describe('Personal page create',()=>{
  for(const changes of [{state:'unknown'},{provisioningId:'bad'},{errorCode:'PROVIDER_CONFIG_REQUIRED'},{mailboxAddress:undefined}])it('pending errors or UNKNOWN never trigger observation '+JSON.stringify(changes),async()=>{
   const {q,calls}=harness(()=>json(pending(changes)));await expect(page(q)).rejects.toMatchObject({name:'PersonalAgentCreateError',retryable:false});expect(calls).toHaveLength(1);
  });
+ it('names the receipt errorCode, so a missing mail provider is not a mystery',async()=>{
+  const {q}=harness(()=>json(pending({errorCode:'PROVIDER_CONFIG_REQUIRED'})));const error=await page(q).catch(e=>e);
+  expect(error.name).toBe('PersonalAgentCreateError');expect(error.message).toContain('PROVIDER_CONFIG_REQUIRED');
+ });
  it('retains original key/known provisioning id when later get returns a different row',async()=>{
   const {q,calls}=harness((_c,n)=>json(n===1?pending():ready({provisioningId:B})));const error=await page(q).catch(e=>e);
   expect(error.provisioningId).toBe(P);expect(error.idempotencyKey).toBe(calls[0].body.idempotencyKey);expect(calls).toHaveLength(2);

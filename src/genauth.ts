@@ -525,7 +525,8 @@ function readyPersonalAgent(receipt:PersonalAgentProvisioning,key:string):Person
 }
 
 function requireAcceptedPending(receipt:PersonalAgentProvisioning):void {
-  if(receipt.ready||!['creating','mail_pending'].includes(receipt.state)||receipt.errorCode)throw personalReceiptError(receipt,'Personal Agent is not an accepted pending operation');
+  if(receipt.errorCode)throw personalReceiptError(receipt,`Personal Agent creation stopped: ${receipt.errorCode}`);
+  if(receipt.ready||!['creating','mail_pending'].includes(receipt.state))throw personalReceiptError(receipt,'Personal Agent is not an accepted pending operation');
 }
 
 function personalBudget(controller:AbortController,deadline:number):number {
