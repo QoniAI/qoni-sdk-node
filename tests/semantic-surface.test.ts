@@ -898,12 +898,27 @@ describe("doAnything.run → RunHandle", () => {
     expect(calls[0].body).toEqual({ instructions: "follow up", session_id: "sess_prior" });
   });
 
+  it("sends model on the wire create body and lists the selectable models", async () => {
+    const { client, calls } = makeClient((call) =>
+      call.pathname.endsWith("/do_anything/models")
+        ? jsonResponse({ data: { default_model: "openai/gpt-6.1-sol", items: [{ value: "openai/gpt-5.6-luna", label: "Gpt 5.6 Luna · openai" }] } })
+        : jsonResponse({ data: { run_id: "run_1" } }),
+    );
+
+    await client.doAnything.run({ token: TOKEN, prompt: "go", model: "openai/gpt-5.6-luna" });
+    expect(calls[0].body).toEqual({ instructions: "go", model: "openai/gpt-5.6-luna" });
+
+    const models = await client.doAnything.api.listModels({ token: TOKEN });
+    expect(calls.at(-1)?.method).toBe("GET");
+    expect(calls.at(-1)?.pathname).toBe("/api/v1/projects/tenant_1/do_anything/models");
+    expect(models.data).toEqual({ default_model: "openai/gpt-6.1-sol", items: [{ value: "openai/gpt-5.6-luna", label: "Gpt 5.6 Luna · openai" }] });
+  });
+
   it("fails loudly on platform-decided knobs the wire create body cannot carry", async () => {
     const { client, calls } = makeClient(() => jsonResponse({ data: { run_id: "run_1" } }));
 
     for (const options of [
       { proxyCountryCode: "US" },
-      { model: "some-model" },
       { callbackUrl: "https://app.example.com/hook" },
     ]) {
       await expect(

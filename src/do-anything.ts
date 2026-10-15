@@ -138,6 +138,11 @@ export interface DoAnythingRunOptions {
   session?: SessionRef;
   // Product-specific options stay camelCase.
   profileId?: string;
+  /**
+   * Model for this run: an `items[].value` from `api.listModels()`, e.g.
+   * "openai/gpt-5.6-luna". Omit it to use the platform default.
+   */
+  model?: string;
   /** Applies when this run creates a new Browserbase session. */
   browserProxy?: BrowserProxyOptions;
   keepAlive?: boolean;
@@ -242,13 +247,12 @@ export interface DoAnythingTrace {
 }
 
 // Options the wire create body has no field for — either platform-decided
-// server-side (model via `llm.default_model`, cost ceiling via the internal
-// budget guard, browser egress via dynconfig) or retired phantom knobs the
-// backend never consumed and now 422s (extra="forbid"). Sending them would
-// be a silent drop or a wire error, so `run()` fails loudly up front
-// (contract §4).
+// server-side (cost ceiling via the internal budget guard, browser egress via
+// dynconfig) or retired phantom knobs the backend never consumed and now 422s
+// (extra="forbid"). Sending them would be a silent drop or a wire error, so
+// `run()` fails loudly up front (contract §4). `model` is a real create field;
+// the server canonicalizes it and falls back to `llm.default_model`.
 const PLATFORM_DECIDED_RUN_OPTIONS = [
-  "model",
   "proxyCountryCode",
   "callbackUrl",
   "workspaceId",
@@ -338,6 +342,14 @@ export function createDoAnythingNamespace(transport: QoniTransport) {
         signal: input.signal, requiredScopes: ["webagent.do_anything:read"],
       }),
 
+    /** `GET /do_anything/models` — `{ default_model, items: [{ value, label }] }`, the models a run may name. */
+    listModels: <T = unknown>(
+      input: RuntimeTokenInput & { signal?: AbortSignal },
+    ): Promise<QoniResponse<T>> =>
+      transport.webAgentJson("GET", "/do_anything/models", input.token, {
+        signal: input.signal,
+        requiredScopes: ["webagent.do_anything:read"],
+      }),
     getRun: <T = unknown>(
       input: RuntimeTokenInput & { runId: string; signal?: AbortSignal },
     ): Promise<QoniResponse<T>> =>
