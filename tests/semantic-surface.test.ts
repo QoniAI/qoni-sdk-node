@@ -68,6 +68,30 @@ describe("live browser viewer events", () => {
   });
 });
 
+describe("a reply streaming across a reopened stream", () => {
+  it("keeps its whole text when wait() opens the stream again", async () => {
+    const chunk = (id: number, text: string) => frame(id, "run.message", {
+      role: "ai", type: "assistant_message", text, message_id: "stream-1", summary: "Streaming",
+    });
+    let opened = 0;
+    const { client } = makeClient((call) => {
+      if (call.pathname.endsWith("/events")) {
+        opened += 1;
+        // The server closes the first stream mid-reply, without a terminal event.
+        return sseResponse(opened === 1
+          ? chunk(1, "我打开")
+          : chunk(2, "了 X。") + frame(3, "run.completed", { terminal_reason: "done", output: "ok" }));
+      }
+      return jsonResponse({ data: { run_id: "run_1", status: opened >= 2 ? "succeeded" : "running", terminal_reason: opened >= 2 ? "done" : null } });
+    });
+    const run = await client.doAnything.attach("run_1", { token: TOKEN });
+    const texts: string[] = [];
+    await run.wait({ onEvent: (event) => { if (event.type === "message") texts.push(event.data.text); } });
+    expect(opened).toBe(2);
+    expect(texts).toEqual(["我打开", "我打开了 X。", "我打开了 X。"]);
+  });
+});
+
 // ---------------------------------------------------------------------------
 // Harness: realistic wire-shaped fixtures (double envelope, snake_case),
 // mocked transport via the fetch option.

@@ -215,8 +215,12 @@ export class RunHandle<E extends RunEvent = RunEvent> {
    * Stream semantic events. Ends automatically at the run's terminal event.
    * Reconnects with `Last-Event-ID` catch-up are handled internally.
    */
-  async *events(opts: RunEventsOptions = {}): AsyncIterable<E> {
-    const folder = new RunEventFolder(this.id);
+  events(opts: RunEventsOptions = {}): AsyncIterable<E> {
+    return this.#events(opts, new RunEventFolder(this.id));
+  }
+
+  /** One folder per reader: a reply streaming across a reopened stream keeps its text. */
+  async *#events(opts: RunEventsOptions, folder: RunEventFolder): AsyncIterable<E> {
     for await (const wire of this.ops.streamEvents(opts)) {
       await opts.onWireEvent?.(wire);
       for (const folded of folder.feed(wire)) {
@@ -254,10 +258,11 @@ export class RunHandle<E extends RunEvent = RunEvent> {
     let terminalDetail: JsonObject | undefined;
     let terminalDoneReason: string | undefined;
     let screenshotIndex = 0;
+    const folder = new RunEventFolder(this.id);
 
     try {
       settled: for (;;) {
-        for await (const event of this.events({
+        for await (const event of this.#events({
           signal,
           lastEventId,
           onWireEvent: (wire) => waitWithSignal(() => {
@@ -265,7 +270,7 @@ export class RunHandle<E extends RunEvent = RunEvent> {
             return opts.onWireEvent?.(wire);
           }, signal),
           onReconnect: opts.onReconnect,
-        })) {
+        }, folder)) {
           await waitWithSignal(() => opts.onEvent?.(event), signal);
           if (event.type === "screenshot") {
             await waitWithSignal(() => opts.onScreenshot?.(event.image, screenshotIndex++), signal);
