@@ -683,6 +683,12 @@ whose `need` is set waits for the person (`login`: sign in there; `help`: do wha
 `prompt` says); answer it with `browsers.control({ token, sessionId, browserId, action: "done" })`
 (or `take` / `release` / `skip`).
 
+A live view shows the computer's desktop scaled down to fit. Where the person does
+something themselves (a sign-in, a `need`), add `&fit=1` to the address (before any `#`):
+while that view is open the browser is laid out in its shape, so a phone held upright
+gets the phone's pages filling it; when it closes, the browser is back at its own size.
+The agent works in whatever shape the browser has, so leave it off views that only watch.
+
 **Any time**, without a run:
 
 ```ts

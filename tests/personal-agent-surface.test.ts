@@ -273,6 +273,17 @@ describe("errors an app acts on", () => {
     expect(errorFromPayload(403, { code: "permission_denied", message: "scope missing" }, "x")).not.toBeInstanceOf(QoniConsentRequiredError);
     expect(errorFromPayload(401, { message: "needs_authorization" }, "x")).toBeInstanceOf(QoniAuthError);
   });
+
+  it("a consent given before the workspace changed what the agent may do has to be given again", () => {
+    for (const status of [403, 409]) {
+      const changed = errorFromPayload(status, {
+        code: "eak.delegation.formal_agent_policy_changed",
+        message: "Delegation consent rejected: formal_agent_policy_changed",
+      }, "x");
+      expect(changed).toBeInstanceOf(QoniConsentRequiredError);
+      expect(changed).toMatchObject({ code: "eak.delegation.formal_agent_policy_changed", status });
+    }
+  });
 });
 
 describe("activating a personal agent", () => {

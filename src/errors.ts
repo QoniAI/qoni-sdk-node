@@ -290,8 +290,9 @@ function isPermissionDenied(code: string): boolean {
   return code.includes("permission") || code.includes("insufficient_scope");
 }
 
-// GenAuth's reasons a delegation needs the person again; they can arrive as the code or inside the message.
-const CONSENT_REQUIRED = /needs_authorization|consent_required|formal_agent_consent|scope_not_delegated|consent_revoked/;
+// GenAuth's reasons a delegation needs the person again, among them a workspace that changed what the
+// agent may do since they agreed; they can arrive as the code or inside the message.
+const CONSENT_REQUIRED = /needs_authorization|consent_required|formal_agent_consent|formal_agent_policy_changed|scope_not_delegated|consent_revoked/;
 
 function isConsentRequired(code: string, message: string): boolean {
   return CONSENT_REQUIRED.test(code) || CONSENT_REQUIRED.test(message);

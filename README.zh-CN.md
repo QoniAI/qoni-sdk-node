@@ -623,6 +623,10 @@ await run.wait({
 （`login`：在那块屏上登录；`help`：照 `prompt` 做）；处理完用
 `browsers.control({ token, sessionId, browserId, action: "done" })`（也可 `take` / `release` / `skip`）。
 
+实时画面默认是电脑桌面缩小后的样子。在人自己动手的那块画面（登录、`need`）里，给地址加上 `&fit=1`（放在 `#` 前面）：
+这块画面开着时，浏览器按它的形状排版，手机竖着拿就是铺满的手机版网页；画面关掉，浏览器回到原来的大小。
+画面开着时 Agent 也在这个形状下干活，所以只是看 Agent 干活的画面别加。
+
 **任何时候**，不用开任务：
 
 ```ts

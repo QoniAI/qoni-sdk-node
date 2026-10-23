@@ -12,7 +12,8 @@ Needs `qoni/web-agent` with the computer, browsers and credits API (feat/api-ses
 - `track.list`, and `MonitorHandle.events()` / `track.api.events()` now stream the track's checks live from its own session (each check a run, ending with its `done`). They used to fail locally.
 - `proactive.create/list/get/cancel/runNow` (follow-ups), `notifications.list/markRead` (needs `webagent.track:read/manage`), `workspace.credits` (whole Credits the workspace's runs can still spend) and `workspace.billingUrl` (the console page that opens Top up or Plan; needs qoni-console with `?billing=topup|plan`).
 - `genauth.agents.activate`: approve and sync a new agent's capabilities so the consent page can grant them — the sequence apps ran through private methods, now public and idempotent per step. It never calls the console-only credential route.
-- `QoniConsentRequiredError`: the person never consented, withdrew it, or the agent now asks for more. It is a `QoniPermissionDeniedError` and keeps the server's `code`.
+- `QoniConsentRequiredError`: the person never consented, withdrew it, the agent now asks for more, or the workspace changed what the agent may do since they agreed (`eak.delegation.formal_agent_policy_changed`). It is a `QoniPermissionDeniedError` and keeps the server's `code`.
+- A live view's address with `&fit=1` lays the browser out in that view's shape while it is open (a phone held upright gets the phone's pages); without it, views show the desktop as before. Needs `qoni/web-agent` with the fitted live view (feat/live-view-fit-param-20261023) on the computer's template.
 - `RunResult.failureReason` / `failureDetail` (typed `RunFailureReason`, e.g. `insufficient_credits`).
 - The confirmation of an email the agent wrote carries `payload.mail` (`{ to, subject, text }`), exactly what is sent, so it can be laid out as an email instead of parsed from the prompt.
 
