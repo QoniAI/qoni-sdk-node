@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { QoniError, QoniValidationError } from "./errors";
 import { requestGenAuthManagement, type GenAuthAdminTokenProvider } from "./genauth-management";
 import { isJsonObject, type JsonObject, type QoniTransport } from "./types";
@@ -19,7 +19,8 @@ export interface ActivateAgentInput {
 
 export interface AgentActivation {
   agentId: string;
-  /** Its capabilities are approved and synced: the consent page can grant them. */
+  /** Its capabilities are approved and synced from its data policies as they are now: the consent
+   * page can grant them. */
   ready: true;
   /** The agent's authorization as GenAuth reports it (escape hatch). */
   raw: JsonObject;
@@ -30,12 +31,18 @@ const SYNC_ATTEMPTS = 15;
 const SYNC_INTERVAL_MS = 2_000;
 
 /**
- * Make a new personal agent able to act: authorize the data policies to the person,
+ * Make a personal agent able to act: authorize the data policies to the person,
  * draft, submit and approve the agent's capability grant, give it its local
  * credentials and sync its permissions, then wait until GenAuth reports it synced.
- * Each write carries an idempotency key from the agent and step, so running it
- * again (after a failure, or on an agent already active) is safe; an agent already
- * synced returns at once. Never touches the console-only credential route.
+ *
+ * A grant is a snapshot of the policies it was made from. When the workspace later
+ * changes one (a scope added), the agent keeps acting on the old snapshot and its
+ * person cannot consent to the new scope; so an agent is ready only while its grant
+ * was made from these policies as they are now, and is granted again otherwise.
+ * Each write carries an idempotency key from the agent, the step and the policies'
+ * state, so running it again (after a failure, or on an agent already current) is
+ * safe and a later change is never mistaken for an earlier grant. Never touches the
+ * console-only credential route.
  */
 export async function activateAgent(
   transport: QoniTransport,
@@ -52,7 +59,7 @@ export async function activateAgent(
   if (!adminTokenFor) throw new QoniValidationError("genauth.agents.activate needs the Qoni AK/SK management token");
   const signal = input.signal;
   const base = `/api/v3/agent-identity/agents/${encodeURIComponent(agentId)}`;
-  const key = (step: string) => ({ "Idempotency-Key": `qoni-activate-${step}-${agentId}` });
+  const wanted = [...new Set(input.dataPolicyIds)].sort();
 
   async function admin<T>(method: "GET" | "POST" | "PUT", path: string, body?: JsonObject, headers: Record<string, string> = {}): Promise<T> {
     signal?.throwIfAborted();
@@ -65,16 +72,36 @@ export async function activateAgent(
     return (isJsonObject(data) && "data" in data ? data.data : data) as T;
   }
   const authorization = () => admin<JsonObject | null>("GET", `${base}/authorization`);
-  const synced = (a: JsonObject | null) => {
-    const grant = isJsonObject(a?.active_grant) ? a.active_grant : null;
-    return grant?.status === "active" && grant.permission_sync_status === "synced";
-  };
 
   await requestGenAuthManagement(transport, adminTokenFor, "authorizeDataPolicies", {
     policyIds: input.dataPolicyIds, targetList: [{ id: userId, type: "USER" }],
   }, { signal });
+  // When each policy was last changed; the grant's snapshot must be at least that new.
+  const changed = new Map<string, string>();
+  for (const policyId of wanted) {
+    const { data } = await requestGenAuthManagement<unknown>(transport, adminTokenFor, "getDataPolicy", { policyId }, { signal });
+    const policy = isJsonObject(data) && isJsonObject(data.data) ? data.data : data;
+    if (isJsonObject(policy) && typeof policy.updatedAt === "string") changed.set(policyId, policy.updatedAt);
+  }
+  const stamp = createHash("sha256").update(JSON.stringify(wanted.map((id) => [id, changed.get(id) ?? ""]))).digest("hex").slice(0, 12);
+  const key = (step: string) => ({ "Idempotency-Key": `qoni-activate-${step}-${agentId}-${stamp}` });
+  // Active, synced, and made from these policies as they are now.
+  const ready = (a: JsonObject | null) => {
+    const grant = isJsonObject(a?.active_grant) ? a.active_grant : null;
+    if (!(grant?.status === "active" && grant.permission_sync_status === "synced")) return false;
+    const ids = Array.isArray(grant.data_policy_ids) ? [...new Set(grant.data_policy_ids.map(String))].sort() : [];
+    if (ids.join() !== wanted.join()) return false;
+    const policies = isJsonObject(grant.permission_snapshot) && Array.isArray(grant.permission_snapshot.policies)
+      ? grant.permission_snapshot.policies.filter(isJsonObject) : [];
+    const taken = new Map(policies.map((p) => [String(p.policy_id ?? ""), genauthSecond(p.updated_at)]));
+    return wanted.every((id) => {
+      const now = genauthSecond(changed.get(id));
+      const then = taken.get(id);
+      return now === undefined || then === undefined || then >= now;
+    });
+  };
   const current = await authorization();
-  if (synced(current)) return { agentId, ready: true, raw: current ?? {} };
+  if (ready(current)) return { agentId, ready: true, raw: current ?? {} };
 
   const draft = await admin<JsonObject>("PUT", `${base}/capability-grant/draft`, {
     audience, data_policy_ids: input.dataPolicyIds, version: 0,
@@ -97,7 +124,7 @@ export async function activateAgent(
   await admin("POST", `${base}/data-permissions/sync`, {}, key("sync"));
   for (let attempt = 0; attempt < SYNC_ATTEMPTS; attempt++) {
     const now = await authorization();
-    if (synced(now)) return { agentId, ready: true, raw: now ?? {} };
+    if (ready(now)) return { agentId, ready: true, raw: now ?? {} };
     const grant = isJsonObject(now?.active_grant) ? now.active_grant : null;
     if (grant?.permission_sync_status === "failed") break;
     await sleep(SYNC_INTERVAL_MS, signal);
@@ -105,6 +132,18 @@ export async function activateAgent(
   throw new QoniError(`Agent ${agentId}'s capabilities did not sync; the consent page will say it cannot grant them yet`, {
     code: "agent.activation_unsynced", retryable: true,
   });
+}
+
+/**
+ * A GenAuth time, to the second. Its management API writes times without a zone, in Beijing
+ * time: a policy created "2026-10-19 10:02:02" is the grant snapshot's "2026-10-19T02:02:02Z".
+ * A time with a zone is taken as written.
+ */
+function genauthSecond(value: unknown): number | undefined {
+  if (typeof value !== "string" || !value.trim()) return undefined;
+  const text = value.trim();
+  const ms = Date.parse(/(?:[zZ]|[+-]\d{2}:?\d{2})$/.test(text) ? text : `${text.replace(" ", "T")}+08:00`);
+  return Number.isFinite(ms) ? Math.floor(ms / 1000) : undefined;
 }
 
 function nonempty(value: unknown, label: string): string {

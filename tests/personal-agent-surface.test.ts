@@ -287,40 +287,85 @@ describe("errors an app acts on", () => {
 });
 
 describe("activating a personal agent", () => {
-  it("approves, credentials and syncs it, with a key per step, never the console credential route", async () => {
+  // GenAuth as it answers: the grant's snapshot of each policy in ISO UTC, a policy's own times
+  // without a zone in Beijing time ("2026-10-19 10:02:02" is "2026-10-19T02:02:02Z").
+  function genauth(policyNow: string, grantedFrom: { ids: string[]; at: string } | null) {
     const calls: Array<[string, string, Record<string, string> | undefined]> = [];
-    let synced = false;
+    let grant = grantedFrom;
+    let draft = 0;
     const t = {
       genauthJson: vi.fn(async (method: string, path: string, _token: string, payload: { headers?: Record<string, string> }) => {
         calls.push([method, path, payload.headers]);
-        if (path.endsWith("/authorization")) return { data: { data: { active_grant: synced ? { status: "active", permission_sync_status: "synced" } : null } } };
-        if (path.endsWith("/capability-grant/draft")) return { data: { data: { version: 3 } } };
-        if (path === "/api/v3/agent-identity/approvals") return { data: { data: [{ id: "ap1", agent_id: "agent-1", status: "pending", version: 4 }] } };
-        if (path.endsWith("/data-permissions/sync")) synced = true;
+        if (path.endsWith("/authorization")) {
+          return { data: { data: { active_grant: grant && {
+            status: "active", permission_sync_status: "synced", grant_version: 1, data_policy_ids: grant.ids,
+            permission_snapshot: { policies: grant.ids.map((id) => ({ policy_id: id, updated_at: grant!.at })) },
+          } } } };
+        }
+        if (path === "/api/v3/get-data-policy") return { data: { data: { policyId: "p1", updatedAt: policyNow, createdAt: "2026-10-19 10:02:02" } } };
+        if (path.endsWith("/capability-grant/draft")) return { data: { data: { version: ++draft } } };
+        if (path === "/api/v3/agent-identity/approvals") return { data: { data: [{ id: `ap${draft}`, agent_id: "agent-1", status: "pending", version: 4 }] } };
+        // Synced, the active grant is the one just approved: made from the policies as they are now.
+        if (path.endsWith("/data-permissions/sync")) grant = { ids: ["p1"], at: "2026-10-23T16:02:01.000Z" };
         return { data: { data: {} } };
       }),
     } as any;
-    const admin = async () => ({ accessToken: "admin", userPoolId: "pool" });
-    const result = await activateAgent(t, admin, { agentId: "agent-1", userId: "user-1", audience: "app-1", dataPolicyIds: ["p1"] });
+    return { t, calls };
+  }
+  const admin = async () => ({ accessToken: "admin", userPoolId: "pool" });
+  const input = { agentId: "agent-1", userId: "user-1", audience: "app-1", dataPolicyIds: ["p1"] };
+  const regrant = [
+    "PUT /api/v3/agent-identity/agents/agent-1/capability-grant/draft",
+    "POST /api/v3/agent-identity/agents/agent-1/capability-grant/submit",
+    "GET /api/v3/agent-identity/approvals",
+    "POST /api/v3/agent-identity/approvals/ap1/approve",
+    "POST /api/v3/agent-identity/agents/agent-1/credentials",
+    "POST /api/v3/agent-identity/agents/agent-1/data-permissions/sync",
+    "GET /api/v3/agent-identity/agents/agent-1/authorization",
+  ];
+
+  it("approves, credentials and syncs it, with a key per step, never the console credential route", async () => {
+    const { t, calls } = genauth("2026-10-24 00:02:01", null);
+    const result = await activateAgent(t, admin, input);
     expect(result).toMatchObject({ agentId: "agent-1", ready: true });
     expect(calls.map(([method, path]) => `${method} ${path}`)).toEqual([
       "POST /api/v3/authorize-data-policies",
+      "GET /api/v3/get-data-policy",
       "GET /api/v3/agent-identity/agents/agent-1/authorization",
-      "PUT /api/v3/agent-identity/agents/agent-1/capability-grant/draft",
-      "POST /api/v3/agent-identity/agents/agent-1/capability-grant/submit",
-      "GET /api/v3/agent-identity/approvals",
-      "POST /api/v3/agent-identity/approvals/ap1/approve",
-      "POST /api/v3/agent-identity/agents/agent-1/credentials",
-      "POST /api/v3/agent-identity/agents/agent-1/data-permissions/sync",
-      "GET /api/v3/agent-identity/agents/agent-1/authorization",
+      ...regrant,
     ]);
-    expect(calls.find(([, path]) => path.endsWith("/submit"))?.[2]?.["Idempotency-Key"]).toBe("qoni-activate-submit-agent-1");
+    expect(calls.find(([, path]) => path.endsWith("/submit"))?.[2]?.["Idempotency-Key"]).toMatch(/^qoni-activate-submit-agent-1-\w+$/);
     expect(calls.some(([, path]) => path.endsWith("/credential"))).toBe(false);
 
     calls.length = 0;
-    expect(await activateAgent(t, admin, { agentId: "agent-1", userId: "user-1", audience: "app-1", dataPolicyIds: ["p1"] })).toMatchObject({ ready: true });
+    expect(await activateAgent(t, admin, input)).toMatchObject({ ready: true });
     expect(calls.map(([method, path]) => `${method} ${path}`)).toEqual([
-      "POST /api/v3/authorize-data-policies", "GET /api/v3/agent-identity/agents/agent-1/authorization",
+      "POST /api/v3/authorize-data-policies", "GET /api/v3/get-data-policy", "GET /api/v3/agent-identity/agents/agent-1/authorization",
     ]);
+  });
+
+  it("grants an agent again when its workspace changed a policy after it was granted", async () => {
+    // Scout on 10-23: granted from the policy of 10-19, which had since been given the track scopes.
+    const { t, calls } = genauth("2026-10-24 00:02:01", { ids: ["p1"], at: "2026-10-19T02:02:02.000Z" });
+    const result = await activateAgent(t, admin, input);
+    expect(result).toMatchObject({ ready: true });
+    expect(calls.map(([method, path]) => `${method} ${path}`).slice(3)).toEqual(regrant);
+    expect(result.raw).toMatchObject({ active_grant: { permission_snapshot: { policies: [{ updated_at: "2026-10-23T16:02:01.000Z" }] } } });
+
+    // The policy as it was then is the policy as it is: nothing to grant, and the keys of a later
+    // change are its own, never those of an earlier grant.
+    const unchanged = genauth("2026-10-19 10:02:02", { ids: ["p1"], at: "2026-10-19T02:02:02.000Z" });
+    await activateAgent(unchanged.t, admin, input);
+    expect(unchanged.calls.some(([, path]) => path.endsWith("/capability-grant/draft"))).toBe(false);
+    const earlier = genauth("2026-10-21 09:00:00", null);
+    await activateAgent(earlier.t, admin, input);
+    const key = (c: typeof calls) => c.find(([, path]) => path.endsWith("/submit"))?.[2]?.["Idempotency-Key"];
+    expect(key(calls)).not.toBe(key(earlier.calls));
+  });
+
+  it("grants an agent again when it was granted other policies than it needs now", async () => {
+    const { t, calls } = genauth("2026-10-19 10:02:02", { ids: ["p0"], at: "2026-10-19T02:02:02.000Z" });
+    expect(await activateAgent(t, admin, input)).toMatchObject({ ready: true });
+    expect(calls.some(([, path]) => path.endsWith("/capability-grant/draft"))).toBe(true);
   });
 });
