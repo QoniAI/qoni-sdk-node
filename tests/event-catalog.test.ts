@@ -134,6 +134,7 @@ describe("WireEventTypes ↔ vendored catalog", () => {
       "done",
       "interaction",
       "browserLiveUrlChanged",
+      "browsers", // folded by the run stream from the lead's and sub-agents' browser events
       "triggered",
       "checkCompleted",
     ]);

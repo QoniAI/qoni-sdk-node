@@ -596,6 +596,64 @@ await run.cancel("用户停止任务"); // 幂等
 计算区域，注册代理决定网络出口。SDK 只接受代理 ID、模式和区域；代理账号密码由
 运维人员在 OpsConsole 管理。
 
+### 个人 Agent：对话、浏览器和电脑（0.10.0）
+
+每个对话（一个 Do Anything session）都有自己的一台电脑。下面所有方法都传这个人的委托 `token`；
+读要 `webagent.do_anything:read`，改要 `webagent.do_anything:manage`。
+
+**任务进行中**，事件流告诉你该显示什么：
+
+```ts
+await run.wait({
+  onEvent(event) {
+    switch (event.type) {
+      case QoniEventTypes.Message:   // 流式回答：同一个 id，text 是到目前为止的全文，delta 是新增的一段
+        ui.upsertBubble(event.data.id, event.data.text, { done: event.data.done, final: event.data.final });
+        if (event.data.done && event.data.stopReason && !/^tool/i.test(event.data.stopReason)) ui.settled();
+        break;
+      case QoniEventTypes.Browsers:  // 现在开着的所有浏览器：主 Agent 的在前，然后是每个子 agent 的
+        ui.showScreens(event.data);  // [{ id, label, url, status, activity, need, userInControl, startedAt }]
+        break;
+    }
+  },
+});
+```
+
+`url` 是浏览器可操作的实时画面，直接放进 iframe。子 agent 的 `need` 不为空时，它在等人
+（`login`：在那块屏上登录；`help`：照 `prompt` 做）；处理完用
+`browsers.control({ token, sessionId, browserId, action: "done" })`（也可 `take` / `release` / `skip`）。
+
+**任何时候**，不用开任务：
+
+```ts
+const { doAnything } = qoni;
+await doAnything.sessions.list({ token });                     // 对话列表，新的在前
+await doAnything.sessions.credits({ token, sessionId });       // 每次任务花了多少
+await doAnything.browsers.list({ token, sessionId });          // 现在开着的浏览器（电脑休眠时为空）
+
+await doAnything.files.list({ token, sessionId, path: "workspace", depth: 2 });
+// → { source: "live" | "saved" | null, items: [{ path, name, type, sizeBytes, modifiedAt }], savedAt }
+const bytes = await doAnything.files.read({ token, sessionId, path: "workspace/outputs/report.md" });
+for await (const change of doAnything.files.watch({ token, sessionId, signal })) {
+  // { type: "created" | "changed" | "removed", path }，约 2 秒内送到；电脑休眠时结束
+}
+await doAnything.files.upload({ token, sessionId, path: "workspace/uploads/brief.pdf", content: bytes });
+await doAnything.files.move({ token, sessionId, from: "a.md", to: "notes/a.md" });
+await doAnything.files.mkdir({ token, sessionId, path: "notes" });
+await doAnything.files.delete({ token, sessionId, path: "notes/old.md" });
+await doAnything.files.listAll({ token });                     // 每个对话保存下来的文件
+
+await qoni.workspace.credits({ token });                       // { available: 123 } 整数 Credits，不计费时为 null
+await qoni.proactive.list({ token });                          // Agent 约好的回访
+await qoni.notifications.list({ token });                      // { items, unread }；需要 webagent.track:read
+```
+
+看文件不会唤醒休眠的电脑：答案来自每轮结束后保存的那份（`source: "saved"`）。改文件会唤醒它，
+空闲后它会自己再休眠。路径都相对电脑的家目录，隐藏的运行时状态一律拒绝；上传不会覆盖已有文件
+（409 `workspace_file_exists`）。任务失败时 `RunResult.failureReason` 说明原因，
+`insufficient_credits` 表示该充值了。Agent 要发它自己写的邮件时，确认卡带着
+`interaction.payload.mail`（`{ to, subject, text }`），就是要发出去的那封。
+
 ### Web Search
 
 ```ts
@@ -713,7 +771,8 @@ snapshotId。早前任务仍在运行时，`runNow()` 会原样抛后端 409 `ta
 | `track.api.updateMonitor` | PATCH 真实 title/instructions/schedule/status；低层可改 instructions，高层 refine 不允许。 |
 | `track.api.runNow`、`deleteMonitor` | 真实 run_now / DELETE；wire 任务引用 / 空 204。 |
 | `track.api.listRuns`、`getRun` | 原始 checks，本地分页，精确查找最近 50 条。 |
-| `MonitorHandle.events`、`interactionHandle`、`track.api.events`、`intervene` | deprecated，无后端路径，本地 QoniUnsupportedError，零 HTTP/零 token exchange。 |
+| `MonitorHandle.events`、`track.api.events`（0.10.0） | 读 Track 自己会话的事件流 `/do_anything/sessions/{session_id}/events`，每次检查一个 run。 |
+| `interactionHandle`、`intervene` | deprecated，无后端路径，本地 QoniUnsupportedError，零 HTTP/零 token exchange。 |
 | `targetUrls`、`extractionSchema`、`triggerDsl`、`stopConditionDsl`、`notifyChannel`（含 snake_case 别名）、旧 `url` | 无对应字段，本地 QoniUnsupportedError；URL 需明确写入 prompt。 |
 | cron schedule | deprecated，本地明确拒绝并给出 daily 替代，不默默转换任意 cron。 |
 
@@ -819,12 +878,15 @@ const qoni = new Qoni({
 | 命名空间 | 方法 |
 | --- | --- |
 | 委托授权 | `delegateToken`, `completeDelegateToken`；兼容别名：`delegateAgent`, `completeDelegateAgent` |
-| GenAuth | `userInfo`, `jwks`, `discovery`, `introspectDelegationToken`, `auth.createLoginUrl`, `auth.exchangeLoginCode`, `agents.create/get/bind`（待发布）, `users.list`, `users.get`, `users.getBatch`, `users.create`, `users.createBatch`, `users.update`, `users.deleteBatch` |
+| GenAuth | `userInfo`, `jwks`, `discovery`, `introspectDelegationToken`, `auth.createLoginUrl`, `auth.exchangeLoginCode`, `agents.create/get/bind`（待发布）, `agents.activate`（0.10.0）, `users.list`, `users.get`, `users.getBatch`, `users.create`, `users.createBatch`, `users.update`, `users.deleteBatch` |
 | GUMem | `createSession`, `addMessages`, `recall`, `recallContext`, `uploadResource`, `actions.record`, `actions.recall`, `actions.stream` |
-| Do Anything | `run`, `attach` → `RunHandle`；显式 `runWithMemory`；`profile.read/update`（待发布） |
+| Do Anything | `run`, `attach` → `RunHandle`；显式 `runWithMemory`；`profile.read/update`（待发布）；`sessions.list/get/credits`、`browsers.list/control`、`files.list/read/watch/upload/move/mkdir/delete/listAll`（0.10.0） |
 | Deep Research | `run`, `attach` → `RunHandle` |
 | Web Search | `run`, `attach` → `RunHandle` |
-| Track | `create`, `attach` → `MonitorHandle` |
+| Track | `create`, `attach` → `MonitorHandle`；`list`（0.10.0） |
+| Proactive（0.10.0） | `create`、`list`、`get`、`cancel`、`runNow` |
+| Notifications（0.10.0） | `list`、`markRead` |
+| Workspace（0.10.0） | `credits` |
 
 三个任务型产品共用同一个句柄形态：
 
@@ -861,13 +923,15 @@ interface RunResult {
   artifacts: Artifact[];       // 持久化 DoAnything 文件 / deepResearch 报告
   isTaskSuccessful?: boolean;  // 任务是否达成目标（与 status 不同）
   terminalReason?: string;
+  failureReason?: RunFailureReason; // 失败原因，如 "insufficient_credits"（0.10.0）
+  failureDetail?: string;
   raw: JsonObject;             // 完整 wire envelope——成本、步数、token 用量
 }
 ```
 
 每个 `Artifact` 暴露 `id`、`name?`、`mime?`、`sizeBytes?`、`createdAt?` 和 `content(): Promise<Uint8Array>`（懒加载字节）。其余方法都返回下文的 `QoniResponse<T>` 信封,`T` 是该调用的具体载荷类型（例如 `genauth.users.list` → `.data` 上的分页用户列表）。`T` 的精确形状见随包的 `.d.ts`，与后端契约一致。
 
-`MonitorHandle`（Track）提供 `id`、`get()`、`pause()`、`resume()`、`refine(patch)`、`runNow()`、`runs()`、`run(runId)`、`delete()`。deprecated 的 `events()` / `interactionHandle()` 本地拒绝，完整逐项映射见上方 Track。
+`MonitorHandle`（Track）提供 `id`、`get()`、`pause()`、`resume()`、`refine(patch)`、`runNow()`、`runs()`、`run(runId)`、`delete()` 和 `events()`：Track 的检查实时进行中的事件——每次检查是这个 Track 自己会话里的一次 run，以它的 `done` 结束；流跨检查持续，直到你 abort（另需 `webagent.do_anything:read`）。deprecated 的 `interactionHandle()` 本地拒绝。
 
 ### 交互（HITL）
 
@@ -1002,7 +1066,8 @@ type QoniResponse<T> = {
 //     "triggered"      string   —— deprecated 的旧 monitor wire 类型
 //     "checkCompleted" boolean  —— deprecated 的旧 monitor wire 类型
 //   丰富事件 —— event.data 是个小对象:
-//     "message"        { text, role }
+//     "message"        { id, role, text, delta, done, final, stopReason? } —— 流式回答的各段共用一个 id
+//     "browsers"       AgentBrowser[] —— 现在开着的所有浏览器（0.10.0）
 //     "interaction"    带类型的 Interaction 对象（HITL）—— 见「交互」一节
 //     "screenshot"     { pageUrl?, step? }   + 解码后的图在 event.image
 //     "browserLiveUrlChanged" { liveUrl, supportsLivePump, forceViewerReload, providerSessionId? }
@@ -1014,10 +1079,10 @@ type QoniResponse<T> = {
 
 | 产品 | `event.type` 集合 |
 |---|---|
-| Do Anything | 核心:`progress` / `message` / `interaction` / `screenshot` / `browserLiveUrlChanged` / `done` |
+| Do Anything | 核心:`progress` / `message` / `interaction` / `screenshot` / `browserLiveUrlChanged` / `browsers` / `done` |
 | Web Search | 核心 + `resultsReady` |
 | Deep Research | 核心 + `phase` / `sectionReady`（大纲审批走 `interaction`） |
-| Track（`MonitorHandle`） | 无 SSE 路径，旧 MonitorEvent 类型 deprecated；用 runs()/run() 读取检查。 |
+| Track（`MonitorHandle`） | `events()` 给出每次检查的核心事件（0.10.0），检查结束是该检查 `runId` 的 `done`，流不会因此结束。 |
 
 展示实时浏览器时，监听 `browserLiveUrlChanged`，用 `event.data.liveUrl` 更新预览地址。任务执行期间可能切换标签页，因此不能只使用第一次收到的地址。`forceViewerReload` 为 true 时重载已有预览。live URL 可访问浏览器画面，不要写入公开日志。
 
@@ -1047,6 +1112,7 @@ type QoniEvent<T = unknown> = {
 | `QoniValidationError` | 请求发出前的本地校验失败（scope 字符串格式错、silent 委托缺 user）。 | 按消息修正调用——消息里给出正确写法。 |
 | `QoniAuthError` | AK/SK 签名被 Qoni 拒绝（凭据错误/已轮换）。 | 检查 `accessKey` / `secretKey`。 |
 | `QoniPermissionDeniedError` | AccessKey 或 delegation token 缺少所需 scope（403）。 | 检查 AccessKey 权限策略，并在 `delegateToken` 中申请所需 scope。 |
+| `QoniConsentRequiredError`（0.10.0） | 这个人没同意过、撤回了同意，或 Agent 现在要的比同意的多（它也是 `QoniPermissionDeniedError`；`code` 保留服务端原因）。 | 再走一次 `delegateToken({ mode: "interactive", … })` 授权页。 |
 | `QoniTokenExpiredError` | delegation / 产品 token 过期。 | 仅恢复当前仍获准的访问；不能扩大旧 grant 或重放结果未知的写入。 |
 | `QoniDelegationRequiredError` | 产品调用没带 `token`，或带的是网关不接受的裸 token。 | 把 `delegation.data.token` 传给产品调用。 |
 | `QoniRateLimitError` | 被限流（429）。 | 安全读取可退避；写入结果未知时先按原操作对账。 |
@@ -1160,6 +1226,14 @@ Personal Quickstart 的邮箱创建流程与统一 Agent 管理的可选能力�
 ### 个人 Agent 编排与可选邮箱（待发布）
 
 此候选接口可用于本地集成；后端业务验证仍未完成，示例不代表外部邮箱供应商已经支持或验收通过。
+
+新建的 Agent 要先审核并同步能力，这个人才能在授权页同意（0.10.0）：
+
+```ts
+await qoni.genauth.agents.activate({ agentId, userId: person.genauthUserId, audience: app.appIdentifier, dataPolicyIds });
+```
+
+它把数据策略授权给这个人，起草、提交并批准 Agent 的能力申请，给 Agent 本地凭据并同步权限，然后等到 GenAuth 报告同步完成。每一步写入都带由 Agent 和步骤决定的幂等键，重复调用是安全的；已经激活的 Agent 立即返回。
 
 `genauth.agents.create/get/bind` 使用现有 Qoni 签名传输。首次创建前保存 `idempotencyKey` 与完整请求，重试沿用它们。`ready: false` 是持久受理或恢复状态，不能当作成功，也不要换键创建替代 Agent。申请邮箱时，须原 Mail operation 成功、邮箱资源 active、IAM 确认 ready 才返回 `ready: true`。
 

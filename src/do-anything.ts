@@ -1,3 +1,4 @@
+import { createComputerNamespaces } from "./computer";
 import { createSensitiveForms } from './sensitive-forms';
 import {createGumemNamespace,type GumemRecallContextInput} from "./gumem";
 import {validateMemoryContextInput,type MemoryContext} from "./memory-context";
@@ -551,7 +552,14 @@ export function createDoAnythingNamespace(transport: QoniTransport) {
     };
   }
 
+  const { sessions, browsers, files } = createComputerNamespaces(transport);
   const namespace = {
+    /** The person's conversations: list them, read one, see what each run cost. */
+    sessions,
+    /** The browsers a session has open (lead agent first), and acting on a sub-agent's. */
+    browsers,
+    /** The files on a session's computer: list, read, watch, upload, move, delete. */
+    files,
     /** The immutable formal Agent's own bound mailbox; server checks original Task authority. */
     mail: {
       list: (input: {runId:string;token:string;after?:number;limit?:number}) =>

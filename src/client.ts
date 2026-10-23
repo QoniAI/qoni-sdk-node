@@ -42,6 +42,7 @@ import {
 import type { GenAuthAccessTokenInput } from "./genauth";
 import type { GenAuthAdminToken } from "./genauth-management";
 import { createWebSearchNamespace } from "./web-search";
+import { createNotificationsNamespace, createProactiveNamespace, createWorkspaceNamespace } from "./personal";
 
 const DEFAULT_QONI_HOST = "https://dashboard.qoni.ai";
 
@@ -63,6 +64,12 @@ export class Qoni {
   readonly doAnything: ReturnType<typeof createDoAnythingNamespace>;
   readonly track: ReturnType<typeof createTrackNamespace>;
   readonly deepResearch: ReturnType<typeof createDeepResearchNamespace>;
+  /** Follow-ups the agent (or an app) scheduled in a conversation. */
+  readonly proactive: ReturnType<typeof createProactiveNamespace>;
+  /** Findings tracks and follow-ups left the person, and which are unread. */
+  readonly notifications: ReturnType<typeof createNotificationsNamespace>;
+  /** The workspace the AccessKey belongs to: what its runs can still spend. */
+  readonly workspace: ReturnType<typeof createWorkspaceNamespace>;
 
   constructor(private readonly options: QoniOptions) {
     const accessKey = options.accessKey ?? options.accessKeyId;
@@ -102,6 +109,9 @@ export class Qoni {
     this.doAnything = createDoAnythingNamespace(transport);
     this.track = createTrackNamespace(transport);
     this.deepResearch = createDeepResearchNamespace(transport);
+    this.proactive = createProactiveNamespace(transport);
+    this.notifications = createNotificationsNamespace(transport);
+    this.workspace = createWorkspaceNamespace(transport);
   }
 
   delegateToken(

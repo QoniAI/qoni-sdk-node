@@ -1,6 +1,7 @@
 import { QoniError, QoniUnsupportedError, QoniValidationError } from "./errors";
 import type { Interaction, InteractionHandle } from "./interactions";
 import { camelizeKeys, type MonitorEvent } from "./run-events";
+import { RunEventFolder } from "./run-stream";
 import {
   isJsonObject,
   type QoniEvent,
@@ -23,8 +24,11 @@ export interface TrackCreateOptions {
 }
 
 export interface TrackAttachOptions { token: string }
-/** @deprecated Track has no events endpoint. Retained for source compatibility. */
-export interface MonitorEventsOptions { lastEventId?: string; signal?: AbortSignal }
+export interface MonitorEventsOptions {
+  /** Resume after this event id; omitted, the track's history is replayed first. */
+  lastEventId?: string;
+  signal?: AbortSignal;
+}
 /** Pagination within the most recent 50 checks, newest first; applied locally. */
 export interface MonitorRunsOptions { limit?: number; offset?: number }
 
@@ -57,6 +61,7 @@ export type TrackTaskRef = { trackId: string; sessionId: string; runId: string }
 
 interface MonitorWireOps {
   get(): Promise<JsonObject>;
+  sessionEvents(sessionId: string, opts: MonitorEventsOptions): AsyncIterable<QoniEvent<unknown>>;
   update(input: JsonObject): Promise<JsonObject>;
   runNow(): Promise<JsonObject>;
   listRuns(opts: MonitorRunsOptions): Promise<JsonObject>;
@@ -89,9 +94,18 @@ export class MonitorHandle {
       runId: responseId(data.run_id, "runNow run_id"),
     };
   }
-  /** @deprecated No Track SSE endpoint. Use runs()/run() for checks. */
-  async *events(_opts: MonitorEventsOptions = {}): AsyncIterable<MonitorEvent> {
-    throw unsupported("MonitorHandle.events", "Use runs()/run() to read recent checks.");
+  /**
+   * The track as it works, live: each check is a run of the track's session, so a
+   * check streams `progress`, `message` and `browsers` events and ends with `done`
+   * (its `runId` is the check's). The stream does not end at a check's `done`;
+   * abort `signal` to stop. Needs `webagent.do_anything:read` as well as track read.
+   */
+  async *events(opts: MonitorEventsOptions = {}): AsyncIterable<MonitorEvent> {
+    const sessionId = responseId((await this.ops.get()).session_id, "track session_id");
+    const folder = new RunEventFolder();
+    for await (const wire of this.ops.sessionEvents(sessionId, opts)) {
+      for (const event of folder.feed(wire)) yield event as MonitorEvent;
+    }
   }
   /** @deprecated No Track interaction endpoint. Cannot authorize DoAnything actions. */
   interactionHandle(_interaction: Interaction): InteractionHandle {
@@ -125,9 +139,10 @@ export function createTrackNamespace(transport: QoniTransport) {
       transport.webAgentJson("GET", path(input.monitorId), input.token, { requiredScopes: ["webagent.track:read"] }),
     runNow: async <T = unknown>(input: RuntimeTokenInput & { monitorId: string }): Promise<QoniResponse<T>> =>
       transport.webAgentJson("POST", `${path(input.monitorId)}/run_now`, input.token, { body: {}, requiredScopes: ["webagent.track:manage"] }),
-    /** @deprecated No Track SSE endpoint; fails locally on iteration, with zero HTTP. */
-    async *events<T = unknown>(_input: RuntimeTokenInput & { monitorId: string; lastEventId?: string; signal?: AbortSignal }): AsyncIterable<QoniEvent<T>> {
-      throw unsupported("track.api.events", "Use listRuns/getRun for recent checks.");
+    /** The track's session stream (wire events), every check's events in order. */
+    async *events<T = unknown>(input: RuntimeTokenInput & { monitorId: string; lastEventId?: string; signal?: AbortSignal }): AsyncIterable<QoniEvent<T>> {
+      const track = record((await api.getMonitor({ token: input.token, monitorId: input.monitorId })).data);
+      yield* sessionStream<T>(responseId(track.session_id, "track session_id"), input);
     },
     /** @deprecated No Track intervene endpoint; fails locally with zero HTTP. */
     intervene: async <T = unknown>(_input: RuntimeTokenInput & { monitorId: string } & JsonObject): Promise<QoniResponse<T>> => {
@@ -166,9 +181,16 @@ export function createTrackNamespace(transport: QoniTransport) {
       transport.webAgentJson("DELETE", path(input.monitorId), input.token, { requiredScopes: ["webagent.track:manage"] }),
   };
 
+  function sessionStream<T>(sessionId: string, input: { token?: string; lastEventId?: string; signal?: AbortSignal }): AsyncIterable<QoniEvent<T>> {
+    return transport.webAgentSSE<T>(`/do_anything/sessions/${encodeURIComponent(sessionId)}/events`, input.token, {
+      lastEventId: input.lastEventId, signal: input.signal, requiredScopes: ["webagent.do_anything:read"],
+    });
+  }
+
   function ops(token: string | undefined, monitorId: string): MonitorWireOps {
     return {
       get: async () => record((await api.getMonitor({ token, monitorId })).data),
+      sessionEvents: (sessionId, opts) => sessionStream(sessionId, { token, ...opts }),
       update: async body => record((await api.updateMonitor({ token, monitorId, ...body })).data),
       runNow: async () => record((await api.runNow({ token, monitorId })).data),
       listRuns: async opts => record((await api.listRuns({ token, monitorId, ...opts })).data),
@@ -177,6 +199,14 @@ export function createTrackNamespace(transport: QoniTransport) {
     };
   }
   return {
+    /** The person's tracks, each with whether a check is running and its unread findings. */
+    list: async (input: { token: string; signal?: AbortSignal }): Promise<JsonObject[]> => {
+      const { data } = await transport.webAgentJson<JsonObject>("GET", root, input.token, {
+        signal: input.signal, requiredScopes: ["webagent.track:read"],
+      });
+      const items = Array.isArray(record(data).items) ? (data.items as unknown[]) : [];
+      return items.map((item) => normalizeTrack(record(item)));
+    },
     create: async (input: TrackCreateOptions): Promise<MonitorHandle> => {
       assertFields(input, ["token", "prompt", "schedule", "title"], "track.create");
       validateText(input.prompt, "prompt", 4000, false);

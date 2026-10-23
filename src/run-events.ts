@@ -1,3 +1,4 @@
+import type { AgentBrowser } from "./browsers";
 import { normalizeInteraction, type Interaction } from "./interactions";
 import { isJsonObject, type QoniEvent, type JsonObject } from "./types";
 
@@ -30,7 +31,7 @@ export const QoniEventTypes = {
   // --- Core (any product run can emit these) ---
   /** The agent is working — folds ALL internal steps (actions, plan/subtask, sections, telemetry, take-control, …); `event.data` is a best-effort human-readable line (string). */
   Progress: "progress",
-  /** The agent produced a user-facing chat message. */
+  /** A chat message. A streamed reply arrives as several with one `event.data.id`: `text` is the whole message so far, `delta` what was added, `done` when it is complete. */
   Message: "message",
   /** HITL — a typed interaction needs the user (login / clarification / confirmation / take-control / wait); `event.data` is the full {@link Interaction} object. Act on it via the action methods (`run.interactionHandle(event.data).answer(…)` etc). */
   Interaction: "interaction",
@@ -38,6 +39,8 @@ export const QoniEventTypes = {
   Screenshot: "screenshot",
   /** The browser viewer moved to a new page or needs a fresh attachment. Use `event.data.liveUrl` for the live preview. */
   BrowserLiveUrlChanged: "browserLiveUrlChanged",
+  /** The browsers the run has open changed — the lead agent's and its sub-agents'; `event.data` is the whole list ({@link AgentBrowser}[]). */
+  Browsers: "browsers",
   /** Terminal — the run finished; outcome + output in `event.data` (cost is on the `RunResult`). */
   Done: "done",
   // --- Web Search ---
@@ -66,7 +69,7 @@ export type QoniEventType = (typeof QoniEventTypes)[keyof typeof QoniEventTypes]
  * URL change) — those don't
  * go through the generic `shapeData`.
  */
-export type RunProgressType = Exclude<QoniEventType, "screenshot" | "done" | "interaction" | "browserLiveUrlChanged">;
+export type RunProgressType = Exclude<QoniEventType, "screenshot" | "done" | "interaction" | "browserLiveUrlChanged" | "browsers">;
 
 /** A decoded screenshot frame. `bytes` are the raw image bytes. */
 export interface RunImage {
@@ -90,8 +93,22 @@ interface RunEventBase {
 // prints it directly. Rich events: `event.data` is a small object with
 // human-named fields. The full raw wire payload is always on `event.raw`.
 
-/** `message` — an assistant/user chat message. */
-export interface RunMessageData { text: string; role: string }
+/** `message` — a chat message, from the agent (`role` "ai") or the person ("human"). */
+export interface RunMessageData {
+  /** Stable for the whole message: every chunk of a streamed reply, and its end, share it. */
+  id: string;
+  role: string;
+  /** The whole message so far. */
+  text: string;
+  /** What this event added to `text` ("" when it only completes or replaces it). */
+  delta: string;
+  /** The message is complete: nothing more will be added. */
+  done: boolean;
+  /** It is the run's answer. */
+  final: boolean;
+  /** On a reply's completion, why the model stopped: a "tool…" reason means the agent goes on to use tools; anything else that it finished speaking. */
+  stopReason?: string;
+}
 /** `screenshot` — page metadata; the decoded image is on `event.image`. */
 export interface RunScreenshotData { pageUrl?: string; step?: number }
 /** `browserLiveUrlChanged` — the provider's live viewer URL can rotate as tabs change. */
@@ -112,6 +129,7 @@ export type RunEvent =
   | (RunEventBase & { type: "interaction"; data: Interaction; isTerminal: false })
   | (RunEventBase & { type: "screenshot"; data: RunScreenshotData; image: RunImage; isTerminal: false })
   | (RunEventBase & { type: "browserLiveUrlChanged"; data: RunBrowserLiveUrlChangedData; isTerminal: false })
+  | (RunEventBase & { type: "browsers"; data: AgentBrowser[]; isTerminal: false })
   | (RunEventBase & { type: "done"; data: RunDoneData; isTerminal: true })
   // Web Search — `event.data` is the count of unique results (number).
   | (RunEventBase & { type: "resultsReady"; data: number; isTerminal: false })
@@ -133,7 +151,7 @@ export type RunEvent =
 /** Events any product run can emit. */
 export type CoreRunEvent = Extract<
   RunEvent,
-  { type: "progress" | "message" | "interaction" | "screenshot" | "browserLiveUrlChanged" | "done" }
+  { type: "progress" | "message" | "interaction" | "screenshot" | "browserLiveUrlChanged" | "browsers" | "done" }
 >;
 /** Do Anything — core events only. */
 export type DoAnythingEvent = CoreRunEvent;
@@ -143,7 +161,7 @@ export type WebSearchEvent = CoreRunEvent | Extract<RunEvent, { type: "resultsRe
 export type DeepResearchEvent =
   | CoreRunEvent
   | Extract<RunEvent, { type: "phase" | "sectionReady" }>;
-/** @deprecated Historical Track event shape. The current Track API has no SSE endpoint. */
+/** Track — the events of a track's checks, from `MonitorHandle.events()`. */
 export type MonitorEvent =
   | CoreRunEvent
   | Extract<RunEvent, { type: "monitorCreated" | "triggered" | "checkCompleted" }>;
@@ -342,8 +360,17 @@ function shapeData(type: RunProgressType, c: JsonObject): RunEvent["data"] {
     case "checkCompleted":
       return c.changed === true; // whether a change was found
     // Rich events: event.data is a small object.
-    case "message":
-      return { text: asString(c.text) ?? "", role: asString(c.role) ?? "" };
+    case "message": {
+      // One event on its own; a run handle's stream joins a streamed reply's chunks.
+      const text = typeof c.text === "string" ? c.text : "";
+      const data: RunMessageData = {
+        id: asString(c.messageId) ?? "", role: asString(c.role) ?? "", text, delta: text,
+        done: c.summary !== "Streaming", final: c.final === true,
+      };
+      const stopReason = asString(c.stopReason);
+      if (stopReason) data.stopReason = stopReason;
+      return data;
+    }
   }
 }
 

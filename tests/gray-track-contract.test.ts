@@ -197,11 +197,12 @@ it.each([{ limit: -1 }, { offset: -1 }, { limit: 1.1 }, { offset: NaN }])("rejec
   await expect(h.runs(opts)).rejects.toBeInstanceOf(QoniValidationError);
   expect(calls).toEqual([]);
 });
-it("keeps unsupported events/intervene/interactionHandle and snapshot read as local typed failures", async () => {
+it("keeps unsupported intervene/interactionHandle and snapshot read as local typed failures", async () => {
   const h = await create(); calls.length = 0;
   const card = { id: "i", type: "ask_user", actions: [{ endpoint: "/do_anything/runs/other/intervene", kind: "answer" }] } as unknown as Interaction;
   expect(() => h.interactionHandle(card)).toThrow(QoniUnsupportedError);
-  for (const work of [consume(h.events()), consume(client.track.api.events({ token: delegation, monitorId: h.id })), client.track.api.intervene({ token: delegation, monitorId: h.id }), client.doAnything.api.readArtifacts({ token: delegation, sessionId: "s", artifactId: "a" })]) {
+  // Track events are real since 0.10.0: they stream the track's own session (tests/personal-agent-surface).
+  for (const work of [client.track.api.intervene({ token: delegation, monitorId: h.id }), client.doAnything.api.readArtifacts({ token: delegation, sessionId: "s", artifactId: "a" })]) {
     await expect(work).rejects.toMatchObject({ name: "QoniUnsupportedError", code: "unsupported.operation" });
   }
   expect(calls).toEqual([]);

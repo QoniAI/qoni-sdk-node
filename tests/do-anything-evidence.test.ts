@@ -300,7 +300,7 @@ function semanticMessage(raw: QoniEvent<unknown>): RunEvent {
     at: "2026-08-14T01:00:01.000Z",
     raw,
     type: "message",
-    data: { role: "ai", text: "I will inspect the page." },
+    data: { id: "m1", role: "ai", text: "I will inspect the page.", delta: "I will inspect the page.", done: true, final: false },
     isTerminal: false,
   };
 }

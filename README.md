@@ -214,7 +214,7 @@ for await (const event of run.events()) {
     case QoniEventTypes.Progress:      console.log(event.data); break; // data IS the line (string)
     case QoniEventTypes.Phase:         console.log(event.data); break; // data IS the phase name (string)
     case QoniEventTypes.SectionReady:  console.log(event.data); break; // data IS the section title (string)
-    case QoniEventTypes.Message:       console.log(event.data.text); break; // rich → { text, role }
+    case QoniEventTypes.Message:       console.log(event.data.text); break; // rich → { id, role, text, delta, done, final }
     case QoniEventTypes.Interaction: {                                      // rich → the typed Interaction object
       const i = run.interactionHandle(event.data);                         // e.g. an outline-approval confirmation
       if (i.can("confirm")) await i.confirm();
@@ -654,6 +654,68 @@ Browserbase compute, while the registered proxy controls network egress. The SDK
 accepts only a proxy ID, mode, and region; operators manage proxy credentials in
 OpsConsole.
 
+### A personal agent: conversations, browsers and the computer (0.10.0)
+
+Every conversation (a Do Anything session) has its own computer. Everything below
+takes the person's delegation `token`; reads need `webagent.do_anything:read`,
+changes `webagent.do_anything:manage`.
+
+**While a run works**, its stream says what to show:
+
+```ts
+await run.wait({
+  onEvent(event) {
+    switch (event.type) {
+      case QoniEventTypes.Message:   // a streamed reply: one id, the whole text so far, the new part
+        ui.upsertBubble(event.data.id, event.data.text, { done: event.data.done, final: event.data.final });
+        if (event.data.done && event.data.stopReason && !/^tool/i.test(event.data.stopReason)) ui.settled();
+        break;
+      case QoniEventTypes.Browsers:  // every browser open now: the lead's first, then each sub-agent's
+        ui.showScreens(event.data);  // [{ id, label, url, status, activity, need, userInControl, startedAt }]
+        break;
+    }
+  },
+});
+```
+
+`url` is the browser's interactive live view — put it in an iframe. A sub-agent
+whose `need` is set waits for the person (`login`: sign in there; `help`: do what
+`prompt` says); answer it with `browsers.control({ token, sessionId, browserId, action: "done" })`
+(or `take` / `release` / `skip`).
+
+**Any time**, without a run:
+
+```ts
+const { doAnything } = qoni;
+await doAnything.sessions.list({ token });                     // conversations, newest first
+await doAnything.sessions.credits({ token, sessionId });       // what each run cost
+await doAnything.browsers.list({ token, sessionId });          // browsers open now (none while it sleeps)
+
+await doAnything.files.list({ token, sessionId, path: "workspace", depth: 2 });
+// → { source: "live" | "saved" | null, items: [{ path, name, type, sizeBytes, modifiedAt }], savedAt }
+const bytes = await doAnything.files.read({ token, sessionId, path: "workspace/outputs/report.md" });
+for await (const change of doAnything.files.watch({ token, sessionId, signal })) {
+  // { type: "created" | "changed" | "removed", path } within ~2 s; ends when the computer sleeps
+}
+await doAnything.files.upload({ token, sessionId, path: "workspace/uploads/brief.pdf", content: bytes });
+await doAnything.files.move({ token, sessionId, from: "a.md", to: "notes/a.md" });
+await doAnything.files.mkdir({ token, sessionId, path: "notes" });
+await doAnything.files.delete({ token, sessionId, path: "notes/old.md" });
+await doAnything.files.listAll({ token });                     // every conversation's kept files
+
+await qoni.workspace.credits({ token });                       // { available: 123 } whole Credits, null if unmetered
+await qoni.proactive.list({ token });                          // follow-ups the agent scheduled
+await qoni.notifications.list({ token });                      // { items, unread }; needs webagent.track:read
+```
+
+Looking never wakes a sleeping computer: it is answered from the copy kept after
+each turn (`source: "saved"`). A change wakes it, and it goes back to sleep once
+idle. Paths are relative to its home folder; hidden runtime state is refused.
+Uploads never replace a file (409 `workspace_file_exists`). A run that failed says
+why in `RunResult.failureReason` — `insufficient_credits` means top up. When the agent
+asks to send an email it wrote, the confirmation carries it as
+`interaction.payload.mail` (`{ to, subject, text }`) — exactly what will be sent.
+
 ### Web Search
 
 ```ts
@@ -897,12 +959,15 @@ const qoni = new Qoni({
 | Namespace | Methods |
 | --- | --- |
 | Delegation | `delegateToken`, `completeDelegateToken`, deprecated aliases `delegateAgent`, `completeDelegateAgent` |
-| GenAuth | `userInfo`, `jwks`, `discovery`, `introspectDelegationToken`, `auth.createLoginUrl`, `auth.exchangeLoginCode`, `agents.create/get/bind` (Unreleased), `users.list`, `users.get`, `users.getBatch`, `users.create`, `users.createBatch`, `users.update`, `users.deleteBatch` |
+| GenAuth | `userInfo`, `jwks`, `discovery`, `introspectDelegationToken`, `auth.createLoginUrl`, `auth.exchangeLoginCode`, `agents.create/get/bind` (Unreleased), `agents.activate` (0.10.0), `users.list`, `users.get`, `users.getBatch`, `users.create`, `users.createBatch`, `users.update`, `users.deleteBatch` |
 | GUMem | `createSession`, `addMessages`, `recall`, `recallContext`, `uploadResource`, `actions.record`, `actions.recall`, `actions.stream` |
-| Do Anything | `run`, `attach` → `RunHandle`; opt-in `runWithMemory`; `profile.read/update` (Unreleased) |
+| Do Anything | `run`, `attach` → `RunHandle`; opt-in `runWithMemory`; `profile.read/update` (Unreleased); `sessions.list/get/credits`, `browsers.list/control`, `files.list/read/watch/upload/move/mkdir/delete/listAll` (0.10.0) |
 | Deep Research | `run`, `attach` → `RunHandle` |
 | Web Search | `run`, `attach` → `RunHandle` |
-| Track | `create`, `attach` → `MonitorHandle` |
+| Track | `create`, `attach` → `MonitorHandle`; `list` (0.10.0) |
+| Proactive (0.10.0) | `create`, `list`, `get`, `cancel`, `runNow` |
+| Notifications (0.10.0) | `list`, `markRead` |
+| Workspace (0.10.0) | `credits` |
 
 The three run products share one handle shape:
 
@@ -946,6 +1011,8 @@ interface RunResult {
   artifacts: Artifact[];       // persisted DoAnything files / deepResearch reports
   isTaskSuccessful?: boolean;  // did the task achieve its goal (distinct from `status`)
   terminalReason?: string;
+  failureReason?: RunFailureReason; // why it failed, e.g. "insufficient_credits" (0.10.0)
+  failureDetail?: string;
   raw: JsonObject;             // full wire envelope — cost, step counts, token usage
 }
 ```
@@ -956,7 +1023,7 @@ is the typed payload for that call (e.g. `genauth.users.list` → a paged user
 list on `.data`). The exact `T` shapes live in the bundled `.d.ts` and follow
 the backend contract.
 
-`MonitorHandle` (Track) provides `id`, `get()`, `pause()`, `resume()`, `refine(patch)`, `runNow()`, `runs()`, `run(runId)`, and `delete()`. Its deprecated `events()` and `interactionHandle()` methods fail locally; see Track above for the complete mapping.
+`MonitorHandle` (Track) provides `id`, `get()`, `pause()`, `resume()`, `refine(patch)`, `runNow()`, `runs()`, `run(runId)`, `delete()`, and `events()`: the track's checks live — each check is a run of the track's own session and ends with its `done`; the stream continues across checks until you abort it (also needs `webagent.do_anything:read`). Its deprecated `interactionHandle()` fails locally.
 
 ### Interactions (HITL)
 
@@ -1158,7 +1225,8 @@ that type:
 //     "triggered"      string   — deprecated legacy monitor wire type
 //     "checkCompleted" boolean  — deprecated legacy monitor wire type
 //   RICH events — event.data is a small object:
-//     "message"        { text, role }
+//     "message"        { id, role, text, delta, done, final, stopReason? } — a streamed reply's pieces share id
+//     "browsers"       AgentBrowser[] — every browser open now (0.10.0)
 //     "interaction"    the typed Interaction object (HITL) — see Interactions
 //     "screenshot"     { pageUrl?, step? }   + the decoded image on event.image
 //     "browserLiveUrlChanged" { liveUrl, supportsLivePump, forceViewerReload, providerSessionId? }
@@ -1171,7 +1239,7 @@ Each product handle is typed to its own subset:
 
 | Product | `event.type` set |
 |---|---|
-| Do Anything | core: `progress` / `message` / `interaction` / `screenshot` / `browserLiveUrlChanged` / `done` |
+| Do Anything | core: `progress` / `message` / `interaction` / `screenshot` / `browserLiveUrlChanged` / `browsers` / `done` |
 | Web Search | core + `resultsReady` |
 | Deep Research | core + `phase` / `sectionReady` (the outline gate arrives as an `interaction`) |
 | Track (`MonitorHandle`) | No SSE endpoint; historical MonitorEvent types are deprecated. Read checks with runs()/run(). |
@@ -1210,6 +1278,7 @@ All error classes are exported and can be matched with `instanceof`:
 | `QoniValidationError` | Local input check failed before any request (bad scope string, silent delegation missing a user). | Fix the call — the message states the correct form. |
 | `QoniAuthError` | AK/SK signing rejected by Qoni (bad/rotated credentials). | Check `accessKey` / `secretKey`. |
 | `QoniPermissionDeniedError` | The AccessKey or delegation token lacks a required scope (403). | Check the AccessKey permission policy and request the missing scope with `delegateToken`. |
+| `QoniConsentRequiredError` (0.10.0) | The person never consented, withdrew it, or the agent now asks for more (a `QoniPermissionDeniedError`; `code` keeps the server's reason). | Send them through `delegateToken({ mode: "interactive", … })` again. |
 | `QoniTokenExpiredError` | The delegation / product token expired. | Re-establish only currently permitted access; do not expand the old grant or replay an uncertain write. |
 | `QoniDelegationRequiredError` | A product call was made without `token`, or with a raw token the gateway won't accept directly. | Pass `delegation.data.token` to the product call. |
 | `QoniRateLimitError` | Rate limited (429). | Back off for a safe read; reconcile any uncertain write before an explicit retry. |
@@ -1355,6 +1424,19 @@ if (result.state === "ready" && result.ready) {
   result = await qoni.genauth.agents.bind({ provisioningId: result.provisioningId, accessToken: currentUserAccessToken });
 }
 ```
+
+Before its person can grant it anything on the consent page, an agent's capabilities must be approved and synced (0.10.0):
+
+```ts
+await qoni.genauth.agents.activate({
+  agentId,                      // from agents.create
+  userId: person.genauthUserId, // the person it works for
+  audience: app.appIdentifier,  // the App it acts through
+  dataPolicyIds,                // the data policies it may use for them
+});
+```
+
+It authorizes the policies to the person, drafts, submits and approves the agent's capability grant, gives it its local credentials and syncs its permissions, then waits until GenAuth reports them synced. Every write carries an idempotency key from the agent and step, so calling it again is safe, and an agent already active returns at once.
 
 Binding requires the current person's valid GenAuth user token and matching pool/App authority; a browser-provided owner ID is not accepted. Never-bound Agents are reclaimed seven days after IAM readiness; binding clears that deadline. Definitive failures are compensated promptly; uncertain provider results retain their original operation for reconciliation. Inspect `state/errorCode`; the SDK does not automatically replay uncertain writes. Keep tokens and management credentials on a trusted application server and out of logs. This feature is off by default and requires provisioning, the existing Mail worker, and IAM service authentication.
 

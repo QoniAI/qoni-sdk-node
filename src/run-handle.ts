@@ -13,10 +13,10 @@ import {
 } from "./interactions";
 import {
   isTerminalRunStatus,
-  normalizeRunEvent,
   type RunEvent,
   type RunImage,
 } from "./run-events";
+import { RunEventFolder } from "./run-stream";
 import { isJsonObject, type QoniEvent, type JsonObject } from "./types";
 
 /** A take_control that `openLogin()` or a site_login's `connectControl()` opened: that sign-in's own browser. */
@@ -79,6 +79,29 @@ export interface Artifact {
   content(): Promise<Uint8Array>;
 }
 
+/**
+ * Why a run failed. The ones an app usually acts on: `insufficient_credits` (the
+ * workspace ran out of Credits: top up), `subagent_failed` (the agent could not do
+ * what was asked), `workflow_max_duration` (it reached its time limit) and
+ * `harness_llm_error` (the model kept failing). New reasons may appear.
+ */
+export type RunFailureReason =
+  | "insufficient_credits"
+  | "subagent_failed"
+  | "workflow_max_duration"
+  | "workflow_idle_timeout"
+  | "harness_llm_error"
+  | "harness_max_steps"
+  | "harness_rejection_streak"
+  | "browser_unstable_streak"
+  | "workflow_crashed"
+  | "react_step_failed"
+  | "janitor_stale_sweep"
+  | "mail_dispatch_failed"
+  | "timeout"
+  // eslint-disable-next-line @typescript-eslint/ban-types
+  | (string & {});
+
 /** Settled outcome of `run.wait()`. */
 export interface RunResult {
   runId: string;
@@ -88,6 +111,10 @@ export interface RunResult {
   /** Deliverables (deepResearch reports etc). Empty array for products without artifacts. */
   artifacts: Artifact[];
   terminalReason?: string;
+  /** Why it failed, when `status` is "failed". */
+  failureReason?: RunFailureReason;
+  /** What went wrong, in words, when it failed. */
+  failureDetail?: string;
   isTaskSuccessful?: boolean;
   /** Full wire run envelope (escape hatch — shape may evolve with the API). */
   raw: JsonObject;
@@ -189,25 +216,33 @@ export class RunHandle<E extends RunEvent = RunEvent> {
    * Reconnects with `Last-Event-ID` catch-up are handled internally.
    */
   async *events(opts: RunEventsOptions = {}): AsyncIterable<E> {
+    const folder = new RunEventFolder(this.id);
     for await (const wire of this.ops.streamEvents(opts)) {
       await opts.onWireEvent?.(wire);
-      let event = normalizeRunEvent(wire, { topRunId: this.id });
-      if (!event) continue;
-      if (event.type === "interaction") {
-        const prior = this.#interactions.get(event.data.id);
-        const card = foldInteraction(prior, event.data);
-        rememberBounded(this.#interactions, card.id, card, INTERACTION_MEMORY_LIMIT, interactionSettled);
-        markLoginEnded(this.#loginSessions, card);
-        if (opensForLogin(prior) || opensForLogin(card)) rememberBounded(this.#loginControls, card.id, true);
-        event = { ...event, data: card };
+      for (const folded of folder.feed(wire)) {
+        const event = this.#adopt(folded, wire);
+        if (!event) continue;
+        yield event as E;
+        if (event.isTerminal) return;
       }
-      if (event.type === "screenshot" && !this.capture.screenshots) continue;
-      if (isVideoFrame(wire) && !this.capture.videoFrames) continue;
-      // The normalizer yields the full RunEvent union; this product handle only
-      // receives its own subset, so the narrowing cast is sound.
-      yield event as E;
-      if (event.isTerminal) return;
     }
+  }
+
+  /** Remember an interaction's latest card; drop media the caller did not ask for. */
+  #adopt(event: RunEvent, wire: QoniEvent<unknown>): RunEvent | null {
+    if (event.type === "interaction") {
+      const prior = this.#interactions.get(event.data.id);
+      const card = foldInteraction(prior, event.data);
+      rememberBounded(this.#interactions, card.id, card, INTERACTION_MEMORY_LIMIT, interactionSettled);
+      markLoginEnded(this.#loginSessions, card);
+      if (opensForLogin(prior) || opensForLogin(card)) rememberBounded(this.#loginControls, card.id, true);
+      return { ...event, data: card };
+    }
+    if (event.type === "screenshot" && !this.capture.screenshots) return null;
+    if (isVideoFrame(wire) && !this.capture.videoFrames) return null;
+    // The folder yields the full RunEvent union; this product handle only
+    // receives its own subset, so the caller's narrowing cast is sound.
+    return event;
   }
 
   /** Drive the run to a terminal state and return the settled result. */
@@ -356,6 +391,10 @@ function settleRunResult(
     fallbackTerminalReason;
   const isTaskSuccessful =
     typeof detail.is_task_successful === "boolean" ? detail.is_task_successful : undefined;
+  const failureReason = typeof detail.failure_reason === "string" && detail.failure_reason
+    ? detail.failure_reason : undefined;
+  const failureDetail = typeof detail.failure_detail === "string" && detail.failure_detail
+    ? detail.failure_detail : undefined;
   const status = normalizeRunStatus(runId, detail).status;
   if (!isTerminalRunStatus(status)) {
     throw new QoniError(
@@ -369,6 +408,8 @@ function settleRunResult(
     output: runOutput(detail),
     artifacts,
     terminalReason,
+    ...(failureReason ? { failureReason } : {}),
+    ...(failureDetail ? { failureDetail } : {}),
     isTaskSuccessful,
     raw: detail,
   };

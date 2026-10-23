@@ -114,6 +114,8 @@ export type ClarificationPayload = AskUserPayload;
 
 export interface ConfirmationPayload {
   summary: string;
+  /** On the confirmation of an email the agent wrote: exactly what is sent, to lay out as one (0.10.0). */
+  mail?: { to: string; subject: string; text: string };
 }
 
 export interface TakeControlPayload {
@@ -288,8 +290,14 @@ function shapePayload(type: string, c: JsonObject): JsonObject {
       return { ...askUserPayload(c) };
     case "fill_form":
       return { title: asString(c.title) ?? "", ...(typeof c.description === "string" ? { description: c.description } : {}), fields: Array.isArray(c.fields) ? c.fields : [] };
-    case "confirmation":
-      return { summary: asString(c.summary) ?? "" };
+    case "confirmation": {
+      const payload: ConfirmationPayload = { summary: asString(c.summary) ?? "" };
+      const mail = isJsonObject(c.mail) ? c.mail : undefined;
+      if (mail && typeof mail.to === "string" && typeof mail.subject === "string" && typeof mail.text === "string") {
+        payload.mail = { to: mail.to, subject: mail.subject, text: mail.text };
+      }
+      return { ...payload };
+    }
     case "take_control": {
       const payload: TakeControlPayload = { liveUrl: asString(c.liveUrl) ?? "" };
       const surface = asString(c.surface);

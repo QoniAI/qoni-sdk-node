@@ -11,6 +11,7 @@ export type QoniErrorCode =
   | "qoni_error"
   | "auth.failed"
   | "delegation.required"
+  | "consent.required"
   | "permission_denied"
   | "token.expired"
   | "validation.failed"
@@ -113,6 +114,20 @@ export class QoniPermissionDeniedError extends QoniError {
   }
 }
 
+/**
+ * The person has to open the consent page again: they never agreed, withdrew their
+ * consent, or the agent now asks for more than they granted. Start an interactive
+ * delegation (`qoni.delegateToken({ mode: "interactive", … })`) and send them there.
+ * A permission the person has not given, so also a {@link QoniPermissionDeniedError};
+ * `code` keeps the server's reason.
+ */
+export class QoniConsentRequiredError extends QoniPermissionDeniedError {
+  constructor(message: string, options: QoniErrorOptions = {}) {
+    super(message, { code: "consent.required", ...options });
+    this.name = "QoniConsentRequiredError";
+  }
+}
+
 export class QoniTokenExpiredError extends QoniError {
   constructor(message: string, options: QoniErrorOptions = {}) {
     super(message, { code: "token.expired", ...options });
@@ -191,6 +206,7 @@ export function errorFromPayload(
   };
 
   if (isTokenExpired(code, message)) return new QoniTokenExpiredError(message, options);
+  if (status !== 401 && isConsentRequired(code, message)) return new QoniConsentRequiredError(message, options);
   if (isDelegationRequired(code)) return new QoniDelegationRequiredError(message, options);
   if (status === 401) return new QoniAuthError(message, options);
   if (status === 403 || isPermissionDenied(code)) {
@@ -272,6 +288,13 @@ function statusCodeToCode(status: number): string {
 
 function isPermissionDenied(code: string): boolean {
   return code.includes("permission") || code.includes("insufficient_scope");
+}
+
+// GenAuth's reasons a delegation needs the person again; they can arrive as the code or inside the message.
+const CONSENT_REQUIRED = /needs_authorization|consent_required|formal_agent_consent|scope_not_delegated|consent_revoked/;
+
+function isConsentRequired(code: string, message: string): boolean {
+  return CONSENT_REQUIRED.test(code) || CONSENT_REQUIRED.test(message);
 }
 
 function isDelegationRequired(code: string): boolean {

@@ -2033,14 +2033,22 @@ describe("Qoni", () => {
     ]);
   });
 
-  it("rejects unsupported Track SSE locally without HTTP", async () => {
+  it("streams a track's events from its own session", async () => {
     const calls: string[] = [];
     const client = new Qoni({ accessKey: "ak_test", secretKey: "sk_test", fetch: (async url => {
-      calls.push(String(url)); return sseResponse("");
+      calls.push(new URL(String(url)).pathname);
+      return String(url).endsWith("/events")
+        ? sseResponse('id: 7\ndata: {"type":"run.message","task_id":"check_1","data":{"role":"ai","type":"assistant_message","text":"No change","message_id":"m1"}}\n\n')
+        : new Response(JSON.stringify({ id: "mon_1", session_id: "session_9" }), { status: 200, headers: { "content-type": "application/json" } });
     }) as typeof fetch });
-    async function consume() { for await (const _ of client.track.api.events({ monitorId: "mon_1" })) { /* exhaust */ } }
-    await expect(consume()).rejects.toMatchObject({ code: "unsupported.operation" });
-    expect(calls).toEqual([]);
+    const events = [];
+    const token = `e30.${Buffer.from(JSON.stringify({ webagent_tenant_id: "proj_1", aud: "webagent" })).toString("base64url")}.`;
+    for await (const event of client.track.api.events({ token, monitorId: "mon_1" })) events.push(event);
+    const product = calls.filter((path) => path.startsWith("/api/v1/"));
+    expect(product.map((path) => path.replace(/^\/api\/v1\/projects\/[^/]+/, ""))).toEqual([
+      "/track/tracks/mon_1", "/do_anything/sessions/session_9/events",
+    ]);
+    expect(events).toHaveLength(1);
   });
 
   // -------------------------------------------------------------------------

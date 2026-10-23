@@ -8,6 +8,7 @@ import type { GenAuthAdminTokenOverrideInput, GenAuthAdminTokenProvider, GenAuth
 import type { GenAuthSdkUserDto, GenAuthListUsersInput, GenAuthGetUserInput, GenAuthGetUserBatchInput, GenAuthCreateUserInput, GenAuthUpdateUserInput, GenAuthManagementOperations } from "./generated/genauth-management-types";
 export type { GenAuthAdminToken, GenAuthAdminTokenProvider, GenAuthAdminTokenOverrideInput } from "./genauth-management";
 
+import { activateAgent, type ActivateAgentInput, type AgentActivation } from "./agent-activation";
 import { createGenAuthCommunication } from './genauth-communication';
 import type { GenAuthCommunicationCredentials } from './genauth-communication-types';
 import { QoniError, QoniTimeoutError, QoniUpstreamError, QoniValidationError } from "./errors";
@@ -208,6 +209,12 @@ export function createGenAuthNamespace(
           return result as PersonalAgentBinding;
         } catch(cause) {throw personalNoRetry(cause);}
       },
+      /**
+       * Make a new agent able to act for its person: approve and sync its capabilities
+       * (data policies, capability grant, credentials), waiting until the consent page
+       * can grant them. Safe to run again; returns at once for an agent already active.
+       */
+      activate:(input:ActivateAgentInput):Promise<AgentActivation>=>activateAgent(transport,options.adminTokenFor,input),
     },
     userInfo: <T = unknown>(input: GenAuthAccessTokenInput): Promise<QoniResponse<T>> =>
       transport.genauthJson("GET", "/oidc/me", input.accessToken),

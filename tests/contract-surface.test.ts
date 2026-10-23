@@ -28,7 +28,8 @@ function prototypeMethods(ctor: { prototype: object }): string[] {
 describe("frozen contract surface", () => {
   it("run products expose lifecycle operations and Do Anything file listing/profile", () => {
     for (const product of ["doAnything", "webSearch", "deepResearch"] as const) {
-      expect(publicKeys(client[product]), product).toEqual(product === "doAnything" ? ["api", "artifacts", "attach", "forms", "mail", "profile", "run", "runWithMemory"] : ["api", "attach", "run"]);
+      // 0.10.0 adds a person's conversations, their browsers and their computer's files.
+      expect(publicKeys(client[product]), product).toEqual(product === "doAnything" ? ["api", "artifacts", "attach", "browsers", "files", "forms", "mail", "profile", "run", "runWithMemory", "sessions"] : ["api", "attach", "run"]);
     }
   });
 
@@ -42,8 +43,17 @@ describe("frozen contract surface", () => {
     expect(typeof api.feedback).toBe("function");
   });
 
-  it("track exposes exactly create / attach / api (contract §6, §9)", () => {
-    expect(publicKeys(client.track)).toEqual(["api", "attach", "create"]);
+  it("track exposes exactly create / attach / list / api (contract §6, §9; list since 0.10.0)", () => {
+    expect(publicKeys(client.track)).toEqual(["api", "attach", "create", "list"]);
+  });
+
+  it("the personal agent's follow-ups, notifications and workspace credits (0.10.0)", () => {
+    expect(publicKeys(client.proactive)).toEqual(["cancel", "create", "get", "list", "runNow"]);
+    expect(publicKeys(client.notifications)).toEqual(["list", "markRead"]);
+    expect(publicKeys(client.workspace)).toEqual(["credits"]);
+    expect(publicKeys(client.doAnything.sessions)).toEqual(["credits", "get", "list"]);
+    expect(publicKeys(client.doAnything.browsers)).toEqual(["control", "list"]);
+    expect(publicKeys(client.doAnything.files)).toEqual(["delete", "list", "listAll", "mkdir", "move", "read", "upload", "watch"]);
   });
 
   it("RunHandle has exactly the contract §4 lifecycle methods", () => {

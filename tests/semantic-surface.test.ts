@@ -42,14 +42,20 @@ describe("live browser viewer events", () => {
     const run = await client.doAnything.attach("run_1", { token: TOKEN });
     const events: RunEvent[] = [];
     for await (const event of run.events()) events.push(event);
+    // Each viewer change also updates the run's browsers (the lead's browser here).
     expect(events.map((event) => event.type)).toEqual([
-      "browserLiveUrlChanged", "browserLiveUrlChanged", "done",
+      "browsers", "browserLiveUrlChanged", "browsers", "browserLiveUrlChanged", "done",
     ]);
-    expect(events[0]).toMatchObject({
+    const viewer = events.filter((event) => event.type === "browserLiveUrlChanged");
+    expect(viewer[0]).toMatchObject({
       type: "browserLiveUrlChanged",
       data: { liveUrl: "https://browser.example/devtools/page/bootstrap" },
     });
-    expect(events[1]).toMatchObject({
+    expect(events[2]).toMatchObject({
+      type: "browsers",
+      data: [{ id: "main", url: "https://browser.example/devtools/page/real-tab" }],
+    });
+    expect(viewer[1]).toMatchObject({
       type: "browserLiveUrlChanged",
       data: {
         liveUrl: "https://browser.example/devtools/page/real-tab",
@@ -58,7 +64,7 @@ describe("live browser viewer events", () => {
         providerSessionId: "browser-session-1",
       },
     });
-    expect(JSON.stringify(events[1]?.data)).not.toContain("private-cdp");
+    expect(JSON.stringify(events.map((event) => event.data))).not.toContain("private-cdp");
   });
 });
 

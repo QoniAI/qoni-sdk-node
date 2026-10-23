@@ -7,6 +7,7 @@ export type {
 } from "./task-client";
 export {
   QoniAuthError,
+  QoniConsentRequiredError,
   QoniDelegationRequiredError,
   QoniError,
   QoniPermissionDeniedError,
@@ -29,6 +30,7 @@ export type {
   Artifact,
   CaptureOptions,
   RunEventsOptions,
+  RunFailureReason,
   RunReconnectInfo,
   RunResult,
   RunStatus,
@@ -36,6 +38,18 @@ export type {
   SessionRef,
 } from "./run-handle";
 export { QoniEventTypes } from "./run-events";
+export type { AgentBrowser, BrowserNeed, SubagentStatus } from "./browsers";
+export type {
+  ComputerFile,
+  ComputerFiles,
+  FileChange,
+  SessionCredits,
+  SessionFiles,
+  SessionInput,
+  SessionSummary,
+} from "./computer";
+export type { Notification, ProactiveCheck } from "./personal";
+export type { ActivateAgentInput, AgentActivation } from "./agent-activation";
 export type {
   QoniEventType,
   RunEvent,

@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.10.0 - 2026-10-23
+
+### What a personal agent shows its person
+
+Needs `qoni/web-agent` with the computer, browsers and credits API (feat/api-sessions-browsers-20261023).
+
+- `doAnything.sessions.list/get/credits`: the person's conversations, newest first, and what each run cost.
+- `doAnything.browsers.list` and a `browsers` run event: every browser open now — the lead agent's first, then each sub-agent's with its `label`, `status`, `activity`, `need` and `userInControl` — by the rules the Console's canvas draws by. `url` is the interactive live view for an iframe. `browsers.control` answers a sub-agent that waits for the person (`take` / `release` / `done` / `skip`).
+- `doAnything.files.list/read/watch/upload/move/mkdir/delete/listAll`: the files on a conversation's computer. While it sleeps they are read from the copy kept after each turn (`source: "saved"`), so looking never wakes it; a change does, and it sleeps again once idle. `watch` reports `created` / `changed` / `removed` within about two seconds and ends when the computer sleeps.
+- `track.list`, and `MonitorHandle.events()` / `track.api.events()` now stream the track's checks live from its own session (each check a run, ending with its `done`). They used to fail locally.
+- `proactive.create/list/get/cancel/runNow` (follow-ups), `notifications.list/markRead` (needs `webagent.track:read/manage`) and `workspace.credits` (whole Credits the workspace's runs can still spend).
+- `genauth.agents.activate`: approve and sync a new agent's capabilities so the consent page can grant them — the sequence apps ran through private methods, now public and idempotent per step. It never calls the console-only credential route.
+- `QoniConsentRequiredError`: the person never consented, withdrew it, or the agent now asks for more. It is a `QoniPermissionDeniedError` and keeps the server's `code`.
+- `RunResult.failureReason` / `failureDetail` (typed `RunFailureReason`, e.g. `insufficient_credits`).
+- The confirmation of an email the agent wrote carries `payload.mail` (`{ to, subject, text }`), exactly what is sent, so it can be laid out as an email instead of parsed from the prompt.
+
+### Changed
+
+- A streamed reply is one message. Its `message` events share `data.id`; `data.text` is the whole text so far (it used to be only the newest piece) and `data.delta` the new piece; `done` marks it complete, with `stopReason` from the model (a `tool…` reason means the agent goes on to use tools). The run's answer comes once with `final: true`, reusing the shown reply's id when it is that reply. The model's private reasoning and receipts are `progress`, no longer `message` events.
+
 ## 0.9.3 - 2026-10-15
 
 ### Fixes found by running the Personal Agent guide in production
