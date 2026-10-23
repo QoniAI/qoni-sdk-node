@@ -223,7 +223,12 @@ describe("follow-ups, notifications and the workspace's credits", () => {
     expect(t.webAgentJson).toHaveBeenLastCalledWith("GET", "/notifications", "tok", { query: undefined, requiredScopes: ["webagent.track:read"] });
 
     t.webAgentJson.mockResolvedValueOnce({ data: { available: 123 } });
-    expect(await createWorkspaceNamespace(t).credits({ token: "tok" })).toEqual({ available: 123 });
+    const workspace = createWorkspaceNamespace(t, "https://dashboard.qoni.ai");
+    expect(await workspace.credits({ token: "tok" })).toEqual({ available: 123 });
+    const delegation = `e30.${Buffer.from(JSON.stringify({ token_type: "eak_delegation_token", eak_tenant_id: "eak_tnt_1" })).toString("base64url")}.`;
+    expect(workspace.billingUrl({ token: delegation })).toBe("https://dashboard.qoni.ai/workspaces/eak_tnt_1?billing=topup");
+    expect(workspace.billingUrl({ token: delegation, section: "plan" })).toBe("https://dashboard.qoni.ai/workspaces/eak_tnt_1?billing=plan");
+    expect(() => workspace.billingUrl({ token: "not-a-delegation" })).toThrow(QoniValidationError);
     expect(t.webAgentJson).toHaveBeenLastCalledWith("GET", "/billing/credits", "tok", { signal: undefined, ...READ });
   });
 

@@ -105,8 +105,22 @@ export function createNotificationsNamespace(transport: QoniTransport) {
   };
 }
 
-export function createWorkspaceNamespace(transport: QoniTransport) {
+export function createWorkspaceNamespace(transport: QoniTransport, consoleUrl: string) {
   return {
+    /**
+     * The Qoni console page that opens the workspace's billing on Top up (or Plan):
+     * where to send people when `credits()` runs out. The person's delegation token
+     * names the workspace.
+     */
+    billingUrl: (input: { token: string; section?: "topup" | "plan" }): string => {
+      const section = input.section ?? "topup";
+      if (section !== "topup" && section !== "plan") throw new QoniValidationError("billingUrl section must be topup or plan");
+      const workspace = tokenClaims(input.token)?.eak_tenant_id;
+      if (typeof workspace !== "string" || !workspace) {
+        throw new QoniValidationError("billingUrl needs the person's delegation token: it names their workspace");
+      }
+      return `${consoleUrl}/workspaces/${encodeURIComponent(workspace)}?billing=${section}`;
+    },
     /**
      * Whole Credits the workspace's runs can still spend: the number every model call
      * is checked against. `available` is null when the workspace is not metered.
@@ -118,6 +132,15 @@ export function createWorkspaceNamespace(transport: QoniTransport) {
       return { available: isJsonObject(data) && typeof data.available === "number" ? data.available : null };
     },
   };
+}
+
+function tokenClaims(token: string): JsonObject | undefined {
+  try {
+    const claims: unknown = JSON.parse(Buffer.from(token.split(".")[1] ?? "", "base64url").toString("utf8"));
+    return isJsonObject(claims) ? claims : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 function checkFromWire(value: unknown): ProactiveCheck {

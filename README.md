@@ -704,6 +704,7 @@ await doAnything.files.delete({ token, sessionId, path: "notes/old.md" });
 await doAnything.files.listAll({ token });                     // every conversation's kept files
 
 await qoni.workspace.credits({ token });                       // { available: 123 } whole Credits, null if unmetered
+qoni.workspace.billingUrl({ token });                          // the console page that opens Top up ({ section: "plan" } for Plan)
 await qoni.proactive.list({ token });                          // follow-ups the agent scheduled
 await qoni.notifications.list({ token });                      // { items, unread }; needs webagent.track:read
 ```

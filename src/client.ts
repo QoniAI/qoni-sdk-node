@@ -68,7 +68,7 @@ export class Qoni {
   readonly proactive: ReturnType<typeof createProactiveNamespace>;
   /** Findings tracks and follow-ups left the person, and which are unread. */
   readonly notifications: ReturnType<typeof createNotificationsNamespace>;
-  /** The workspace the AccessKey belongs to: what its runs can still spend. */
+  /** The workspace the AccessKey belongs to: what its runs can still spend, and where to top it up. */
   readonly workspace: ReturnType<typeof createWorkspaceNamespace>;
 
   constructor(private readonly options: QoniOptions) {
@@ -111,7 +111,7 @@ export class Qoni {
     this.deepResearch = createDeepResearchNamespace(transport);
     this.proactive = createProactiveNamespace(transport);
     this.notifications = createNotificationsNamespace(transport);
-    this.workspace = createWorkspaceNamespace(transport);
+    this.workspace = createWorkspaceNamespace(transport, this.host);
   }
 
   delegateToken(

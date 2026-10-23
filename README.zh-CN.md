@@ -644,6 +644,7 @@ await doAnything.files.delete({ token, sessionId, path: "notes/old.md" });
 await doAnything.files.listAll({ token });                     // 每个对话保存下来的文件
 
 await qoni.workspace.credits({ token });                       // { available: 123 } 整数 Credits，不计费时为 null
+qoni.workspace.billingUrl({ token });                          // 控制台直接打开「充值」的地址（{ section: "plan" } 打开套餐）
 await qoni.proactive.list({ token });                          // Agent 约好的回访
 await qoni.notifications.list({ token });                      // { items, unread }；需要 webagent.track:read
 ```
