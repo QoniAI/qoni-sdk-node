@@ -7,6 +7,11 @@
 - `webAgentGrant({ userId, products?, scopes?, agent? })`: on the server that keeps the AccessKey, silently delegate for one user of the workspace's user pool and exchange it for that person's WebAgent token. Returns `{ token, expiresAt, webAgentHost, userId, scopes }`; the token is accepted for about 14 days. Only `webagent.*` scopes can be granted, and at least one must be asked for. This replaces calling the private `productTokenFor` / `baseUrlFor`.
 - `new Qoni({ webAgentHost })` without `accessKey` / `secretKey`: a client for an app that runs WebAgent with tokens from `webAgentGrant`. It never signs. Delegation, token exchange, GenAuth management, GUMem and signed raw requests fail locally with `QoniValidationError` naming the AccessKey, before a request is sent. Passing only one of the two keys still throws at construction.
 
+### Documentation
+
+- The README and the bundled `qoni-sdk` skill now describe only what runs on hosted Qoni. Removed: Agent identity provisioning and Agent Mail/Phone, per-step screenshot capture, GUMem resource upload, protected (sensitive) form input, the ordinary Profile adapter, request-key receipt reads, and internal candidate and migration notes.
+- The skill's Track section now says `MonitorHandle.events()` / `track.api.events` stream checks live (since 0.10.0), and its event reference matches the 0.10.0 streamed `message` shape.
+
 ## 0.10.0 - 2026-10-23
 
 ### What a personal agent shows its person

@@ -22,11 +22,9 @@ Qoni 把 Agent 授权模型收敛成几个稳定边界：
 - 一组可读的 scope 字符串：让最小授权边界直接出现在业务代码里。
 - 一致的错误和审计字段：`requestId`、`traceId`、`auditId`、`retryable`。
 
-公开 npm 包和 JavaScript API 使用 Qoni 品牌。当前服务端协议尚未迁移，
-因此内部签名路由继续使用 `/api/v3/eak/*`，delegation token claim 继续使用
-`eak_delegation_token`，服务端返回的 `eak.*` 错误码也保持原样透传。业务代码
-不应改写 `eak_tenant_id` 等现有 wire claim，只应使用公开的 Qoni API，不要
-自行拼装这些内部 wire 值。
+服务端签名路由在 `/api/v3/eak/*` 下，部分 wire 值保留原有名称：delegation
+token claim `eak_delegation_token`、claim `eak_tenant_id`，以及 SDK 原样透传的
+`eak.*` 错误码。请使用公开的 Qoni API，不要自行拼装这些 wire 值。
 
 ## 安装
 
@@ -55,11 +53,6 @@ yarn add @qoniai/qoni
 import { Qoni } from "@qoniai/qoni";        // ESM / TypeScript
 const { Qoni } = require("@qoniai/qoni");    // CommonJS
 ```
-
-> **需要配套后端：** 下文的托管登录、current_task、普通表单/Profile、运行前记忆和个人 Agent 编排从 0.9.2 起包含在 npm 包中，需要配套的 Qoni 后端；个人 Agent 编排在生产环境尚未开通。见[可编译示例](./docs/delivery-examples/README.zh-CN.md)。
-
-本候选的 Personal Agent、formal 委托、wildcard 与错误恢复边界见 [Quickstart v5 合同](./docs/quickstart-v5-contract.md)。该合同给出本分支的实际候选版本。
-> 本统一本地候选已组合这些接口、修订的记忆错误合同、原键回执读取和 A1 r2 记忆投影。仍未发布；请使用其固定归档/DTS 及配套后端合同。
 
 ## AI Skill
 
@@ -163,11 +156,9 @@ const { token } = (
 const run = await qoni.doAnything.run({
   token, // 入口传一次，句柄随后持有——句柄方法不再传 token
   prompt: "打开 https://en.wikipedia.org/wiki/Singapore ，总结新加坡的关键信息（首都、人口、货币）。",
-  capture: { screenshots: true },
 });
 
 const result = await run.wait({
-  onScreenshot: (img, i) => fs.writeFileSync(`step-${i}.jpg`, img.bytes),
   onInteraction: (i) => {                 // site_login / take_control / ask_user / confirmation
     if (i.can("confirm_signed_in")) return i.confirmSignedIn();
     if (i.can("confirm")) return i.confirm();
@@ -176,14 +167,12 @@ const result = await run.wait({
 console.log(result.output);
 ```
 
-此公开网页示例只申请产品的 `read` + `manage`。使用下文浏览器接管处理函数前，为该 run 申请 token 时需显式加入 `scopes: [QoniScopes.BROWSER_USE_TAKE_CONTROL]`，在 AccessKey 策略中允许该权限，并取得用户同意。站点登录处理函数另外需要 `QoniScopes.SITE_LOGIN_REQUEST` 和 `QoniScopes.SITE_LOGIN_CONFIRM`。这些权限应通过交互式委托取得；`products` 简写不包含它们。
+此示例只申请产品的 `read` + `manage`。任务可能请用户登录网站或接管浏览器时（见[交互](#交互hitl)），还需要 `QoniScopes.SITE_LOGIN_REQUEST`、`QoniScopes.SITE_LOGIN_CONFIRM` 和 `QoniScopes.BROWSER_USE_TAKE_CONTROL`：在 `scopes` 中显式申请（`products` 简写不包含它们），并在 AccessKey 权限策略中允许。
 
-创建可能发起人类接管的任务时，给 `doAnything.run()` 传入 `taskScopes: [QoniScopes.BROWSER_USE_TAKE_CONTROL]`；`api.createRun()` 和 `runWithMemory()` 也支持此参数。任务需要站点登录权限时，再明确加入对应的 `SITE_LOGIN_*`。SDK 始终包含 manage；省略 `taskScopes` 时只申请 manage。原委托与当前权限策略必须已经允许所列 Scope。只接受 SDK 已知的具体 Web Agent Scope，不接受通配符。直接传入的产品 Token 保持原样，此参数不能给它扩权。0.9.2 起提供。
+创建可能发起人类接管的任务时，给 `doAnything.run()` 传入 `taskScopes: [QoniScopes.BROWSER_USE_TAKE_CONTROL]`；`api.createRun()` 和 `runWithMemory()` 也支持此参数。任务需要站点登录权限时，再明确加入对应的 `SITE_LOGIN_*`。SDK 始终包含 manage；省略 `taskScopes` 时只申请 manage。原委托与当前权限策略必须已经允许所列 Scope。只接受 SDK 已知的具体 Web Agent Scope，不接受通配符。直接传入的产品 Token 保持原样，此参数不能给它扩权。
 
 
-`run()` 返回一个 `RunHandle`。核心事件（状态、动作、交互、完成）始终默认推送；`capture: { screenshots: true }` 开启逐步截图，并且 SDK 已经把图片解码成字节。`wait()` 把任务跑到终态，并从权威 run envelope 结算结果（成本、步数、token 用量都在 `result.raw` 上）。
-
-无论是否开启 capture，不可解码或空的截图 data URI 都不会中断 `wait()`，也不会触发 `onScreenshot`。有可读消息时按既有契约降级为 progress；`onWireEvent` 始终保留原始 payload，包括没有 progress 文本的帧。
+`run()` 返回一个 `RunHandle`。核心事件（状态、动作、交互、完成）始终默认推送；`wait()` 把任务跑到终态，并从权威 run envelope 结算结果（成本、步数、token 用量都在 `result.raw` 上）。
 
 需要逐步控制时，直接消费事件流，`switch (event.type)` 用 `QoniEventTypes` 常量匹配。每个产品的 handle 按产品分型（`qoni.deepResearch.run()` 出来是 `RunHandle<DeepResearchEvent>`），TS 里写错产品的事件会编译报错、补全只列本产品的。内部细节（supervisor 编排、子 agent 点击/输入、telemetry）统一折叠成 `QoniEventTypes.Progress`；匹配到 `case` 后 `event.data` 就是该类型的固定形状。原始 wire 类型不导出。
 
@@ -349,7 +338,7 @@ await app.workspace.credits({ token: grant.token });
 ```ts
 const grant = await qoni.genauth.delegateAgent({
   userId: process.env.QONI_USER_ID!, // 当前用户的 GenAuth ID
-  agentKey: "email-assistant", // Agent 审计标签，兼容 agent 参数
+  agentKey: "research-assistant", // Agent 审计标签，兼容 agent 参数
   scopes: [
     "webagent.do_anything:read", // 读取任务状态、事件和产物
     "webagent.do_anything:manage", // 启动、取消任务和提交普通交互响应；不含浏览器接管
@@ -383,7 +372,7 @@ await qoni.delegateToken({
 
 scope 字符串在发请求前就会本地预检：漏掉服务前缀（比如写成 `do_anything:manage` 而不是 `webagent.do_anything:manage`）会立即抛出 `QoniValidationError`，错误消息里带正确写法；短写法有歧义时列出全部候选（`profile:read` → `gumem.profile:read` 或 `user.profile:read`）。
 
-浏览器接管、站点登录、用户 Profile、支付和 Agent 邮箱的 scope（`QoniScopes.BROWSER_USE_TAKE_CONTROL`、`SITE_LOGIN_*`、`USER_PROFILE_READ`、`USER_PROFILE_WRITE`、`USER_PAYMENT_USE`、`AGENT_MAIL_READ`、`AGENT_MAIL_SEND`）不属于任何产品组合：需要在 `scopes` 中显式申请，并在 AccessKey 权限策略中允许。对应 Console 变更已加入独立的浏览器接管和站点登录策略；申请新委托前，确认 GenAuth 和 Console 已支持这些权限。用户 Profile、支付和 Agent 邮箱这几个常量只是 scope 名称：申请它们本身不会让任务获得 Profile、支付或邮箱能力。
+浏览器接管和站点登录的 scope（`QoniScopes.BROWSER_USE_TAKE_CONTROL`、`QoniScopes.SITE_LOGIN_REQUEST`、`QoniScopes.SITE_LOGIN_CONFIRM`）不属于任何产品组合：需要在 `scopes` 中显式申请，并在 AccessKey 权限策略中允许（Qoni 控制台里的 **WebAgent 浏览器接管**、**WebAgent 网站登录**）。
 
 需要让授权边界直接出现在业务代码里时，使用显式 scope 字符串。
 
@@ -397,26 +386,12 @@ scope 字符串在发请求前就会本地预检：漏掉服务前缀（比如�
 | 创建长期监控 | `webagent.track:read`, `webagent.track:manage` | Agent 可以配置监控、读取事件、立即运行检查，并停止监控。 |
 | 在任务中登录网站 | `webagent.site_login:request`, `webagent.site_login:confirm` | 用户在实时浏览器里亲自登录，登录状态保存后供之后的任务复用。 |
 | 用户接管浏览器 | `webagent.browser_use:take_control` | 用户连接、刷新和交还当前浏览器。需要显式申请，产品 manage 不包含此项。 |
-| 使用用户 Profile | `user.profile:read`, `user.profile:write` | 普通 Task 适配器只读写获准的姓名、地址及支持的未加密基本类型自定义字段；手机号/邮箱验证、支付/卡片及其他敏感资料不在范围内。 |
-| 用用户保存的卡支付 | `user.payment:use` | 用户允许一笔支付后，替用户填入已保存的信用卡。 |
-| 使用 Agent 自己的邮箱 | `agent.mail:read`, `agent.mail:send` | Agent 可以读取发到自己邮箱的邮件（例如验证码），并用它发送邮件。 |
 
-接管使用 `QoniScopes.BROWSER_USE_TAKE_CONTROL`，不包含在 `products` 简写中。升级到对应后端时，AccessKey 策略和用户委托都需明确包含此权限；旧 `webagent.do_anything:control`、`webagent.deep_research:control`、`webagent.browser:control` 不会自动转换。刷新和交还也要求该权限。此权限适配不代表旧卡校验或登录态可靠保存已完成。
-
-### 浏览器接管权限迁移
-
-这是尚未发布的破坏性变更，需要协调切换：旧 Web Agent 的交还接口要求产品 `manage`，新 SDK 交还时只申请 `webagent.browser_use:take_control`；新 Web Agent 则拒绝用 `manage` 代替独立接管权限。逐端顺序升级不能保证已有接管会话零中断。
-
-1. 先准备 GenAuth 权限登记和 Console 的 **WebAgent 浏览器接管**、**WebAgent 网站登录**策略。按实际需要更新 AccessKey 允许列表；网站登录策略包含 `webagent.site_login:request` 和 `webagent.site_login:confirm`。
-2. 显式申请 `QoniScopes.BROWSER_USE_TAKE_CONTROL`，通过交互式委托重新取得用户同意。需要登录时再加入登录权限；不得因更新 AccessKey 策略或续签现有委托，自动给用户原授权增加权限。
-3. 在维护窗口停止接入新的接管任务，用旧版本完成或排空已有接管会话，再协调切换 Web Agent 与 SDK；不得增加 `manage` 兼容放行。
-4. 验收新同意权限下的连接、刷新和交还，并验证缺少该权限或只有旧 control 权限的委托被拒。新 Console 会单独列出所选策略未覆盖的权限，包括旧权限、未知权限和不完整的策略权限组合，默认保留，只有勾选“保存时移除这些权限”才会删除；保存后核对 AccessKey 允许列表。保留旧 control 不会获得 `webagent.browser_use:take_control`，调用方仍需迁移到独立接管权限。
-
-部署与发布仍须 Owner 另行明确指令；本迁移说明不授权部署或发布。
+接管使用 `QoniScopes.BROWSER_USE_TAKE_CONTROL`，不包含在 `products` 简写中：AccessKey 策略和委托都需明确包含此权限，连接、刷新和交还都要求它。旧 `webagent.do_anything:control`、`webagent.deep_research:control`、`webagent.browser:control` 不会转换成它。
 
 ### 原始浏览器接管调用
 
-完成策略和用户同意迁移后，`doAnything.api.intervene()` 接收 `interactionId`（wire 别名 `interaction_id`）。刷新和交还必须带上该接管轮次开始时保存的 ID。只有没有活动接管 marker 的首次主动 `take_control` 可以省略；重新连接已有轮次必须准确匹配 ID。新 Web Agent 的 take/refresh 响应会返回 `interaction_id`，应保存该原始响应字段，不从 URL 推导，也不查询新卡来替换。
+`doAnything.api.intervene()` 接收 `interactionId`（wire 别名 `interaction_id`）。刷新和交还必须带上该接管轮次开始时保存的 ID。只有没有活动接管 marker 的首次主动 `take_control` 可以省略；重新连接已有轮次必须准确匹配 ID。take 和 refresh 的响应会返回 `interaction_id`，应保存该原始响应字段，不从 URL 推导，也不查询新卡来替换。
 
 ```ts
 import type { DoAnythingControlResponse } from "@qoniai/qoni";
@@ -426,7 +401,7 @@ const first = await qoni.doAnything.api.intervene<DoAnythingControlResponse>({
   token, runId: run.id, kind: "take_control",
 });
 const interactionId = first.data.interaction_id;
-if (!interactionId) throw new Error("后端未返回本轮接管 ID；停止操作并完成迁移");
+if (!interactionId) throw new Error("未返回本轮接管 ID");
 
 // 该轮 URL 需要刷新时：
 await qoni.doAnything.api.intervene({ token, runId: run.id, kind: "refresh_control_url", interactionId });
@@ -442,8 +417,6 @@ ID 缺失、已结束/过期或不匹配时，Web Agent 在副作用前返回 HT
 
 原始 `answer_input_request` 和 `skip_input_request` 调用必须用 `requestId`（wire 为 `input_request_id`）指向当前待处理的问题。Web Agent 会核对持久化的问题、等待状态、期限及声明动作，旧卡或未声明动作返回 409；SDK 不替换 ID 或重试。确认和登录交互应使用其声明的方法，不能将普通 answer/skip 当作批准或登录成功。
 
-本次后端变更中，卡片 `connect_control` 返回 pending 接管轮次。OBO/API key 调用方不能通过传 `surface: "console_inline"` 将其变为 active Console 连接；交还这样的 pending 轮次仍会保留登录/凭据问询。下文未发布的任务登录策略通过声明的 `open_login` 和 `confirm_signed_in` 完成可靠保存、交还和回复，仅有 connect 的卡片不能代替这套流程。真实登录仍由 Agent 核验；部署须 Owner 另行指令。
-
 SDK 也导出了常见 GUMem 会话、写入、召回场景的 scope bundle：
 
 ```ts
@@ -451,47 +424,6 @@ QoniScopeBundles.GUMEM_SESSION_RECALL
 ```
 
 ## 能力示例
-
-### 内部 Pi 宿主记忆入口（Unreleased）
-
-本地构建新增 `createTaskClient`，供现有 Pi 宿主使用。应用层 Quickstart 继续使用
-DoAnything 与交互，不直接调用记忆或 Profile。新 task facade 归档必须显式选用，
-现有 current_task 联调冻结包仍是独立输入。
-
-```ts
-import { createTaskClient } from "@qoniai/qoni";
-
-const task = createTaskClient({
-  productHosts: { gumem: trustedHosts.gumem },
-  runId: trustedRunId,
-  tokenProvider: getCurrentRunPermission,
-});
-await task.memory.createSession();
-await task.memory.addMessages({
-  messages: [{ id: `${piSessionId}:${entry.id}`, role: entry.role, content: entry.content }],
-});
-```
-
-宿主传入可信服务地址、稳定 run ID 和
-`getCurrentRunPermission(product, requiredScopes, runId, signal)`。provider 每次请求
-核对当前许可，返回 `{ accessToken, expiresAt }`；到期时间是 Unix 毫秒，必须为未来有限值。
-入口不需要 AK/SK，只暴露 `memory.createSession` 与 `memory.addMessages`，绑定
-`qoni-run-<runId>`。run ID 完整保留，最多 55 个 Unicode 字符，拒绝路径分隔符；
-run 与消息 ID 都拒绝 C0/C1 控制字符和 DEL。消息必须包含稳定非空 `id`、GUM 字符串
-`role`（非空）和字符串 `content`。role/content 必须是完整 Unicode，合法 pair、空白、换行
-与空 content 原样保留。类型和运行期都拒绝身份、token、header、path 等覆盖。
-全批同步校验通过即绑定 ID；同一客户端已提交过的 ID（包括尚未发出的批次）不能改
-content/role。provider 拒绝或 HTTP 发出前超时也保留绑定，原内容可显式重试；坏批次不绑定 ID。
-
-`timeoutMs` 默认 30 秒，覆盖 provider、HTTP 和响应 body；每次调用的 `signal` 可取消所有阶段。
-服务地址只接受 HTTPS，隔离夹具允许 loopback HTTP；保留 base path，拒绝跟随重定向。
-每次请求重新取得当前许可，没有 POST 自动重试。不可变有序批次使用稳定的内部
-`X-Request-ID` 复用现有 usage outbox 去重；改组或重叠批次不代表完整 exactly-once。
-返回沿用 `QoniResponse`，只含 Session 字段或 `{ request_id, message_count }`；typed Qoni
-errors 不包含 provider/HTTP 原始私密正文。
-
-方法限制不等于资源服务器鉴权。G6/WA 可信 token 来源、GUM run/session 资源限制、Pi 持久
-游标/恢复、真实 Pi/E2B 与离线验收仍是依赖；provider/loopback 测试不能证明后台可靠记忆。
 
 ### GUMem
 
@@ -533,9 +465,9 @@ const context = await qoni.gumem.recall({
 // SDK 示例到这里结束，因为应用编排由你的业务决定。
 ```
 
-**待发布的召回映射变更：** `metadataFilters` 会放入 `recall_config.metadata_filters`。顶层及嵌套 camel/snake 别名只有在重复值相同时才合并，冲突会在 HTTP 前抛出 `QoniValidationError`。过滤值仅允许字符串、有限数字或布尔值；null、对象和数组会被拒绝。`project_id`、`group_id`、`user_id`、`thread_id`、`session_id`、`scope`、`expired_at`、`validity` 及其归一后的别名是系统保留字段。其他召回配置键保持原样透传。这只保护 SDK 调用，不表示服务端隔离已修复或跨任务召回已验收。
+**召回过滤：** `metadataFilters` 会放入 `recall_config.metadata_filters`。顶层及嵌套 camel/snake 别名只有在重复值相同时才合并，冲突会在 HTTP 前抛出 `QoniValidationError`。过滤值仅允许字符串、有限数字或布尔值；null、对象和数组会被拒绝。`project_id`、`group_id`、`user_id`、`thread_id`、`session_id`、`scope`、`expired_at`、`validity` 及其归一后的别名是系统保留字段。其他召回配置键保持原样透传。
 
-### 召回后启动任务（待发布）
+### 召回后启动任务
 
 通过 `runWithMemory` 明确选择在 Do Anything 创建 Task 前召回有限记忆。
 沿用同一原 delegation token，它须具有 `gumem.memory:read` 和
@@ -585,22 +517,6 @@ const { data: context } = await qoni.gumem.recallContext({
 512..16384 字节。只将 facts、summary 和 user/assistant 历史正文作为引用资料；
 不拼入 working memory、`formatted_context`、工具通道或任意 metadata，省略
 授权形态的值。引用资料不授予权限或批准；引用格式不构成模型 prompt 注入保证。
-
-历史来源保留实际 message `id`、GUM `sessionId`；若实际 `metadata.source_url`
-已有受限安全 HTTP(S) 值，则按原字符串放入可选 `url`。这是调用方已存的消息来源，
-不是事实可信性证明。不得按正文匹配链接，`resource_urls` 保留媒体资源用途。
-配套 A1 r2 后端投影可使 facts/summary 带 `recordId`、`engine` 和
-`raw_input` 来源（`id`、`sessionId`、`messageId`、`createdAt`、可选原存储
-`url`），对应 `sourceStatus: "record_id"`。`memory_records_coverage` 确认完整
-覆盖后，typed 记录才可替换非空 legacy 段；缺少覆盖证明时保留完整 legacy 段，
-`sources: []`、`sourceStatus: "unavailable"`，不按相同正文归属来源。
-条数/字节预算先保正文，来源整组保留或整组省略；身份、来源或正文有损失时
-`truncated` 为 true。旧后端仍可返回无来源 facts/summary。既有
-project/user/scope=user 语义路径保持，原存储缺 URL 不能靠响应字段修复。本地 GA/HTTP/PG/Qdrant 证据不
-外推为托管向量、抽取 worker、Pi/云或生产验收；原 GUM 有效期过滤限制单列。
-
-上述标记仅用于修订候选的 `runWithMemory`；普通 `run()` 和旧包可能没有这些字段，
-缺字段绝不意味着写入可以安全重发。见[修订记忆错误示例](./docs/delivery-examples/m2-r2/README.zh-CN.md)。
 
 ### Do Anything
 
@@ -726,8 +642,7 @@ const followUp = await qoni.deepResearch.run({
 `SnapshotAction` 已 deprecated：该结构化快照契约从未有后端路径或字段来源。
 方法本地抛 `QoniUnsupportedError(code: "unsupported.operation")`，零 HTTP。
 文件请用 `qoni.doAnything.artifacts({ token, runId })` / `api.listArtifacts()`，下载用 `artifact.content()` /
-`api.artifactDownloadUrl()`；图片请开启 `capture: { screenshots: true }` 并读取
-screenshot events。文本文件不是 snapshot，真实文件 artifacts API 保持。
+`api.artifactDownloadUrl()`。文本文件不是 snapshot，真实文件 artifacts API 保持。
 
 ### Track
 
@@ -811,18 +726,6 @@ snapshotId。早前任务仍在运行时，`runNow()` 会原样抛后端 409 `ta
 无 schedule、非法 interval/时间/时区/分页等输入在 HTTP 前抛 `QoniValidationError`。
 旧类型导出与 cron 分支保留并标记 deprecated；值为 undefined 的可选键保持省略行为，有值的不支持字段仍拒绝；unsupported 负例不算能力正例。
 
-### 原 Task 本人的普通 Profile（待发布）
-
-`doAnything.profile.read({ runId, token, fields })` 和
-`doAnything.profile.update({ runId, token, values })` 返回 `QoniResponse<OrdinaryTaskProfile>`，
-结果从 `.data.values`、`.data.missing`、`.data.writable_fields`、`.data.field_types` 读取。
-原委托除了所需 Web Agent scopes，还需明确申请 `user.profile:read`；确实需要保存时才申请
-`user.profile:write`。新 token 不能扩大旧 Task 的原授权。这是原 Task 本人的普通资料，
-不等同管理员用户管理或浏览器登录态。
-
-字段以[实际白名单与写入限制](./docs/ordinary-task-profile.md)为准。写入结果未知时按原 run 读回，
-不自动重放 update；普通表单 submit 本身不会保存 Profile。
-
 ### GenAuth 用户上下文与用户管理
 
 ```ts
@@ -848,7 +751,7 @@ const created = await client.genauth.users.create({
 
 `currentUser`、`genauth.userInfo` 使用 GenAuth access token 读取已登录用户身份。`genauth.users.*` 也属于管理面能力，但业务代码仍然用 Qoni AK/SK 初始化 SDK：SDK 会签名请求 `POST /api/v3/eak/genauth/admin-token`，请求体是空 JSON `{}`，拿到标准 GenAuth management token 和 `userPoolId`，再携带 `Authorization: Bearer ...` 与 `x-authing-userpool-id` 调用 GenAuth v3 用户管理 API。这里不传 `resource`、`actions`、`expiresIn` 或 `QONI_USER_ID`。GUMem/WebAgent/Track 等运行时能力才使用 `delegateToken` 返回的 token。
 
-### GenAuth 用户注册与登录（Unreleased）
+### GenAuth 用户注册与登录
 
 把用户送到 Qoni 托管的 GenAuth 注册/登录页，回调时在服务端用授权码换取用户与登录态。AccessKey 需要在 Qoni Console 绑定已登记的业务 App；业务 App 及其 client secret、PKCE verifier 和 nonce 只在服务端，不出现在 URL 里。
 
@@ -910,10 +813,10 @@ const qoni = new Qoni({
 
 | 命名空间 | 方法 |
 | --- | --- |
-| 委托授权 | `delegateToken`, `completeDelegateToken`；兼容别名：`delegateAgent`, `completeDelegateAgent` |
-| GenAuth | `userInfo`, `jwks`, `discovery`, `introspectDelegationToken`, `auth.createLoginUrl`, `auth.exchangeLoginCode`, `agents.create/get/bind`（待发布）, `agents.activate`（0.10.0）, `users.list`, `users.get`, `users.getBatch`, `users.create`, `users.createBatch`, `users.update`, `users.deleteBatch` |
-| GUMem | `createSession`, `addMessages`, `recall`, `recallContext`, `uploadResource`, `actions.record`, `actions.recall`, `actions.stream` |
-| Do Anything | `run`, `attach` → `RunHandle`；显式 `runWithMemory`；`profile.read/update`（待发布）；`sessions.list/get/credits`、`browsers.list/control`、`files.list/read/watch/upload/move/mkdir/delete/listAll`（0.10.0） |
+| 委托授权 | `delegateToken`, `completeDelegateToken`, `webAgentGrant`（0.10.1）；兼容别名：`delegateAgent`, `completeDelegateAgent` |
+| GenAuth | `userInfo`, `jwks`, `discovery`, `introspectDelegationToken`, `auth.createLoginUrl`, `auth.exchangeLoginCode`, `users.list`, `users.get`, `users.getBatch`, `users.create`, `users.createBatch`, `users.update`, `users.deleteBatch` |
+| GUMem | `createSession`, `addMessages`, `recall`, `recallContext`, `actions.record`, `actions.recall`, `actions.stream` |
+| Do Anything | `run`, `attach` → `RunHandle`；显式 `runWithMemory`；`sessions.list/get/credits`、`browsers.list/control`、`files.list/read/watch/upload/move/mkdir/delete/listAll`（0.10.0） |
 | Deep Research | `run`, `attach` → `RunHandle` |
 | Web Search | `run`, `attach` → `RunHandle` |
 | Track | `create`, `attach` → `MonitorHandle`；`list`（0.10.0） |
@@ -928,7 +831,7 @@ run.id
 run.sessionRef                          // 传回 run({ session }) 复用会话
 await run.status()                      // 刷新并返回当前状态
 run.events({ onWireEvent?, onReconnect?, ...opts }) // 语义事件 + 可选原始遥测
-await run.wait({ timeoutMs?, onEvent?, onWireEvent?, onReconnect?, onInteraction?, onScreenshot? })
+await run.wait({ timeoutMs?, onEvent?, onWireEvent?, onReconnect?, onInteraction? })
 run.interactionHandle(interaction)      // 带类型的 HITL 句柄（见下方「交互」）
 await run.cancel(reason?)               // 幂等
 ```
@@ -938,8 +841,8 @@ await run.cancel(reason?)               // 幂等
 必须由 run-detail 响应确认终态。详情读取错误原样抛出，`wait()` 不会用 SSE 完成事件替代权威结果。
 详情仍为非终态或缺少终态信息时，抛出可重试的 `upstream.failed`；可通过 `status()` 或重新 `attach()` 恢复。
 
-`timeoutMs` 与 `signal` 会结束详情、交付物读取及 `onEvent`、`onWireEvent`、`onInteraction`、
-`onScreenshot` 返回的 Promise 的等待，但不能抢占同步 JavaScript，也不能停止回调内部已启动的工作。
+`timeoutMs` 与 `signal` 会结束详情、交付物读取及 `onEvent`、`onWireEvent`、`onInteraction`
+返回的 Promise 的等待，但不能抢占同步 JavaScript，也不能停止回调内部已启动的工作。
 `onReconnect` 是同步遥测通知：返回值不被等待，返回的 Promise 的 rejection 也不被处理，因此不要传 async
 回调；同步抛错会向上传播。重连退避等待仍可被 signal 或 wait 超时中断。
 
@@ -974,16 +877,14 @@ run 需要用户出手时会暂停，并发出一个 `interaction` 事件，`eve
 | --- | --- | --- |
 | `site_login` | 在实时浏览器里亲自登录某个网站 | `openLogin()`、`confirmSignedIn()` |
 | `take_control` | 亲手操作浏览器（验证码、两步验证等） | `connectControl()`、`refreshControl()`、`releaseControl()` |
-| `fill_form`（Unreleased）| 补全当前任务的普通字段 | `submit(values)`、`skip()` |
+| `fill_form` | 补全当前任务的普通字段 | `submit(values)`、`skip()` |
 | `ask_user` | 回答一个问题，答案结构由 `answerType` / `options` 描述 | `answer()`、`skip()` |
 | `confirmation` | 允许或拒绝一个操作 | `confirm()`、`reject()` |
 | `wait` | 不需要做决定：系统在等待（限流、外部事件） | `retry()` |
 
-本阶段未发布的 Pi 结构化问询与普通表单仅通过主代理入口提供；子代理遇到无法透传的结构化参数会明确拒绝。
-
 `Interaction` 是按 `type` 分布的联合类型，`switch (request.type)` 之后每个分支里的 `request.payload` 会自动收窄。每个方法都 POST 到交互 `actions[]` 里后端声明的 endpoint，不需要写死路由：
 
-本段处理函数所用 run 的 token，需要在准备 AccessKey 策略并取得用户同意后，申请 `products: ["doAnything"]` 并显式加入 `scopes: [QoniScopes.BROWSER_USE_TAKE_CONTROL, QoniScopes.SITE_LOGIN_REQUEST, QoniScopes.SITE_LOGIN_CONFIRM]`；产品权限提供 DoAnything manage，任务不需要登录时去掉登录权限。只有 `products: ["doAnything"]` 不能授权 `connectControl()`、`refreshControl()` 或 `releaseControl()`。切换版本前先按上文完成迁移。
+本段处理函数所用 run 的 token，需要申请 `products: ["doAnything"]` 并显式加入 `scopes: [QoniScopes.BROWSER_USE_TAKE_CONTROL, QoniScopes.SITE_LOGIN_REQUEST, QoniScopes.SITE_LOGIN_CONFIRM]`；产品权限提供 DoAnything manage，任务不需要登录时去掉登录权限。只有 `products: ["doAnything"]` 不能授权 `connectControl()`、`refreshControl()` 或 `releaseControl()`。
 
 任务创建时还须传 `taskScopes: [QoniScopes.BROWSER_USE_TAKE_CONTROL]`，只有委托 Token 含接管 Scope 仍不足以让任务发起接管。刷新控制地址不能扩大旧任务创建时固定的权限。
 
@@ -1025,12 +926,11 @@ async function handleInteraction(handle: InteractionHandle) {
 const result = await run.wait({ onInteraction: handleInteraction });
 ```
 
-按每张交互卡的声明动作和当前状态处理；待回答的问题可以与接管轮次同时存在。SDK/OBO 的 pending 轮次与 Console active 轮次交还都不回答登录/凭据问询（current_task 下二者都是 `site_login` 卡）；登录问询只能由 `confirmSignedIn()` 可靠保存后结束、用户显式调用卡片声明的 `skip()` 或过期结束。仅历史遗留的 `secure_input` 卡在 Console active 交还时收到“请复查”答复，这也不证明登录或保存成功。澄清和确认永不自动作答。同一个交互在每次状态变化和断线回放时都会再次回调，`id` 和 `type` 始终不变——界面卡片请按 `request.id` 更新。带有新内容的更新会替换卡片（例如接管变成 `active` 时带来新的 `liveUrl`）；后端用空壳结束交互时，卡片保留原来的 `payload`。直接以 `active` 出现的 `take_control` 是用户自己发起的接管（例如在 Console 里），界面提供接管入口时再展示它。方法：`answer(value)`、`skip()`、`confirm()`、`reject()`、`openLogin({ siteId?, profileId? })`、`confirmSignedIn()`、`connectControl()`、`refreshControl()`、`releaseControl()`、`retry()`、`switchProfile()`。`connectControl()` 和 `refreshControl()` 返回 `{ liveUrl, expiresAt?, status?, raw }`，其中 `liveUrl` 是供用户打开的浏览器接管地址。`handle.can(kind)` 判断该交互当前是否提供这个动作；调用后端没声明的方法会抛错（所以「恢复」按钮只有在真能用时才出现）。
+按每张交互卡的声明动作和当前状态处理；待回答的问题可以与接管轮次同时存在。登录问询只会在 `confirmSignedIn()` 保存登录状态后、用户调用卡片声明的 `skip()` 或过期时结束；交还浏览器本身不回答它。澄清和确认永不自动作答。同一个交互在每次状态变化和断线回放时都会再次回调，`id` 和 `type` 始终不变——界面卡片请按 `request.id` 更新。带有新内容的更新会替换卡片（例如接管变成 `active` 时带来新的 `liveUrl`）；后端用空壳结束交互时，卡片保留原来的 `payload`。直接以 `active` 出现的 `take_control` 是用户自己发起的接管（例如在 Console 里），界面提供接管入口时再展示它。方法：`answer(value)`、`skip()`、`confirm()`、`reject()`、`openLogin({ siteId?, profileId? })`、`confirmSignedIn()`、`connectControl()`、`refreshControl()`、`releaseControl()`、`retry()`。`connectControl()` 和 `refreshControl()` 返回 `{ liveUrl, expiresAt?, status?, raw }`，其中 `liveUrl` 是供用户打开的浏览器接管地址。`handle.can(kind)` 判断该交互当前是否提供这个动作；调用后端没声明的方法会抛错（所以「恢复」按钮只有在真能用时才出现）。
 
-确认卡记录的是本张卡的决定，不能证明开放 browser/bash/harness 的所有最终动作都已强制批准。
-普通表单不提供支付秘密录入或敏感值隔离通道。
+普通表单不收集密码和支付信息，这些由用户在实时浏览器里自己填写。
 
-### 普通表单（Unreleased）
+### 普通表单
 
 `fill_form` 只收集当前任务需要的普通资料。按导出的 `FormField` 和 `payload.fields` 渲染控件；卡片声明 `submit` 时调用 `handle.submit(values)`。键名保持原 `field.name`，单选用 option `value`，数字保留 number，地址为 `{ line1, line2?, city?, region?, postalCode?, country? }`。必填文本/地址须非空；可选文本允许空字符串，`0` 合法。未知字段、错误类型/选项、NUL、非有限数在本地和后端当前持久卡上重复校验。
 
@@ -1040,17 +940,11 @@ if (handle.interaction.type === "fill_form" && handle.can("submit")) {
 }
 ```
 
-这里不写 Profile；敏感字段、payment_card 和 `profileField` 写入尚未接通。账号密码仍走浏览器登录/接管。需要配套 W4 后端；最终 W6 合成与供应商验收另行完成。
+表单只收集当前任务需要的资料；密码和支付信息不会通过表单收集，由用户在实时浏览器里自己填写。
 
 **`ask_user` 的回答是结构化的。** `answer()` 接收与 `payload.answerType` 对应的值：`text` → 字符串，`number` → 数字，`boolean` → 布尔，`single_choice` → 一个 `options[].value`，`multiple_choice` → 选项 value 数组；不匹配时在发送前就抛出 `QoniValidationError`。线上协议里这个类型仍叫 `clarification`，SDK 统一呈现为 `ask_user`（候选项是 `{ value, label }`）。
 
-**登录只需两次 SDK 调用。** `openLogin()` 的 `siteId` 取自 `payload.sites[].siteId`，只列出一个站点时可以省略；`liveUrl` 仅展示给当前用户。用户登录完成后调用 `confirmSignedIn()`。
-
-**未发布的 `current_task` 策略**要求后端在同一 DoAnything run 和原登录问题 L 上声明 open/confirm 接口。open 使用当前任务已有浏览器，不跳转或新开浏览器；`login.sessionId` 是固定控制轮次 C，与 `raw.control_interaction_id` 相同，`raw.browser_session_id` 才是浏览器 ID。open 申请 SITE_LOGIN_REQUEST＋BROWSER_USE_TAKE_CONTROL；confirm 申请 SITE_LOGIN_CONFIRM＋BROWSER_USE_TAKE_CONTROL＋DO_ANYTHING_MANAGE。先在 AccessKey 中允许这些策略并取得用户显式同意，再按上文协调迁移；manage 不能代替登录或接管权限。
-
-SDK 在原声明接口发送一次 `{login_session_id:C}`，完成可靠保存、交还 C 和回复 L，不调用 Profile confirm，不另发二次 recheck。已弃用的 `login.confirm()` 共用这一次请求，返回 `state: "saved"、active: false、probeResult: "agent_pending"`，原响应保留在 `raw`。saved 只表示可靠保存，Agent 仍须核验页面再继续。mode 缺失/未知或 L/C 不符时失败关闭；没有成功 open 就 confirm 会在本地拒绝。409（包括 `no_pending_login`）保持失败，不自动换 ID 或重开。503 保存错误、超时/响应丢失和 `site_login.invalid_response` 保留原 L/C，允许显式重试；成功响应丢失后，只认后端精确的保存历史回执。
-
-旧 `/profiles/login` 策略保持单 request/confirm scope、先 Profile 保存再通知 Agent 复查，以及既有 `active/probeResult` 和旧 `no_pending_login` 可复查语义。两种策略沿用 shared slot、并发共享与替换保护，旧结果不能确认新轮次。同一 RunHandle/MonitorHandle 的句柄共享会话，重新 `attach()` 的 RunHandle 不共享。应用继续使用 `openLogin()` → `confirmSignedIn()`，无需先调用 `login.confirm()`。
+**登录只需两次 SDK 调用。** `openLogin()` 的 `siteId` 取自 `payload.sites[].siteId`，只列出一个站点时可以省略；`liveUrl` 仅展示给当前用户。用户登录完成后调用 `confirmSignedIn()`：登录状态会保存下来，供这个用户之后的任务复用，Agent 会先核对页面再继续。返回 409（例如 `no_pending_login`）表示这张卡已不是当前的，展示新的交互即可，不要重试。
 
 上面用到的判别字符串也都导出成了常量，避免裸写字面量：`InteractionTypes`（`SiteLogin` / `TakeControl` / `AskUser` / `Confirmation` / `Wait`；已弃用的 `Clarification` 现在等于 `AskUser`）、`InteractionStatuses`、`ActionKinds`（`handle.can(...)` 的动作名）。授权 scope 同样有：`QoniScopes`（每个单独 scope）、`QoniProductScopes`（`products` 语法糖展开成的 per-product `read`+`manage` 对）、`QoniScopeBundles`（精选 bundle）。用它们代替手写字符串：
 
@@ -1102,7 +996,6 @@ type QoniResponse<T> = {
 //     "message"        { id, role, text, delta, done, final, stopReason? } —— 流式回答的各段共用一个 id
 //     "browsers"       AgentBrowser[] —— 现在开着的所有浏览器（0.10.0）
 //     "interaction"    带类型的 Interaction 对象（HITL）—— 见「交互」一节
-//     "screenshot"     { pageUrl?, step? }   + 解码后的图在 event.image
 //     "browserLiveUrlChanged" { liveUrl, supportsLivePump, forceViewerReload, providerSessionId? }
 //     "done"           { output, succeeded, terminalReason }
 // 公共字段:runId、at(ISO 8601)、isTerminal(仅 "done" 为 true)、raw(原始 wire 事件,逃生舱)。
@@ -1112,7 +1005,7 @@ type QoniResponse<T> = {
 
 | 产品 | `event.type` 集合 |
 |---|---|
-| Do Anything | 核心:`progress` / `message` / `interaction` / `screenshot` / `browserLiveUrlChanged` / `browsers` / `done` |
+| Do Anything | 核心:`progress` / `message` / `interaction` / `browserLiveUrlChanged` / `browsers` / `done` |
 | Web Search | 核心 + `resultsReady` |
 | Deep Research | 核心 + `phase` / `sectionReady`（大纲审批走 `interaction`） |
 | Track（`MonitorHandle`） | `events()` 给出每次检查的核心事件（0.10.0），检查结束是该检查 `runId` 的 `done`，流不会因此结束。 |
@@ -1150,7 +1043,7 @@ type QoniEvent<T = unknown> = {
 | `QoniDelegationRequiredError` | 产品调用没带 `token`，或带的是网关不接受的裸 token。 | 把 `delegation.data.token` 传给产品调用。 |
 | `QoniRateLimitError` | 被限流（429）。 | 安全读取可退避；写入结果未知时先按原操作对账。 |
 | `QoniTimeoutError` | 请求（或 `wait({ timeoutMs })`）超时。 | 已有 run 可 `attach()` 或查状态；创建超时可能已提交，不能自动创建替代任务。 |
-| `QoniTaskSubmissionUnknownError`（修订候选） | `runWithMemory` 已派发 Task POST，但没有明确结果。 | `task.submit_unknown`、`submissionUnknown: true`、`retryable: false`；核对原请求，不自动重发。 |
+| `QoniTaskSubmissionUnknownError` | `runWithMemory` 已派发 Task POST，但没有明确结果。 | `task.submit_unknown`、`submissionUnknown: true`、`retryable: false`；核对原请求，不自动重发。 |
 | `QoniUpstreamError` | 下游服务失败（5xx / 上游换 token 失败）。 | 先核对原写入结果；`retryable` 不能证明副作用已回滚。 |
 | `QoniError` | 基类 / 其它 code。 | 看 `err.code`。 |
 
@@ -1159,8 +1052,8 @@ JSON 请求**不会自动重试**；`err.retryable` 表示错误类别，不是�
 有查询接口时读回原操作；缺少回执、404 或时间经过都不能证明首次写入没有副作用。
 
 用户在已支持的权限管理界面缩窄或撤销同意后，停止安排需要已移除 scope 的调用，并尊重后端拒绝。
-不能静默重建更宽 grant、换用户/App 或刷新出额外权限；本候选没有 `genauth.consents.revoke()` SDK 方法。
-停止本地等待也不等于停止服务端 Task 或证明外部操作已停止。见[失败处理示例](./docs/delivery-examples/README.zh-CN.md)。
+不能静默重建更宽 grant、换用户/App 或刷新出额外权限；SDK 没有 `genauth.consents.revoke()` 方法。
+停止本地等待也不等于停止服务端 Task 或证明外部操作已停止。
 
 ```ts
 import {
@@ -1219,108 +1112,22 @@ try {
 - 在业务日志中记录 `auditId`、`requestId`、`traceId`，方便后续审计。
 - 如果怀疑 AK/SK 泄露，应在 Qoni Console 中轮换密钥。
 
-## License
+## Do Anything 文件产物
 
-MIT
-
-## Do Anything file artifacts
-
-After `wait()`, `result.artifacts` contains this run's persisted files, including when using `attach()` after reconnecting. Screenshots and recordings remain on their dedicated APIs. Temporary S3 URLs expire 900 seconds after signing; do not put them in public logs. Refreshing a link requires a valid delegation token with `webagent.do_anything:read`. Stored files remain subject to project retention.
+`wait()` 之后，`result.artifacts` 里是这次 run 保存下来的文件，断线后用 `attach()` 重新接上也一样。录屏走专门的接口。临时 S3 地址签发 900 秒后失效，不要写进公开日志；刷新链接需要带 `webagent.do_anything:read` 的有效委托令牌。文件按项目的保留策略存放。
 
 ```ts
 const result = await run.wait();
 for (const artifact of result.artifacts) {
   let url = artifact.downloadUrl;
   url = await artifact.refreshDownloadUrl?.();
-  const data = await artifact.content(); // Uint8Array, authenticated download
+  const data = await artifact.content(); // Uint8Array，带鉴权下载
 }
 const artifacts = await client.doAnything.artifacts({ token, runId: run.id });
 ```
 
-Wire methods: `client.doAnything.api.listArtifacts(...)` and `artifactDownloadUrl(...)`.
+Wire 方法：`client.doAnything.api.listArtifacts(...)` 和 `artifactDownloadUrl(...)`。
 
-## Agent Mail 与 Agent Phone
+## License
 
-本地通信扩展提供 `qoni.genauth.agentMail` 和 `qoni.genauth.agentPhone` 的运行侧与管理侧 API。运行侧通过 `genauthCommunicationCredentials` 配置原生 GenAuth 凭据；管理侧复用 Qoni 的兑换流程。详见 [通信指南](docs/genauth-communication.md) 与 [方法索引](docs/genauth-communication-api.md)。
-
-## 本地 Agent 整合扩展
-
-整合分支增加 `qoni.genauth.auth.createLoginUrl` / `exchangeLoginCode` 与
-`qoni.genauth.agents.create` / `get` / `bind` / `bindUser`，并保留原有管理、
-Agent Mail 和 Agent Phone 接口。这些新增内容尚未发布到 npm。登录回调必须先核对
-App 保存的 `state`，再兑换一次性 code。Personal 邮箱委托必须指定真实 IAM
-`agentId`，审计标签不能证明邮箱归属。创建可能仍处于 pending；结果未知时只能使用
-原 provisioning 引用或幂等键核对，不能重新创建资源。
-
-Personal Quickstart 的邮箱创建流程与统一 Agent 管理的可选能力模型分别保留。
-统一管理中身份、邮箱、手机号均可选，一个 Agent 可以拥有多个邮箱和手机号。
-绑定 Personal 身份不会签发凭据，也不会自动打通 IAM token 调用原生 Mail/Phone API。
-
-### 个人 Agent 编排与可选邮箱（待发布）
-
-此候选接口可用于本地集成；后端业务验证仍未完成，示例不代表外部邮箱供应商已经支持或验收通过。
-
-新建的 Agent 要先审核并同步能力，这个人才能在授权页同意（0.10.0）：
-
-```ts
-await qoni.genauth.agents.activate({ agentId, userId: person.genauthUserId, audience: app.appIdentifier, dataPolicyIds });
-```
-
-它把数据策略授权给这个人，起草、提交并批准 Agent 的能力申请，给 Agent 本地凭据并同步权限，然后等到 GenAuth 报告同步完成。每一步写入都带由 Agent 和步骤决定的幂等键，重复调用是安全的；已经激活的 Agent 立即返回。
-
-`genauth.agents.create/get/bind` 使用现有 Qoni 签名传输。首次创建前保存 `idempotencyKey` 与完整请求，重试沿用它们。`ready: false` 是持久受理或恢复状态，不能当作成功，也不要换键创建替代 Agent。申请邮箱时，须原 Mail operation 成功、邮箱资源 active、IAM 确认 ready 才返回 `ready: true`。
-
-```ts
-const request = { displayName: "我的助手", mailboxLocalPart: "my-assistant", idempotencyKey: savedRequestKey };
-let result = await qoni.genauth.agents.create(request);
-// 保存 provisioningId；稍后恢复同一次创建。
-result = await qoni.genauth.agents.get({ provisioningId: result.provisioningId });
-if (result.state === "ready" && result.ready) {
-  result = await qoni.genauth.agents.bind({ provisioningId: result.provisioningId, accessToken: currentUserAccessToken });
-}
-```
-
-绑定只接受当前本人合法 GenAuth 用户 token，并核验池与 App；不接受浏览器声明的 owner ID。整体 ready 后从未绑定满七天才回收，绑定成功清除未绑定截止。明确失败及时补偿，未知供应商结果继续按原操作对账。查看 `state/errorCode` 处理等待和错误；SDK 不自动重放未知写入。用户 token 与管理密钥留在可信应用服务端，不写日志。能力默认关闭，需要配置编排、现有 Mail worker 与 IAM 服务认证。
-
-延长任务时长配置不代表凭据、浏览器和供应商都能连续等待一小时。确认卡和普通表单也不能证明开放 browser/bash/harness 通道已强制批准或隔离秘密；这些完整业务保证仍未成立。
-
-### 恢复 Do Anything 受理回执
-
-此 W11 增量接口需要部署匹配的 Web Agent 受理 API。每次提交保留稳定的
-`requestId` 和原请求内容；SDK 不会自动重试写请求。
-
-```ts
-const requestId = "checkout-task-20261009-001";
-const run = await qoni.doAnything.run({ token, prompt, requestId });
-// 创建回执丢失时只读原键，不创建新任务猜测结果。
-const receipt = await qoni.doAnything.api.getRequest<{ id: string }>({ token, requestId });
-const trace = await qoni.doAnything.api.getTrace({ token, runId: receipt.data.id });
-```
-
-`getRequest` 返回原 run envelope；TypeScript 读取字段时传相应响应泛型。
-后继任务查询必须同时传原 `sessionId`。键按服务器认证的项目、用户、App/凭据、
-Agent 和初始/后继会话隔离。同键但规范请求内容不同返回
-`409 request_payload_conflict`。`409 request_in_progress` 或未找到回执不能证明
-提交未发生；先读原键。如果原请求从未到达服务器，查询可能持续返回 404。
-你可以在相同认证身份域下，显式使用**同一 requestId 和完全相同的请求内容**
-重新提交任务受理，后继请求也必须保留原 sessionId。已受理时返回原 Task；
-不要生成新键来猜测结果。SDK 不自动重试 POST，这也不授权重做结果未知的
-外部操作。取消或过期不会释放键。
-
-再次调用 `runWithMemory` 会重新召回记忆，可能改变实际 `instructions`，因此结果未知时应优先使用原请求键及读回的 run ID 调用 `api.getRequest`/`api.getTrace` 核对，不要把重新召回后的内容当作原 payload 重提。
-
-使用受理键的任务保留 Task/Event 回执，硬删除其会话会返回
-`409 request_receipt_retained`，仍可取消任务。若需彻底删除内容又保留去重，
-必须另行确定持久保留模型；运维直接清库不在此保证内。
-
-追溯仅返回原身份引用与安全状态，缺失的 grant、同意或操作依据保持缺失。
-任务完成不等于外部操作已确认：`external_result: "unknown"` 需要去原网页或
-服务核对。API 去重不保证网页订单、邮件绝不重复，追溯引用也不是批准凭据。
-
-### 受保护表单输入（本地候选）
-
-可信应用 UI 可对当前 `fill_form` 调用 `run.interactionHandle(card).submitSensitive(values)`；受保护文本字段命名为 `qoni_sensitive_<customData key>`。须使用创建该 Task 的原 Web Agent 产品 access token，delegation token 或重新换取的 token 不能替换原来源。SDK 将每个受保护值直接发送到已配置的 GenAuth，仅将不透明引用写入原 Web Agent 回复。普通 `submit()` 拒绝这些字段。不要从模型或开放浏览器工具调用此 API。
-
-需要明确恢复步骤时，使用 `qoni.doAnything.forms.prepare({ token, runId, interactionId, fieldName })`，再调用 `intake({ token, ref, value })`、`status({ token, ref })` 或 `cancel({ token, ref })`。Prepare 保留原引用和期限，不授权再次提交值。持久化还要求服务端允许的非安全码定义 `cardNumber`，以及显式 `persist: true`（或 `submitSensitive` 的 `persistFields`）、当前 UDF 写权限和现有 AES 配置。其他或语义不明的自定义 key 均只允许瞬态保存；调用方的标签或类型不能授予持久化权限。CVC/CVV 始终只在瞬态缓存中，禁止持久化，也不生成摘要。缺少或不支持的 UDF 配置失败关闭。
-
-直提、取消或引用回复结果未知时，错误含 `submissionUnknown: true`、`retryable: false`；不自动重试 POST，这些错误不保留原始响应体。丢失回包后读取原引用/Task。显式取消仅在收到确认后才证明临时值已删除。GA 撤销拒绝取用，下一次已认证访问尝试清理，固定 Redis TTL 则独立回收；这不表示撤销瞬间物理抹除，也不证明部署环境的备份隔离。原卡期限 `card_deadline` 保持不变，包括默认一小时。GenAuth 只在 issue 时记录一次 `value_deadline`，取原卡期限、原 run/source 期限与签发时刻加五分钟的最早值；`expires_at` 是同值兼容字段。三个字段均为 epoch 毫秒。值可先过期，原卡仍保持等待。只有未过期的 `awaiting` 引用接受一次直提；`writing`、`unknown`、`consumed`、`expired` 均不能在同卡重提或替换。Prepare/status 不滑动期限、不生成替代引用。读回 `ready` 仅表示原 intake 的 SQL 提交已确认且 Redis ready 转换已完成，不授权再次 POST。目标平台的隔离未获证据前，生产敏感 release 继续禁用；本候选不宣称自动代填、付款或外部投递完成。
+MIT

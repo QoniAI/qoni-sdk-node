@@ -27,12 +27,10 @@ Qoni keeps that model small:
 - Readable scope strings for least-privilege authorization.
 - Typed errors with `requestId`, `traceId`, `auditId`, and `retryable`.
 
-The public package and API use the Qoni brand. The deployed server protocol has
-not migrated yet, so internal signed routes remain under `/api/v3/eak/*`, the
-delegation token claim remains `eak_delegation_token`, and existing `eak.*`
-backend error codes are surfaced unchanged. Existing wire claims such as
-`eak_tenant_id` also remain unchanged. Applications should use the public
-Qoni API and must not construct these internal wire values themselves.
+Signed server routes live under `/api/v3/eak/*`, and some wire values keep their
+original names: the delegation token claim `eak_delegation_token`, the claim
+`eak_tenant_id`, and `eak.*` error codes, which the SDK surfaces unchanged. Use
+the public Qoni API; do not construct these wire values yourself.
 
 ## Installation
 
@@ -43,17 +41,6 @@ pnpm add @qoniai/qoni
 # or
 yarn add @qoniai/qoni
 ```
-
-> **Requires the matching backend:** hosted login, current-task login, ordinary
-> forms/Profile, pre-run memory and Personal Agent provisioning below ship in 0.9.2
-> and need the matching Qoni backend. Personal Agent provisioning is not enabled in
-> production yet. See the [typed examples](./docs/delivery-examples/README.md).
-
-> This unified local candidate combines those interfaces, the corrected memory
-> error contract, original-key receipt reads and the A1 r2 memory projection.
-> It remains unreleased; use its fixed archive/DTS and matching backend contract.
-
-The current candidate's Personal Agent, formal delegation, wildcard and recovery boundaries are documented in the [Quickstart v5 contract](./docs/quickstart-v5-contract.md).
 
 Requirements:
 
@@ -172,11 +159,9 @@ const { token } = (
 const run = await qoni.doAnything.run({
   token, // passed once — the handle holds it; handle methods never take a token
   prompt: "Open https://en.wikipedia.org/wiki/Singapore and summarize the country's key facts.",
-  capture: { screenshots: true },
 });
 
 const result = await run.wait({
-  onScreenshot: (img, i) => fs.writeFileSync(`step-${i}.jpg`, img.bytes),
   onInteraction: (i) => {                 // site_login / take_control / ask_user / confirmation
     if (i.can("confirm_signed_in")) return i.confirmSignedIn();
     if (i.can("confirm")) return i.confirm();
@@ -185,14 +170,12 @@ const result = await run.wait({
 console.log(result.output);
 ```
 
-This public-page example requests only the product's `read` + `manage` pair. Before using the [browser-control handler below](#interactions-hitl), explicitly add `scopes: [QoniScopes.BROWSER_USE_TAKE_CONTROL]` when requesting its run token, allow that scope in the AccessKey policy, and obtain the user's consent. The site-login handler separately needs `QoniScopes.SITE_LOGIN_REQUEST` and `QoniScopes.SITE_LOGIN_CONFIRM`. Use interactive delegation for these permissions; the `products` shorthand does not request them.
+This example requests only the product's `read` + `manage` pair. A run that may ask the user to sign in to a site or take over the browser ([interactions](#interactions-hitl)) also needs `QoniScopes.SITE_LOGIN_REQUEST`, `QoniScopes.SITE_LOGIN_CONFIRM` and `QoniScopes.BROWSER_USE_TAKE_CONTROL`: request them explicitly in `scopes` (the `products` shorthand does not include them) and allow them in the AccessKey policy.
 
-When creating a task that may request human control, pass `taskScopes: [QoniScopes.BROWSER_USE_TAKE_CONTROL]` to `doAnything.run()` (also supported by `api.createRun()` and `runWithMemory()`). Add specific `SITE_LOGIN_*` scopes there only when the task needs them. The SDK always includes manage; omitting `taskScopes` requests only manage. These scopes must already be allowed by the delegation and current policy. Only known concrete Web Agent scopes are accepted, not wildcards. Existing product tokens are passed through unchanged and cannot gain authority through this option. Available from 0.9.2.
+When creating a task that may request human control, pass `taskScopes: [QoniScopes.BROWSER_USE_TAKE_CONTROL]` to `doAnything.run()` (also supported by `api.createRun()` and `runWithMemory()`). Add specific `SITE_LOGIN_*` scopes there only when the task needs them. The SDK always includes manage; omitting `taskScopes` requests only manage. These scopes must already be allowed by the delegation and current policy. Only known concrete Web Agent scopes are accepted, not wildcards. Existing product tokens are passed through unchanged and cannot gain authority through this option.
 
 
-`run()` returns a `RunHandle` typed to the product: `qoni.deepResearch.run()` is a `RunHandle<DeepResearchEvent>`, so its events are narrowed to what Deep Research actually emits. `capture: { screenshots: true }` opts into per-step screenshots, decoded to bytes for you. `wait()` drives the run to its terminal state and settles the result (`result.raw` carries cost, step counts, token usage).
-
-Undecodable or empty screenshot data URIs never interrupt `wait()` or invoke `onScreenshot`, regardless of capture settings. They follow the existing progress fallback when a human-readable message is available; `onWireEvent` always retains the original payload, including frames with no progress text.
+`run()` returns a `RunHandle` typed to the product: `qoni.deepResearch.run()` is a `RunHandle<DeepResearchEvent>`, so its events are narrowed to what Deep Research actually emits. `wait()` drives the run to its terminal state and settles the result (`result.raw` carries cost, step counts, token usage).
 
 > **Best practice — match `event.type` against the `QoniEventTypes` constants.**
 > Each product handle is typed to its own event set, so in TypeScript a case
@@ -380,7 +363,7 @@ Such a client runs `doAnything`, `webSearch`, `deepResearch`, `track`, `proactiv
 ```ts
 const grant = await qoni.genauth.delegateAgent({
   userId: process.env.QONI_USER_ID!, // The current user's GenAuth ID
-  agentKey: "email-assistant", // Agent audit label; alias for agent
+  agentKey: "research-assistant", // Agent audit label; alias for agent
   scopes: [
     "webagent.do_anything:read", // Read status, events, and artifacts
     "webagent.do_anything:manage", // Start/cancel tasks and respond to ordinary interactions; excludes browser control
@@ -417,7 +400,7 @@ await qoni.delegateToken({
 
 Scope strings are validated locally before any request: a scope missing its service prefix (e.g. `do_anything:manage` instead of `webagent.do_anything:manage`) throws `QoniValidationError` immediately with the correct form in the message — every candidate when the short form is ambiguous (`profile:read` → `gumem.profile:read` or `user.profile:read`).
 
-The browser-control, site-login, user Profile, payment and Agent mailbox scopes (`QoniScopes.BROWSER_USE_TAKE_CONTROL`, `SITE_LOGIN_*`, `USER_PROFILE_READ`, `USER_PROFILE_WRITE`, `USER_PAYMENT_USE`, `AGENT_MAIL_READ`, `AGENT_MAIL_SEND`) belong to no product bundle: request them explicitly in `scopes`, and allow them in the AccessKey policy. The corresponding Console changes add separate browser-control and site-login policies; confirm that GenAuth and Console support them before requesting a new grant. The user Profile, payment and Agent mailbox constants only name the scopes; requesting them does not by itself enable Profile, payment or mailbox access in a run.
+The browser-control and site-login scopes (`QoniScopes.BROWSER_USE_TAKE_CONTROL`, `QoniScopes.SITE_LOGIN_REQUEST`, `QoniScopes.SITE_LOGIN_CONFIRM`) belong to no product bundle: request them explicitly in `scopes`, and allow them in the AccessKey policy (**WebAgent Browser Control** and **WebAgent Site Login** in Qoni Console).
 
 Use explicit scope strings when the requested permission boundary should be visible in code.
 
@@ -431,28 +414,14 @@ Use explicit scope strings when the requested permission boundary should be visi
 | Create a monitor | `webagent.track:read`, `webagent.track:manage` | Agent can configure monitors, read events, run checks, and stop monitors. |
 | Sign in to sites during a run | `webagent.site_login:request`, `webagent.site_login:confirm` | The user signs in through a live browser; the login is saved for later tasks. |
 | Human browser control | `webagent.browser_use:take_control` | The user connects, refreshes, and releases the current browser. Request this explicitly; product manage does not include it. |
-| Use the user's Profile | `user.profile:read`, `user.profile:write` | The ordinary Task adapter reads/saves permitted name/address and supported nonencrypted primitive custom fields. Phone/email verification, payment/card data and other sensitive fields are excluded. |
-| Pay with the user's saved card | `user.payment:use` | After the user approves a payment, the saved card is filled in for them. |
-| Use the Agent's own mailbox | `agent.mail:read`, `agent.mail:send` | Agent can read mail sent to its own address (such as verification codes) and send mail from it. |
 
 Silent mode is usually appropriate for low-risk actions such as reading current-user memory, writing a confirmed summary, or searching public web pages.
 
-Browser control uses `QoniScopes.BROWSER_USE_TAKE_CONTROL`, outside the `products` shorthand. When upgrading to the corresponding backend, both the AccessKey policy and user delegation must explicitly include it. Legacy `webagent.do_anything:control`, `webagent.deep_research:control`, and `webagent.browser:control` scopes are not automatically converted. Refresh and release require this permission too. This scope adaptation does not establish stale-card protection or durable login persistence.
-
-### Migrating browser-control permissions
-
-This is an unreleased breaking change. It requires a coordinated cutover: the old Web Agent release endpoint requires product `manage`, whereas the new SDK requests only `webagent.browser_use:take_control` for release; the new Web Agent rejects `manage` as a substitute. Upgrading Web Agent and the SDK one at a time does not guarantee uninterrupted control sessions.
-
-1. Prepare GenAuth's scope registration and Console's **WebAgent Browser Control** and **WebAgent Site Login** policies first. Enable the permissions actually needed on the AccessKey; the site-login policy contains `webagent.site_login:request` and `webagent.site_login:confirm`.
-2. Request `QoniScopes.BROWSER_USE_TAKE_CONTROL` explicitly and obtain new user consent through interactive delegation. Add the site-login scopes only when needed. Updating the AccessKey policy or renewing an existing delegation must not silently add permissions to that user's grant.
-3. During a maintenance window, stop admitting new browser-control tasks and finish or drain existing control sessions with the old versions. Then coordinate the Web Agent and SDK cutover; do not add a `manage` compatibility bypass.
-4. Verify connect, refresh and release with the newly consented scope, and verify that delegations lacking it or carrying only legacy control scopes are rejected. The new Console lists permissions not covered by the selected policies separately, including legacy, unknown and partial policy entries. It preserves them by default and removes them only when the user selects “Remove these permissions when saving”. Inspect the saved AccessKey allowlist. Preserving an old control scope does not grant `webagent.browser_use:take_control`; migrate callers to the independent scope.
-
-Deployment and publication still require a separate Owner instruction. This migration guide does not authorize them.
+Browser control uses `QoniScopes.BROWSER_USE_TAKE_CONTROL`, outside the `products` shorthand: both the AccessKey policy and the delegation must include it. Connect, refresh and release all require it. Legacy `webagent.do_anything:control`, `webagent.deep_research:control` and `webagent.browser:control` scopes are not converted to it.
 
 ### Raw browser-control calls
 
-After the policy and consent migration, `doAnything.api.intervene()` accepts `interactionId` (wire alias `interaction_id`). Refresh and release must send the ID captured for that control round. A first user-initiated `take_control` may omit it only when no control marker is active; reconnecting to an active round must send its exact ID. The new Web Agent take/refresh response includes `interaction_id`; keep the raw response field, rather than deriving an ID from a URL or fetching a newer card.
+`doAnything.api.intervene()` accepts `interactionId` (wire alias `interaction_id`). Refresh and release must send the ID captured for that control round. A first user-initiated `take_control` may omit it only when no control marker is active; reconnecting to an active round must send its exact ID. The take and refresh responses include `interaction_id`; keep the raw response field, rather than deriving an ID from a URL or fetching a newer card.
 
 ```ts
 import type { DoAnythingControlResponse } from "@qoniai/qoni";
@@ -462,7 +431,7 @@ const first = await qoni.doAnything.api.intervene<DoAnythingControlResponse>({
   token, runId: run.id, kind: "take_control",
 });
 const interactionId = first.data.interaction_id;
-if (!interactionId) throw new Error("This backend did not return the control-round ID; stop and complete the migration");
+if (!interactionId) throw new Error("No control-round ID was returned");
 
 // When this round's URL needs refreshing:
 await qoni.doAnything.api.intervene({ token, runId: run.id, kind: "refresh_control_url", interactionId });
@@ -476,8 +445,6 @@ Interactive mode is recommended for higher-risk actions such as browser takeover
 
 Raw `answer_input_request` and `skip_input_request` calls must identify the current pending input with `requestId` (wire `input_request_id`). Web Agent checks the persisted request, waiting state, expiry and declared action before accepting it. A stale or undeclared action returns 409; the SDK does not replace the ID or retry. Use the declared confirmation and sign-in methods for those interactions instead of treating a raw answer or skip as approval or successful login.
 
-In this backend change, card `connect_control` returns a pending control round. OBO/API-key callers cannot make it an active Console connection by sending `surface: "console_inline"`. Releasing such a pending round leaves a pending login/credential question unresolved. The unreleased task-login policy below uses declared `open_login` and `confirm_signed_in` for reliable save/release/reply; a connect-only card cannot substitute for that flow. The agent still verifies actual sign-in; deployment requires a separate Owner instruction.
-
 The SDK also exports a GUMem-oriented bundle for the common session/write/recall path:
 
 ```ts
@@ -485,58 +452,6 @@ QoniScopeBundles.GUMEM_SESSION_RECALL
 ```
 
 ## Capability Examples
-
-### Internal Pi host memory entry (Unreleased)
-
-The local build adds `createTaskClient` for the existing Pi host. Application
-Quickstart code still uses DoAnything and its interactions; it does not call
-memory or Profile directly. Select the new task facade archive explicitly;
-the frozen current-task integration package remains a separate input.
-
-```ts
-import { createTaskClient } from "@qoniai/qoni";
-
-const task = createTaskClient({
-  productHosts: { gumem: trustedHosts.gumem },
-  runId: trustedRunId,
-  tokenProvider: getCurrentRunPermission,
-});
-await task.memory.createSession();
-await task.memory.addMessages({
-  messages: [{ id: `${piSessionId}:${entry.id}`, role: entry.role, content: entry.content }],
-});
-```
-
-The host supplies trusted service configuration, a stable run ID and
-`getCurrentRunPermission(product, requiredScopes, runId, signal)`. The provider
-returns `{ accessToken, expiresAt }` with expiry in Unix milliseconds, and must
-check current permission on every request. This entry needs no AK/SK and only
-exposes `memory.createSession` and `memory.addMessages` for `qoni-run-<runId>`.
-Run IDs keep their complete value, allow at most 55 Unicode characters and
-reject path separators; run and message IDs reject C0/C1 controls and DEL.
-Messages require a stable nonempty `id`, a nonempty GUM string `role` and string
-`content`. Role and content must be well-formed Unicode; valid pairs, whitespace,
-newlines and empty content are preserved. No identity/token/header/path overrides
-are accepted, including at runtime. Once a whole batch passes synchronous validation,
-its IDs are submitted and bound on that client, including batches not yet sent.
-Provider rejection or timeout before HTTP does not release the binding: changed
-content or role fails locally; the original content can be explicitly retried.
-An invalid batch binds no IDs.
-
-`timeoutMs` (default 30 seconds) covers provider, HTTP and response body;
-optional per-call `signal` cancels all stages. HTTPS is required except for
-loopback HTTP fixtures; service base paths are preserved and redirects are
-refused. Every call obtains current permission. No POST is automatically
-retried. Ordered immutable batches receive a stable internal `X-Request-ID`
-for existing usage-outbox deduplication; changed or overlapping batches do not
-prove exactly-once processing. The facade returns `QoniResponse` with only
-Session fields or `{ request_id, message_count }`, and typed Qoni errors without
-raw private provider/HTTP payloads.
-
-This method boundary is not resource-server authorization. Trusted G6/WA token
-issuance and GUM run/session enforcement, durable Pi cursors, recovery and real
-Pi/E2B/offline acceptance remain dependencies; provider/loopback tests do not
-prove reliable background memory.
 
 ### GUMem
 
@@ -578,9 +493,9 @@ const context = await qoni.gumem.recall({
 // The SDK example stops here because application orchestration is product-specific.
 ```
 
-**Unreleased recall mapping:** `metadataFilters` is sent inside `recall_config.metadata_filters`. Top-level and nested camel/snake aliases merge only when duplicate values agree; conflicting values throw `QoniValidationError` before HTTP. Filter values must be strings, finite numbers or booleans; null, object and array values are rejected. System fields (`project_id`, `group_id`, `user_id`, `thread_id`, `session_id`, `scope`, `expired_at`, `validity`, including normalized aliases) are reserved. Other recall configuration keys pass through unchanged. This validation protects SDK calls; it does not fix server-side isolation or verify cross-task recall.
+**Recall filters:** `metadataFilters` is sent inside `recall_config.metadata_filters`. Top-level and nested camel/snake aliases merge only when duplicate values agree; conflicting values throw `QoniValidationError` before HTTP. Filter values must be strings, finite numbers or booleans; null, object and array values are rejected. System fields (`project_id`, `group_id`, `user_id`, `thread_id`, `session_id`, `scope`, `expired_at`, `validity`, including normalized aliases) are reserved. Other recall configuration keys pass through unchanged.
 
-### Recall before starting a task (Unreleased)
+### Recall before starting a task
 
 Use `runWithMemory` to opt into bounded GUM context before a Do Anything task.
 Keep the original delegation token with both `gumem.memory:read` and
@@ -636,28 +551,6 @@ assistant history text become quoted reference data. Working memory,
 `formatted_context`, tool channels and arbitrary metadata are excluded.
 Authorization-shaped values are omitted; the references confer no permission or
 approval and quoting is not a model prompt-injection guarantee.
-
-History sources contain the returned message `id` and GUM `sessionId`, with an
-optional exact stored `metadata.source_url` if it is a bounded safe HTTP(S) URL.
-It is caller-stored message evidence, not verified fact provenance. No URL is
-inferred from content, and `resource_urls` remain media-resource references.
-With the matching A1 r2 backend projection, facts/summary items can carry
-`recordId`, `engine` and `raw_input` sources (`id`, `sessionId`, `messageId`,
-`createdAt`, optional stored `url`), with `sourceStatus: "record_id"`.
-`memory_records_coverage` must confirm complete coverage before typed records
-replace a nonempty legacy section. Missing coverage keeps the complete legacy
-section with `sources: []` and `sourceStatus: "unavailable"`; text equality never
-attaches a source. Content has priority within the item/byte budget: omitted
-source sets, identities or content set `truncated`; sources are kept as whole
-sets or omitted. Older backends still return source-less facts/summary.
-User-level semantic recall retains its project/user/scope=user path. Missing
-stored URLs cannot be repaired by a response field. Local GA/HTTP/PG/Qdrant evidence does not imply hosted-vector,
-extraction-worker, Pi/cloud or production acceptance; existing GUM expiration
-filter limitations remain separate.
-
-The corrected-candidate markers above apply only to `runWithMemory`; ordinary
-`run()` and older packages may lack them. Absence of these fields never makes a
-write safe to replay. See the [corrected memory-error example](./docs/delivery-examples/m2-r2/README.md).
 
 ### Do Anything
 
@@ -791,8 +684,7 @@ const followUp = await qoni.deepResearch.run({
 a backend endpoint/source for that structured snapshot contract. The method
 raises local `QoniUnsupportedError` (`code: "unsupported.operation"`) with zero
 HTTP. Use `qoni.doAnything.artifacts({ token, runId })` / `api.listArtifacts()` for files, including
-`artifact.content()` or `api.artifactDownloadUrl()` for downloads. Use
-`capture: { screenshots: true }` and screenshot events for images. A text file
+`artifact.content()` or `api.artifactDownloadUrl()` for downloads. A text file
 artifact is not a snapshot; the real file APIs are unchanged.
 
 ### Track
@@ -884,20 +776,6 @@ pagination raises `QoniValidationError` before HTTP. `MonitorSchedule` retains
 the deprecated cron branch; optional undefined fields retain omission behavior, while specified unsupported fields fail; historical event and option types remain exported
 for source compatibility. Unsupported methods are not successful capability tests.
 
-### The original Task user's ordinary Profile (Unreleased)
-
-`doAnything.profile.read({ runId, token, fields })` and
-`doAnything.profile.update({ runId, token, values })` return `QoniResponse<OrdinaryTaskProfile>`.
-Read `.data.values`, `.data.missing`, `.data.writable_fields` and `.data.field_types`.
-Request `user.profile:read` and, only for explicit saves, `user.profile:write` in
-the original delegation together with the required Web Agent scopes. A newer
-token cannot broaden the original Task authorization. This is the original
-Task owner's ordinary Profile, not admin user management or browser login state.
-
-Use the [field allowlist and write limits](./docs/ordinary-task-profile.md).
-Unknown writes require readback of the original run; do not replay the update.
-Ordinary form submission alone does not save Profile fields.
-
 ### GenAuth User Context and Management
 
 ```ts
@@ -923,7 +801,7 @@ const created = await client.genauth.users.create({
 
 `currentUser` and `genauth.userInfo` use a GenAuth access token because they read the logged-in user's identity. `genauth.users.*` is a management-plane capability, but application code still authenticates the SDK with Qoni AK/SK: the SDK signs `POST /api/v3/eak/genauth/admin-token` with an empty JSON body `{}`, receives a standard GenAuth management token plus `userPoolId`, then calls GenAuth v3 user management APIs with `Authorization: Bearer ...` and `x-authing-userpool-id`. It does not send `resource`, `actions`, `expiresIn`, or `QONI_USER_ID`. Runtime capability calls such as GUMem/WebAgent use `delegateToken` output instead.
 
-### GenAuth User Sign-Up and Sign-In (Unreleased)
+### GenAuth User Sign-Up and Sign-In
 
 Send users to the Qoni-hosted GenAuth sign-up/sign-in page and exchange the callback code on your server. The AccessKey must be bound to a registered business app in Qoni Console; the business app, its client secret, PKCE verifier and nonce stay on the server and never appear in the URL.
 
@@ -993,10 +871,10 @@ const qoni = new Qoni({
 
 | Namespace | Methods |
 | --- | --- |
-| Delegation | `delegateToken`, `completeDelegateToken`, deprecated aliases `delegateAgent`, `completeDelegateAgent` |
-| GenAuth | `userInfo`, `jwks`, `discovery`, `introspectDelegationToken`, `auth.createLoginUrl`, `auth.exchangeLoginCode`, `agents.create/get/bind` (Unreleased), `agents.activate` (0.10.0), `users.list`, `users.get`, `users.getBatch`, `users.create`, `users.createBatch`, `users.update`, `users.deleteBatch` |
-| GUMem | `createSession`, `addMessages`, `recall`, `recallContext`, `uploadResource`, `actions.record`, `actions.recall`, `actions.stream` |
-| Do Anything | `run`, `attach` → `RunHandle`; opt-in `runWithMemory`; `profile.read/update` (Unreleased); `sessions.list/get/credits`, `browsers.list/control`, `files.list/read/watch/upload/move/mkdir/delete/listAll` (0.10.0) |
+| Delegation | `delegateToken`, `completeDelegateToken`, `webAgentGrant` (0.10.1), deprecated aliases `delegateAgent`, `completeDelegateAgent` |
+| GenAuth | `userInfo`, `jwks`, `discovery`, `introspectDelegationToken`, `auth.createLoginUrl`, `auth.exchangeLoginCode`, `users.list`, `users.get`, `users.getBatch`, `users.create`, `users.createBatch`, `users.update`, `users.deleteBatch` |
+| GUMem | `createSession`, `addMessages`, `recall`, `recallContext`, `actions.record`, `actions.recall`, `actions.stream` |
+| Do Anything | `run`, `attach` → `RunHandle`; opt-in `runWithMemory`; `sessions.list/get/credits`, `browsers.list/control`, `files.list/read/watch/upload/move/mkdir/delete/listAll` (0.10.0) |
 | Deep Research | `run`, `attach` → `RunHandle` |
 | Web Search | `run`, `attach` → `RunHandle` |
 | Track | `create`, `attach` → `MonitorHandle`; `list` (0.10.0) |
@@ -1011,7 +889,7 @@ run.id
 run.sessionRef                          // pass back to run({ session }) to reuse the session
 await run.status()                      // refresh and return the current state
 run.events({ onWireEvent?, onReconnect?, ...opts }) // semantic events + optional raw telemetry
-await run.wait({ timeoutMs?, onEvent?, onWireEvent?, onReconnect?, onInteraction?, onScreenshot? })
+await run.wait({ timeoutMs?, onEvent?, onWireEvent?, onReconnect?, onInteraction? })
 run.interactionHandle(interaction)      // typed HITL handle (see Interactions below)
 await run.cancel(reason?)               // idempotent
 ```
@@ -1024,7 +902,7 @@ result. A nonterminal or incomplete detail rejects with a retryable `upstream.fa
 error; use `status()` or re-attach to recover.
 
 `timeoutMs` and `signal` stop waiting for detail/artifact reads and promises returned
-by `onEvent`, `onWireEvent`, `onInteraction`, and `onScreenshot`. They cannot preempt
+by `onEvent`, `onWireEvent` and `onInteraction`. They cannot preempt
 synchronous JavaScript or stop work already started inside a callback. `onReconnect`
 is synchronous telemetry: its return value is not awaited and returned promise
 rejections are not handled. Do not pass an async callback there; synchronous throws
@@ -1070,20 +948,19 @@ has to do, never by business, so one handler covers every task:
 | --- | --- | --- |
 | `site_login` | signs in to a site in the live browser | `openLogin()`, `confirmSignedIn()` |
 | `take_control` | operates the browser by hand (captcha, 2FA, …) | `connectControl()`, `refreshControl()`, `releaseControl()` |
-| `fill_form` (Unreleased) | completes ordinary fields for this task | `submit(values)`, `skip()` |
+| `fill_form` | completes ordinary fields for this task | `submit(values)`, `skip()` |
 | `ask_user` | answers a question shaped by `answerType` / `options` | `answer()`, `skip()` |
 | `confirmation` | allows or rejects an action | `confirm()`, `reject()` |
 | `wait` | nothing — the system is waiting (rate limit, external event) | `retry()` |
 
-A confirmation records the decision for that card; it does not establish
-forced approval of all final actions through open browser/bash/harness paths.
-Ordinary forms are not a channel for payment secrets or isolated sensitive entry.
+Forms never collect passwords or payment details; the user enters those in the
+live browser.
 
 `Interaction` is a union distributed over `type`, so `switch (request.type)`
 narrows `request.payload` in each branch. Each method posts to the endpoint the
 backend declared in the interaction's `actions[]`, so you never hard-code a route:
 
-Create the token for this handler with `products: ["doAnything"]` plus explicit `scopes: [QoniScopes.BROWSER_USE_TAKE_CONTROL, QoniScopes.SITE_LOGIN_REQUEST, QoniScopes.SITE_LOGIN_CONFIRM]` after AccessKey policy preparation and user consent. The product permissions supply DoAnything manage; omit the site-login scopes when the task does not need login. `products: ["doAnything"]` alone cannot authorize `connectControl()`, `refreshControl()` or `releaseControl()`; follow the migration steps above before switching versions.
+Create the token for this handler with `products: ["doAnything"]` plus explicit `scopes: [QoniScopes.BROWSER_USE_TAKE_CONTROL, QoniScopes.SITE_LOGIN_REQUEST, QoniScopes.SITE_LOGIN_CONFIRM]`. The product permissions supply DoAnything manage; omit the site-login scopes when the task does not need login. `products: ["doAnything"]` alone cannot authorize `connectControl()`, `refreshControl()` or `releaseControl()`.
 
 The task must have been created with `taskScopes: [QoniScopes.BROWSER_USE_TAKE_CONTROL]` to initiate human control; delegation scope alone is insufficient. An existing task's original authority cannot be expanded by refreshing a control URL.
 
@@ -1126,12 +1003,10 @@ const result = await run.wait({ onInteraction: handleInteraction });
 ```
 
 Follow each card's declared actions and current state. A pending input question
-may coexist with a control round. Releasing a control round — SDK/OBO pending or
-Console active — never answers a login/credential ask; in current_task both are
-`site_login` cards that end only through `confirmSignedIn()` after reliable save,
-a declared explicit `skip()`, or expiry. Only legacy `secure_input` asks receive
-a recheck reply on Console active release, which proves neither sign-in nor
-persistence. Clarification and confirmation are never answered automatically.
+may coexist with a control round. A sign-in ask ends only when `confirmSignedIn()`
+has saved the login, the user calls the card's declared `skip()`, or it expires;
+handing the browser back does not answer it. Questions and confirmations are
+never answered automatically.
 The same interaction calls back again on every status change and on
 reconnect replays, always with the same `id` and `type` — key your UI cards by
 `request.id`. An update with content of its own replaces the card (a take-over
@@ -1140,14 +1015,13 @@ interaction with an empty shell, the card keeps its original `payload`. A
 `take_control` that arrives already `active` was started by the user, for
 example from Console; show it if your UI offers control there. Methods: `answer(value)`, `skip()`, `confirm()`,
 `reject()`, `openLogin({ siteId?, profileId? })`, `confirmSignedIn()`,
-`connectControl()`, `refreshControl()`, `releaseControl()`, `retry()`,
-`switchProfile()`. `connectControl()` and `refreshControl()` resolve to
+`connectControl()`, `refreshControl()`, `releaseControl()` and `retry()`. `connectControl()` and `refreshControl()` resolve to
 `{ liveUrl, expiresAt?, status?, raw }`, where `liveUrl` is the browser-control URL
 to show the user. `handle.can(kind)` reports whether the interaction currently
 offers that action; calling a method the backend did NOT declare throws (so a
 "recovery" button only exists when it actually works).
 
-### Ordinary forms (Unreleased)
+### Ordinary forms
 
 `fill_form` collects ordinary details for the current task. Render `payload.fields` using the exported `FormField` type, then call `handle.submit(values)` when the card declares `submit`. Keys are the exact `field.name`; select answers use option `value`, numbers stay numbers, and an address is `{ line1, line2?, city?, region?, postalCode?, country? }`. Required text/address values must be nonempty; optional text may be empty and `0` is valid. Unknown fields, wrong types/options, NUL and nonfinite numbers are rejected before transport and again by the backend on the current durable card.
 
@@ -1161,7 +1035,7 @@ if (handle.interaction.type === "fill_form" && handle.can("submit")) {
 }
 ```
 
-This is task-only collection. Sensitive fields, payment cards and `profileField` writes are unavailable here; passwords use browser sign-in/take-control. It needs the matching W4 backend. Final W6 synthesis and provider acceptance are separate.
+Forms collect details for the current task only. Passwords and payment details are never collected here; the user enters them in the live browser.
 
 **`ask_user` answers are structured.** `answer()` takes the value matching
 `payload.answerType` — `text` → string, `number` → number, `boolean` → boolean,
@@ -1172,37 +1046,10 @@ fit. The wire still calls this type `clarification`; the SDK presents it as
 
 **Sign-in takes two SDK calls.** Pass a `siteId` from `payload.sites[].siteId` to
 `openLogin()`, or omit it when one site is listed; show its `liveUrl` only to the
-current user. After the user signs in, call `confirmSignedIn()`.
-
-For the **unreleased `current_task` policy**, the backend declares open/confirm
-endpoints on the same DoAnything run and original login question L. Opening uses
-the existing task browser, without navigating or opening a separate browser;
-`login.sessionId` is the fixed control round C, also returned in
-`raw.control_interaction_id`, while `raw.browser_session_id` identifies the browser.
-Opening requests SITE_LOGIN_REQUEST + BROWSER_USE_TAKE_CONTROL; confirmation
-requests SITE_LOGIN_CONFIRM + BROWSER_USE_TAKE_CONTROL + DO_ANYTHING_MANAGE.
-Allow these policies on the AccessKey and obtain explicit user consent before
-the coordinated migration above; `manage` cannot replace login/control permission.
-
-One confirm HTTP `{login_session_id:C}` on the original declared endpoint saves
-reliably, releases C and replies to L. The SDK sends neither Profile confirm nor
-a second recheck. The deprecated `login.confirm()` shares this same request and
-returns `state: "saved", active: false, probeResult: "agent_pending"` with the
-unmodified response in `raw`. Saved does not mean verified: the agent must check
-the page before continuing. Unknown/missing mode or mismatched L/C fails closed;
-confirmation without a successful open fails locally. A 409 (including
-`no_pending_login`) remains an error, with no ID replacement or automatic reopen.
-503 save errors, timeout/lost responses and `site_login.invalid_response` leave
-the original L/C available for an explicit retry; a lost success is acknowledged
-only by the backend's exact saved history.
-
-The legacy `/profiles/login` policy retains its single request/confirm scopes,
-Profile save followed by the agent recheck, and existing `active/probeResult`
-semantics, including the legacy `no_pending_login` recheck behavior. Shared slots,
-concurrent calls and replacement guards apply to both policies: an old result
-cannot confirm a newer round. Handles from the same RunHandle/MonitorHandle share
-the session; a RunHandle from another `attach()` does not. Use
-`openLogin()` → `confirmSignedIn()`; calling `login.confirm()` first is unnecessary.
+current user. After the user signs in, call `confirmSignedIn()`: the login is
+saved for this user's later tasks, and the agent checks the page before it
+continues. A 409 (for example `no_pending_login`) means the card is no longer
+current; show the newer interaction instead of retrying.
 
 The discriminant strings are also exported as constants so you can avoid bare
 literals: `InteractionTypes` (`SiteLogin` / `TakeControl` / `AskUser` /
@@ -1263,7 +1110,6 @@ that type:
 //     "message"        { id, role, text, delta, done, final, stopReason? } — a streamed reply's pieces share id
 //     "browsers"       AgentBrowser[] — every browser open now (0.10.0)
 //     "interaction"    the typed Interaction object (HITL) — see Interactions
-//     "screenshot"     { pageUrl?, step? }   + the decoded image on event.image
 //     "browserLiveUrlChanged" { liveUrl, supportsLivePump, forceViewerReload, providerSessionId? }
 //     "done"           { output, succeeded, terminalReason }
 // Common to every event: runId, at (ISO 8601), isTerminal (true only for "done"),
@@ -1274,10 +1120,10 @@ Each product handle is typed to its own subset:
 
 | Product | `event.type` set |
 |---|---|
-| Do Anything | core: `progress` / `message` / `interaction` / `screenshot` / `browserLiveUrlChanged` / `browsers` / `done` |
+| Do Anything | core: `progress` / `message` / `interaction` / `browserLiveUrlChanged` / `browsers` / `done` |
 | Web Search | core + `resultsReady` |
 | Deep Research | core + `phase` / `sectionReady` (the outline gate arrives as an `interaction`) |
-| Track (`MonitorHandle`) | No SSE endpoint; historical MonitorEvent types are deprecated. Read checks with runs()/run(). |
+| Track (`MonitorHandle`) | `events()` streams each check's run from the track's own session (core set); `runs()` / `run()` read past checks |
 
 For a live browser preview, listen for `browserLiveUrlChanged` and show
 `event.data.liveUrl` in your viewer. A run can switch browser tabs after its
@@ -1318,7 +1164,7 @@ All error classes are exported and can be matched with `instanceof`:
 | `QoniDelegationRequiredError` | A product call was made without `token`, or with a raw token the gateway won't accept directly. | Pass `delegation.data.token` to the product call. |
 | `QoniRateLimitError` | Rate limited (429). | Back off for a safe read; reconcile any uncertain write before an explicit retry. |
 | `QoniTimeoutError` | A request (or `wait({ timeoutMs })`) timed out. | For an existing run, `attach()`/read status. A timed-out creation may have committed; do not submit a replacement automatically. |
-| `QoniTaskSubmissionUnknownError` (corrected candidate) | `runWithMemory` dispatched a Task POST without a definitive outcome. | `task.submit_unknown`, `submissionUnknown: true`, `retryable: false`; reconcile the original request, never automatically resubmit. |
+| `QoniTaskSubmissionUnknownError` | `runWithMemory` dispatched a Task POST without a definitive outcome. | `task.submit_unknown`, `submissionUnknown: true`, `retryable: false`; reconcile the original request, never automatically resubmit. |
 | `QoniUpstreamError` | A downstream service failed (5xx / upstream exchange failure). | Reconcile writes first; `retryable` does not prove that a side effect was rolled back. |
 | `QoniError` | Base class / any other code. | Inspect `err.code`. |
 
@@ -1331,10 +1177,9 @@ receipt, 404 or elapsed time does not prove the first write had no effect.
 When the user narrows or revokes consent in the supported user permission UI,
 stop scheduling calls that need the removed scopes and respect backend denial.
 Do not silently recreate a wider grant, switch user/App or refresh into extra
-permissions. This candidate exposes no `genauth.consents.revoke()` SDK method.
+permissions. The SDK exposes no `genauth.consents.revoke()` method.
 Stopping a local wait does not itself stop a server Task or prove an external
-operation has stopped. [Failure handling examples](./docs/delivery-examples/README.md)
-keep these outcomes separate.
+operation has stopped.
 
 ```ts
 import {
@@ -1396,13 +1241,9 @@ Common first-run errors:
 - Store `auditId`, `requestId`, and `traceId` with product logs when later investigation matters.
 - Rotate AK/SK through Qoni Console if a credential might have been exposed.
 
-## License
-
-MIT
-
 ## Do Anything file artifacts
 
-After `wait()`, `result.artifacts` contains this run's persisted files, including when using `attach()` after reconnecting. Screenshots and recordings remain on their dedicated APIs. Temporary S3 URLs expire 900 seconds after signing; do not put them in public logs. Refreshing a link requires a valid delegation token with `webagent.do_anything:read`. Stored files remain subject to project retention.
+After `wait()`, `result.artifacts` contains this run's persisted files, including when using `attach()` after reconnecting. Recordings remain on their dedicated API. Temporary S3 URLs expire 900 seconds after signing; do not put them in public logs. Refreshing a link requires a valid delegation token with `webagent.do_anything:read`. Stored files remain subject to project retention.
 
 ```ts
 const result = await run.wait();
@@ -1416,112 +1257,6 @@ const artifacts = await client.doAnything.artifacts({ token, runId: run.id });
 
 Wire methods: `client.doAnything.api.listArtifacts(...)` and `artifactDownloadUrl(...)`.
 
-## Agent Mail and Agent Phone
+## License
 
-The local GenAuth communication extension provides `qoni.genauth.agentMail` and `qoni.genauth.agentPhone`, including runtime and administrator APIs. Runtime requires native GenAuth credentials via `genauthCommunicationCredentials`; administration reuses Qoni token exchange. See [the communication guide](docs/genauth-communication.md) and [method index](docs/genauth-communication-api.md).
-
-## Local Agent integration extension
-
-The integration branch adds `qoni.genauth.auth.createLoginUrl` / `exchangeLoginCode` and
-`qoni.genauth.agents.create` / `get` / `bind` / `bindUser`, alongside the existing
-management, Agent Mail and Agent Phone APIs. These additions are not an npm release.
-The hosted-login callback must validate the App's stored `state` before exchanging
-the one-use code. Personal mailbox delegation requires a formal IAM `agentId`; an
-audit label does not prove mailbox ownership. A Personal creation response may still
-be pending; an unknown result must be reconciled using its original provisioning
-reference or idempotency key, without starting another creation.
-
-The Personal Quickstart email creation flow is separate from the unified Agent
-management model, where identity, email and phone are optional capabilities and an
-Agent may have multiple email addresses and phone numbers. Personal binding does
-not issue credentials or enable IAM-token access to the native Mail/Phone APIs.
-
-Structured Pi questions and ordinary forms in this unreleased phase use the main agent entry; subagents explicitly reject parameters they cannot forward.
-
-Configuring a longer run duration does not establish uninterrupted one-hour
-waiting across credentials, browser and provider lifetimes. Confirmation cards
-and ordinary forms also do not enforce approval or secret isolation across
-open browser/bash/harness channels. Those full-business guarantees remain unavailable.
-
-### Personal Agent provisioning and optional mailbox (Unreleased)
-
-This candidate interface is available for local integration. Backend business validation is still incomplete; this example does not establish
-external mailbox-provider support.
-
-`genauth.agents.create/get/bind` use the existing signed transport. Persist the first `idempotencyKey` and complete request before creation; reuse both for retries. A `ready: false` receipt describes accepted or recoverable work, not completed creation. Never replace an uncertain request with a new key. With a requested mailbox, `ready: true` requires the original Mail operation to succeed, its resource to be active, and IAM to confirm readiness.
-
-```ts
-const request = { displayName: "My assistant", mailboxLocalPart: "my-assistant", idempotencyKey: savedRequestKey };
-let result = await qoni.genauth.agents.create(request);
-// Persist provisioningId, then resume this same operation later.
-result = await qoni.genauth.agents.get({ provisioningId: result.provisioningId });
-if (result.state === "ready" && result.ready) {
-  result = await qoni.genauth.agents.bind({ provisioningId: result.provisioningId, accessToken: currentUserAccessToken });
-}
-```
-
-Before its person can grant it anything on the consent page, an agent's capabilities must be approved and synced (0.10.0):
-
-```ts
-await qoni.genauth.agents.activate({
-  agentId,                      // from agents.create
-  userId: person.genauthUserId, // the person it works for
-  audience: app.appIdentifier,  // the App it acts through
-  dataPolicyIds,                // the data policies it may use for them
-});
-```
-
-It authorizes the policies to the person, drafts, submits and approves the agent's capability grant, gives it its local credentials and syncs its permissions, then waits until GenAuth reports them synced. Every write carries an idempotency key from the agent and step, so calling it again is safe, and an agent already active returns at once.
-
-Binding requires the current person's valid GenAuth user token and matching pool/App authority; a browser-provided owner ID is not accepted. Never-bound Agents are reclaimed seven days after IAM readiness; binding clears that deadline. Definitive failures are compensated promptly; uncertain provider results retain their original operation for reconciliation. Inspect `state/errorCode`; the SDK does not automatically replay uncertain writes. Keep tokens and management credentials on a trusted application server and out of logs. This feature is off by default and requires provisioning, the existing Mail worker, and IAM service authentication.
-
-### Recover a Do Anything acceptance receipt
-
-This additive W11 interface requires a Web Agent deployment with the matching
-request acceptance API. Keep one stable `requestId` and the original payload for
-each submission. The SDK does not retry writes automatically.
-
-```ts
-const requestId = "checkout-task-20261009-001";
-const run = await qoni.doAnything.run({ token, prompt, requestId });
-// If the create response was lost, read the original key. Do not create another
-// task and guess which one is the original.
-const receipt = await qoni.doAnything.api.getRequest<{ id: string }>({ token, requestId });
-const trace = await qoni.doAnything.api.getTrace({ token, runId: receipt.data.id });
-```
-
-`getRequest` returns the usual run envelope (use a response generic when reading
-its fields in TypeScript). Include the original `sessionId` for a follow-up.
-Keys are isolated by the authenticated project, user, App/credential, Agent and
-initial/follow-up session. A different canonical payload for the same key returns
-`409 request_payload_conflict`. `409 request_in_progress` and a missing receipt
-are not proof that submission failed: read the original key first. If the
-original request never reached the server, that lookup can keep returning 404.
-You may explicitly resubmit task acceptance with the **same requestId and
-identical payload**, including the original sessionId for a follow-up, under
-the same authenticated identity namespace. An accepted request returns its
-original Task; no new key should be generated to guess the outcome. The SDK
-does not automatically retry POST requests. This does not authorize repeating
-an external action whose result is unknown. Canceling or expiring a run does
-not free its key.
-
-Calling `runWithMemory` again recalls memory again and may change the actual `instructions`, so after an unknown outcome prefer `api.getRequest`/`api.getTrace` readback using the original request key and returned run ID, and never treat newly recalled content as the original payload to resubmit.
-
-Runs with acceptance keys retain their Task/Event receipts. Hard-deleting their
-session returns `409 request_receipt_retained`; cancellation remains available.
-Supporting erasure while retaining deduplication needs a separate retention
-model. Operational database erasure is outside this receipt guarantee.
-
-Trace contains only original identity references and safe states. Missing grant,
-consent or operation evidence stays missing. A completed run is distinct from an
-external operation result: `external_result: "unknown"` requires checking the
-original website/service. Acceptance deduplication does not guarantee that a
-website order or email never repeats, and trace is never an approval credential.
-
-### Protected form input (local candidate)
-
-A trusted application UI can use `run.interactionHandle(card).submitSensitive(values)` for a current `fill_form` whose protected text field is named `qoni_sensitive_<customData key>`. Use the original Web Agent product access token that created the Task; a delegation token or a fresh token exchange cannot replace that source. The SDK sends each protected value directly to the configured GenAuth endpoint and sends only its opaque reference in the original Web Agent reply. Ordinary `submit()` rejects these fields. Do not call this API from a model or an open browser tool.
-
-For explicit recovery, use `qoni.doAnything.forms.prepare({ token, runId, interactionId, fieldName })`, then `intake({ token, ref, value })`, `status({ token, ref })`, or `cancel({ token, ref })`. Prepare preserves the original reference and deadline; it does not authorize another intake. Persistence additionally requires the server allowlisted non-security-code definition `cardNumber`, explicit `persist: true` (or `persistFields` on `submitSensitive`), current UDF write permission and existing AES encryption. Every other or ambiguous custom key is transient-only; caller labels/types cannot authorize storage. CVC/CVV is always transient, cannot be persisted, and has no digest. Missing or unsupported UDF configuration fails closed.
-
-`intake`, cancellation and reference-reply uncertainty use `submissionUnknown: true` and `retryable: false`; no POST is automatically retried and no raw response body is retained in these errors. Read the original reference/Task after a missing response. Explicit cancel removes the temporary value only when acknowledged. GA revocation denies access; next authenticated access attempts cleanup, while the fixed Redis TTL independently reclaims the value. This is not a claim of instantaneous erase at revocation or deployed backup isolation. The original card deadline (`card_deadline`) remains unchanged, including the default hour. GenAuth records `value_deadline` once as the earliest of that deadline, the original run/source deadline and issue time plus five minutes; `expires_at` is its compatibility alias. All three fields use epoch milliseconds. The value expires independently while the card may still be waiting. Only an unexpired `awaiting` reference accepts one intake; `writing`, `unknown`, `consumed` and `expired` cannot be resubmitted or replaced on the same card. Prepare/status never slide the deadline or create a replacement reference. A read of `ready` resolves the original intake only after its SQL commit was confirmed and its Redis ready transition completed; it does not authorize another POST. Production sensitive release remains disabled until the target platform's isolation is demonstrated; this candidate does not claim automatic fill, payment or external delivery.
+MIT
