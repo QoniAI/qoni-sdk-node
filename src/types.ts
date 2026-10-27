@@ -196,6 +196,32 @@ export type DelegateAgentResponse =
 
 export type DelegateTokenResult = DelegateAgentResponse;
 
+export interface WebAgentGrantInput {
+  /** The person to act for: a user id in the user pool bound to this AccessKey's workspace. */
+  userId: string;
+  /** WebAgent scopes the token carries, e.g. site login or browser takeover. May be combined with `products`. */
+  scopes?: readonly string[];
+  /** Product sugar, as in `delegateToken`; each product expands to its read and manage scopes. */
+  products?: readonly QoniProductName[];
+  /** Audit label recorded with the delegation. Defaults to "sdk". */
+  agent?: string;
+  signal?: AbortSignal;
+}
+
+/** One person's WebAgent token, issued by `webAgentGrant` for an app that holds no AccessKey. */
+export interface WebAgentGrant {
+  /** Pass as `token` to doAnything, webSearch, deepResearch, track, proactive, notifications and workspace calls. */
+  token: string;
+  /** Epoch milliseconds after which WebAgent rejects the token; issue a new grant before then. */
+  expiresAt: number;
+  /** Where the token is accepted: give it to `new Qoni({ webAgentHost })` in the app. */
+  webAgentHost: string;
+  /** The person the token acts for. */
+  userId: string;
+  /** Scopes the token carries. */
+  scopes: string[];
+}
+
 export interface TokenInput {
   /** Delegation/runtime token to authorize the call with. */
   token?: string;

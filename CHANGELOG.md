@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.10.1 - 2026-10-27
+
+### Apps that hold no AccessKey
+
+- `webAgentGrant({ userId, products?, scopes?, agent? })`: on the server that keeps the AccessKey, silently delegate for one user of the workspace's user pool and exchange it for that person's WebAgent token. Returns `{ token, expiresAt, webAgentHost, userId, scopes }`; the token is accepted for about 14 days. Only `webagent.*` scopes can be granted, and at least one must be asked for. This replaces calling the private `productTokenFor` / `baseUrlFor`.
+- `new Qoni({ webAgentHost })` without `accessKey` / `secretKey`: a client for an app that runs WebAgent with tokens from `webAgentGrant`. It never signs. Delegation, token exchange, GenAuth management, GUMem and signed raw requests fail locally with `QoniValidationError` naming the AccessKey, before a request is sent. Passing only one of the two keys still throws at construction.
+
 ## 0.10.0 - 2026-10-23
 
 ### What a personal agent shows its person

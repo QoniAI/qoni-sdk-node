@@ -179,6 +179,8 @@ export type {
   RawRequestInput,
   RuntimeTokenInput,
   TokenInput,
+  WebAgentGrant,
+  WebAgentGrantInput,
 } from "./types";
 
 export type { GenAuthManagementRequestOptions } from "./genauth-management";

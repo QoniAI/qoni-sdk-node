@@ -38,6 +38,8 @@ import {
   type JsonObject,
   type RawRequestInput,
   type RequestPayload,
+  type WebAgentGrant,
+  type WebAgentGrantInput,
 } from "./types";
 import type { GenAuthAccessTokenInput } from "./genauth";
 import type { GenAuthAdminToken } from "./genauth-management";
@@ -75,8 +77,13 @@ export class Qoni {
     const accessKey = options.accessKey ?? options.accessKeyId;
     const secretKey = options.secretKey ?? options.accessKeySecret;
     const host = options.host ?? options.qoniBaseUrl ?? options.genauthBaseUrl ?? DEFAULT_QONI_HOST;
-    if (!accessKey || !secretKey) {
-      throw new Error("Qoni requires accessKey and secretKey");
+    // Without an AccessKey the client can only call WebAgent with tokens from
+    // webAgentGrant, so it must be told where WebAgent is.
+    const webAgentOnly = !accessKey && !secretKey && Boolean(options.webAgentHost ?? options.webAgentBaseUrl);
+    if (!webAgentOnly && (!accessKey || !secretKey)) {
+      throw new Error(
+        "Qoni requires accessKey and secretKey; an app that only holds WebAgent tokens from webAgentGrant passes webAgentHost instead",
+      );
     }
     this.accessKey = accessKey ?? "";
     this.secretKey = secretKey ?? "";
@@ -157,6 +164,51 @@ export class Qoni {
     return this.completeDelegateToken(input);
   }
 
+  /**
+   * Issue one person's WebAgent token where the AccessKey is kept, for an app that runs
+   * WebAgent for that person without holding the AccessKey. The person must be a user in
+   * the pool bound to this workspace; delegation is silent, so no consent page is shown.
+   */
+  async webAgentGrant(input: WebAgentGrantInput): Promise<WebAgentGrant> {
+    const userId = typeof input?.userId === "string" ? input.userId.trim() : "";
+    if (!userId) throw new QoniValidationError("webAgentGrant: userId is required");
+    if (!input.scopes?.length && !input.products?.length) {
+      throw new QoniValidationError(
+        'webAgentGrant: pass scopes and/or products, e.g. products: ["doAnything"]',
+      );
+    }
+    const scopes = resolveDelegationScopes(input.scopes, input.products);
+    const foreign = scopes.filter((scope) => !scope.startsWith("webagent."));
+    if (foreign.length) {
+      throw new QoniValidationError(
+        `webAgentGrant: only WebAgent scopes can be granted; remove ${foreign.join(", ")}`,
+      );
+    }
+    const delegation = await this.delegateToken({
+      mode: "silent",
+      userId,
+      scopes,
+      ...(input.agent ? { agent: input.agent } : {}),
+    });
+    const delegationToken = delegation.data.token;
+    if (!delegationToken) {
+      throw errorFromPayload(502, delegation.data, "Qoni delegation response did not include a token");
+    }
+    const token = await this.productTokenFor("webagent", delegationToken, [...scopes].sort(), input.signal);
+    const claims = safeDecodeJwtPayload(token);
+    if (typeof claims?.exp !== "number") {
+      throw errorFromPayload(502, undefined, "Qoni WebAgent token has no expiry");
+    }
+    const granted = typeof claims.scope === "string" ? claims.scope.split(" ").filter(Boolean) : scopes;
+    return {
+      token,
+      expiresAt: claims.exp * 1000,
+      webAgentHost: await this.baseUrlFor("webagent"),
+      userId: typeof claims.sub === "string" ? claims.sub : userId,
+      scopes: granted,
+    };
+  }
+
   currentUser<T = unknown>(input: GenAuthAccessTokenInput): Promise<QoniResponse<T>> {
     return this.genauth.userInfo<T>(input);
   }
@@ -187,6 +239,11 @@ export class Qoni {
 
   unstableRequest<T = unknown>(input: RawRequestInput): Promise<QoniResponse<T>> {
     if (!input.token) {
+      try {
+        this.requireAccessKey("A signed request");
+      } catch (error) {
+        return Promise.reject(error);
+      }
       const pathname = normalizePath(input.path);
       const signaturePayload =
         input.method === "GET" ? (input.query || {}) : (input.body || {});
@@ -367,7 +424,17 @@ export class Qoni {
     }
   }
 
+  /** Calls signed with the AccessKey cannot run on a client built with only webAgentHost. */
+  private requireAccessKey(action: string): void {
+    if (this.accessKey) return;
+    throw new QoniValidationError(
+      `${action} needs the AccessKey. This client was created with only webAgentHost: ` +
+        "call it on the server that keeps the AccessKey, and pass this app tokens from webAgentGrant()",
+    );
+  }
+
   private async signedPost<T>(pathname: string, body: object, signal?: AbortSignal): Promise<QoniResponse<T>> {
+    this.requireAccessKey(`POST ${pathname}`);
     const payload = toRecord(body);
     const baseUrl = await this.baseUrlFor("qoni");
     return retryReusedSignature(() => this.jsonRequest<T>(baseUrl, pathname, {
@@ -650,6 +717,7 @@ export class Qoni {
   }
 
   private async fetchRuntimeConfigOnce(): Promise<ResolvedRuntimeConfig> {
+    this.requireAccessKey("Finding the GenAuth and GUMem endpoints");
     const pathname = "/api/v3/eak/runtime-config";
     const headers = buildSignedHeaders(
       {
@@ -698,6 +766,7 @@ export class Qoni {
     signal?.throwIfAborted();
     const runtimeToken = requiredRuntimeToken(token);
     if (!isQoniDelegationToken(runtimeToken)) return runtimeToken;
+    this.requireAccessKey("Exchanging a delegation token");
 
     // Every SDK operation must re-enter GenAuth's policy check. A cached
     // product token can outlive a change to the access key's allowed scopes.
@@ -723,6 +792,7 @@ export class Qoni {
   }
 
   private async genauthAdminTokenFor(rejectedAccessToken?: string): Promise<GenAuthAdminToken> {
+    this.requireAccessKey("GenAuth management");
     if (rejectedAccessToken && this.genAuthAdminTokenCache?.accessToken === rejectedAccessToken) {
       this.genAuthAdminTokenCache = undefined;
     }

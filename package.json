@@ -1,6 +1,6 @@
 {
   "name": "@qoniai/qoni",
-  "version": "0.10.0",
+  "version": "0.10.1",
   "description": "Unified Node.js SDK for Qoni Agent delegation, GenAuth management, GUMem memory, and WebAgent automation.",
   "homepage": "https://github.com/QONIAI/qoni-sdk-node#readme",
   "bugs": {
@@ -49,7 +49,7 @@
     "gen:event-types": "node scripts/gen-event-types.mjs",
     "typecheck": "tsc --noEmit",
     "test": "pnpm build && pnpm check:brand && pnpm test:mock && pnpm test:package && pnpm test:task",
-    "test:mock": "vitest run --coverage=false tests/qoni.test.ts tests/semantic-surface.test.ts tests/open-source-readiness.test.ts tests/complete-coverage.test.ts tests/event-catalog.test.ts tests/interactions.test.ts tests/contract-surface.test.ts tests/sse-abort.test.ts tests/do-anything-evidence.test.ts tests/query-matrix.test.ts tests/live-evidence.test.ts tests/site-login-settle-track.test.ts tests/abstract-interactions.test.ts tests/genauth-management.test.ts tests/genauth-communication.test.ts tests/genauth-hosted-login.test.ts tests/personal-agent-page.test.ts tests/agent-provisioning.test.ts tests/formal-agent-silent.test.ts tests/formal-agent-wildcard.test.ts tests/delegation-normalizer-r3.test.ts tests/gray-track-contract.test.ts tests/current-task-login.test.ts tests/memory-context.test.ts tests/memory-submit-outcome.test.ts tests/task-scopes.test.ts tests/personal-agent-surface.test.ts",
+    "test:mock": "vitest run --coverage=false tests/qoni.test.ts tests/semantic-surface.test.ts tests/open-source-readiness.test.ts tests/complete-coverage.test.ts tests/event-catalog.test.ts tests/interactions.test.ts tests/contract-surface.test.ts tests/sse-abort.test.ts tests/do-anything-evidence.test.ts tests/query-matrix.test.ts tests/live-evidence.test.ts tests/site-login-settle-track.test.ts tests/abstract-interactions.test.ts tests/genauth-management.test.ts tests/genauth-communication.test.ts tests/genauth-hosted-login.test.ts tests/personal-agent-page.test.ts tests/agent-provisioning.test.ts tests/formal-agent-silent.test.ts tests/formal-agent-wildcard.test.ts tests/delegation-normalizer-r3.test.ts tests/gray-track-contract.test.ts tests/current-task-login.test.ts tests/memory-context.test.ts tests/memory-submit-outcome.test.ts tests/task-scopes.test.ts tests/personal-agent-surface.test.ts tests/web-agent-grant.test.ts",
     "test:e2e": "QONI_LIVE_E2E=1 vitest run --coverage=false --fileParallelism=false --maxWorkers=1 --testTimeout=120000 tests/live-e2e/*.test.ts",
     "test:e2e:do-anything": "QONI_LIVE_E2E=1 vitest run --coverage=false --fileParallelism=false --maxWorkers=1 --testTimeout=120000 tests/live-e2e/do-anything.test.ts",
     "test:e2e:do-anything:release": "QONI_LIVE_E2E=1 QONI_LIVE_ALLOW_ENV_CONSTRAINTS=0 vitest run --coverage=false --fileParallelism=false --maxWorkers=1 --testTimeout=120000 tests/live-e2e/do-anything.test.ts",

@@ -348,6 +348,33 @@ await qoni.gumem.recall({
 
 `completeDelegateToken` is the recommended server callback helper. Root `qoni.delegateAgent` and `qoni.completeDelegateAgent` remain as deprecated compatibility names, but the current callback contract is `{ grantId, code, state }`; old `{ code, state }` completion is not supported.
 
+### Apps that hold no AccessKey (0.10.1)
+
+A platform that serves many apps keeps the AccessKey on its own server and gives each app only a token for the person using it. The app runs WebAgent with that token and never sees the AccessKey.
+
+On the server that keeps the AccessKey, after it has confirmed who the person is with its own sign-in:
+
+```ts
+const grant = await qoni.webAgentGrant({
+  userId, // a user in the user pool bound to this workspace
+  products: ["doAnything"],
+  scopes: ["webagent.site_login:request", "webagent.site_login:confirm", "webagent.browser_use:take_control"],
+});
+// grant: { token, expiresAt, webAgentHost, userId, scopes } — send it to the app
+```
+
+Delegation is silent: no consent page is shown, and the person must already be a user in the workspace's user pool. The token acts for that one person, carries only the WebAgent scopes asked for (the AccessKey's policy must allow them), and is accepted until `expiresAt` (about 14 days). Issue a new grant before then. Every run the token starts is billed to the workspace.
+
+In the app, build the client with `webAgentHost` instead of the AccessKey:
+
+```ts
+const app = new Qoni({ webAgentHost: grant.webAgentHost });
+const run = await app.doAnything.run({ token: grant.token, prompt: "Find me a flight to Tokyo next Friday" });
+await app.workspace.credits({ token: grant.token });
+```
+
+Such a client runs `doAnything`, `webSearch`, `deepResearch`, `track`, `proactive`, `notifications` and `workspace` calls with the granted token. Anything that needs the AccessKey — delegation, token exchange, GenAuth management, GUMem — fails locally with `QoniValidationError` before a request is sent. A browser login or takeover a run asks for is completed by the person in the live view, as with any other token.
+
 ## Original delegation style (0.8.0+)
 
 ```ts
@@ -945,8 +972,9 @@ const qoni = new Qoni({
 
 | Option | Type | Required | Description |
 | --- | --- | --- | --- |
-| `accessKey` | `string` | Yes | Qoni access key from Qoni Console. |
-| `secretKey` | `string` | Yes | Qoni secret key from Qoni Console. |
+| `accessKey` | `string` | Yes, unless `webAgentHost` | Qoni access key from Qoni Console. |
+| `secretKey` | `string` | Yes, unless `webAgentHost` | Qoni secret key from Qoni Console. |
+| `webAgentHost` | `string` | No | Where WebAgent is. An app that holds no AccessKey passes `grant.webAgentHost` from `webAgentGrant` instead of the keys (0.10.1). |
 | `host` | `string` | No | Optional Qoni Console/SDK gateway override for private or local deployments. |
 | `fetch` | `typeof fetch` | No | Custom transport implementation. |
 | `timeoutMs` | `number` | No | Per-request timeout (connect + headers + body for one-shot requests; headers only for successful SSE connections). Defaults to `30000`. |

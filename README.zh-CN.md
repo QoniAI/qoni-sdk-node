@@ -317,6 +317,33 @@ await qoni.gumem.recall({
 
 `completeDelegateToken` 是推荐的服务端 callback helper。顶层 `qoni.delegateAgent` 和 `qoni.completeDelegateAgent` 仍保留为 deprecated 兼容命名，但当前 callback 契约是 `{ grantId, code, state }`；旧的 `{ code, state }` complete 签名不再兼容。
 
+### 不持 AccessKey 的 App（0.10.1）
+
+一个平台服务很多 App 时，AccessKey 只放在平台自己的服务端，每个 App 只拿到「正在用它的这个人」的令牌。App 用令牌跑 WebAgent，始终接触不到 AccessKey。
+
+在持有 AccessKey 的服务端，先用平台自己的登录态确认是这个人，再：
+
+```ts
+const grant = await qoni.webAgentGrant({
+  userId, // 绑定在这个工作空间的用户池里的用户
+  products: ["doAnything"],
+  scopes: ["webagent.site_login:request", "webagent.site_login:confirm", "webagent.browser_use:take_control"],
+});
+// grant: { token, expiresAt, webAgentHost, userId, scopes }，交给 App
+```
+
+委托是静默的：不弹授权页，这个人必须已经是工作空间用户池里的用户。令牌只代表这一个人，只带申请的 WebAgent 权限（AccessKey 的权限策略要允许），在 `expiresAt` 之前有效（约 14 天），到期前重新发即可。令牌发起的每次任务都计入工作空间的额度。
+
+在 App 里用 `webAgentHost` 建客户端，不填 AccessKey：
+
+```ts
+const app = new Qoni({ webAgentHost: grant.webAgentHost });
+const run = await app.doAnything.run({ token: grant.token, prompt: "帮我找下周五去东京的航班" });
+await app.workspace.credits({ token: grant.token });
+```
+
+这样的客户端可以用这张令牌调用 `doAnything`、`webSearch`、`deepResearch`、`track`、`proactive`、`notifications` 和 `workspace`。需要 AccessKey 的操作（委托、换令牌、GenAuth 管理、GUMem）会在发请求前直接抛 `QoniValidationError`。任务里要登录网站或接管浏览器时，和其他令牌一样，由这个人在实时画面里完成。
+
 ## 原始委托写法（0.8.0 起）
 
 ```ts
@@ -870,8 +897,9 @@ const qoni = new Qoni({
 
 | 参数 | 类型 | 必填 | 说明 |
 | --- | --- | --- | --- |
-| `accessKey` | `string` | 是 | Qoni Console 创建的 access key。 |
-| `secretKey` | `string` | 是 | Qoni Console 创建的 secret key。 |
+| `accessKey` | `string` | 是（传 `webAgentHost` 时不需要） | Qoni Console 创建的 access key。 |
+| `secretKey` | `string` | 是（传 `webAgentHost` 时不需要） | Qoni Console 创建的 secret key。 |
+| `webAgentHost` | `string` | 否 | WebAgent 的地址。不持 AccessKey 的 App 不填 Key，改传 `webAgentGrant` 返回的 `grant.webAgentHost`（0.10.1）。 |
 | `host` | `string` | 否 | 私有化或本地部署时可选的 Qoni Console/SDK 网关覆盖地址。 |
 | `fetch` | `typeof fetch` | 否 | 自定义传输实现。 |
 | `timeoutMs` | `number` | 否 | 单次请求超时（一次性请求覆盖连接、响应头及响应体；成功建立的 SSE 仅覆盖到响应头），默认 `30000`。 |
