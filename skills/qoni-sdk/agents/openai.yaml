@@ -1,4 +1,4 @@
 interface:
   display_name: "Qoni SDK"
-  short_description: "Integrate Qoni SDK delegation and product APIs"
-  default_prompt: "Use $qoni-sdk to build or debug a Node.js @qoniai/qoni integration with Qoni, delegateToken, runtime-config discovery, and GUMem/WebAgent product calls."
+  short_description: "Integrate the Qoni SDK and build personal agent apps on it"
+  default_prompt: "Use $qoni-sdk to build or debug a Node.js @qoniai/qoni integration: a personal agent app (own sign-in, per-person WebAgent tokens, chat runs, sign-in and confirmation cards, live browser, follow-ups, Track, files), delegateToken, runtime-config discovery, and GUMem/WebAgent product calls."

@@ -56,21 +56,22 @@ const { Qoni } = require("@qoniai/qoni");    // CommonJS
 
 ## AI Skill
 
-`@qoniai/qoni` 不应该只给人读文档，也应该让 AI 工具能直接理解 SDK 的能力边界。可以通过 Skill 让 Codex、Claude Code 或内部 Agent 按同一套授权模型调用 Qoni。
+npm 包里自带 `qoni-sdk` Skill，Codex、Claude Code 等编程 Agent 读了它，就会按同一套授权模型、和你装的 SDK 同一个版本的接口来写代码。除了 SDK 本身，它还完整讲了怎么做一个 personal agent 应用：自己的注册登录、每个账号对应一个 Qoni 用户、每个人自己的令牌、对话任务、登录卡片和确认卡片、实时浏览器、稍后再查、定期追踪、文件和部署，以及每一步容易踩的坑。
 
-安装 Qoni Skill：
-
-```bash
-npx skills add https://github.com/QONIAI/qoni-sdk-node --skill qoni-sdk
-```
-
-如果只想安装到 Claude Code，可以指定 Agent：
+从已经安装的包里装：
 
 ```bash
-npx skills add https://github.com/QONIAI/qoni-sdk-node --agent claude-code --skill qoni-sdk
+npm install @qoniai/qoni
+npx skills add ./node_modules/@qoniai/qoni --skill qoni-sdk
 ```
 
-npm 包中包含 `skills/` 目录，但推荐仍使用上面的 GitHub 仓库安装命令，这样 AI 工具可以读取仓库内的 Skill 元数据。
+只装给 Claude Code：
+
+```bash
+npx skills add ./node_modules/@qoniai/qoni --skill qoni-sdk --agent claude-code
+```
+
+升级 `@qoniai/qoni` 之后再跑一次同样的命令，Skill 就跟着更新到新版本。
 
 ## 最短调用链
 

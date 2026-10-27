@@ -63,21 +63,22 @@ const { Qoni } = require("@qoniai/qoni");    // CommonJS
 
 ## AI Skill
 
-Qoni can also be exposed to AI coding tools through a Skill package, so Codex, Claude Code, or internal Agents can follow the same authorization model.
+The npm package ships the `qoni-sdk` Skill, so Codex, Claude Code and other coding agents follow the same authorization model and the same API as the SDK version you installed. Besides the SDK reference it walks through building a personal agent app end to end: your own sign-in, one Qoni user per account, per-person tokens, chat runs, sign-in and confirmation cards, the live browser, follow-ups, Track, files and deployment, with the mistakes that break each step.
 
-Install the Qoni Skill:
-
-```bash
-npx skills add https://github.com/QONIAI/qoni-sdk-node --skill qoni-sdk
-```
-
-If you only want to install it for Claude Code, specify the Agent:
+Install it from the package you already depend on:
 
 ```bash
-npx skills add https://github.com/QONIAI/qoni-sdk-node --agent claude-code --skill qoni-sdk
+npm install @qoniai/qoni
+npx skills add ./node_modules/@qoniai/qoni --skill qoni-sdk
 ```
 
-The npm package includes the `skills/` directory, but the recommended Skill install path is still the GitHub repository command above so agents receive the repository-local skill metadata.
+Only for Claude Code:
+
+```bash
+npx skills add ./node_modules/@qoniai/qoni --skill qoni-sdk --agent claude-code
+```
+
+After upgrading `@qoniai/qoni`, run the same command again so the Skill matches the new version.
 
 ## Quick Start
 

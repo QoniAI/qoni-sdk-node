@@ -1,14 +1,48 @@
 ---
 name: qoni-sdk
-description: Use when building, testing, debugging, or documenting Node.js integrations with @qoniai/qoni, the Qoni constructor, AK/SK credentials, delegateToken, GenAuth hosted sign-up/sign-in (genauth.auth.createLoginUrl/exchangeLoginCode), currentUser/userInfo/introspection/Authing v3 management, Qoni runtime-config discovery, GUMem, WebAgent, Web Search, Do Anything, Deep Research, Track, OBO product token exchange, or local .genauth.localhost SDK flows.
+description: Use when building, testing, debugging, or documenting Node.js integrations with @qoniai/qoni — especially a personal agent app (a Muse-like assistant with its own sign-in, one Qoni pool user per account, webAgentGrant per-person tokens, chat runs, sign-in/confirmation/take-over cards, live browser views, follow-ups, Track, files, deployment) — and for the Qoni constructor, AK/SK credentials, delegateToken, GenAuth hosted sign-up/sign-in (genauth.auth.createLoginUrl/exchangeLoginCode), currentUser/userInfo/introspection/Authing v3 management, Qoni runtime-config discovery, GUMem, WebAgent, Web Search, Do Anything, Deep Research, Track, OBO product token exchange, or local .genauth.localhost SDK flows.
 ---
 
 # Qoni SDK
 
-> This guide documents `@qoniai/qoni` 0.10.1: `run()`/`create()` return handles
-> (`RunHandle` / `MonitorHandle`), events are normalized (`event.type`, camelCase
-> `data`), and 1:1 wire methods live under `qoni.<product>.api.*`. Install
-> `@qoniai/qoni@^0.10.1`; older versions do not match the code below.
+> This guide documents `@qoniai/qoni` 0.10.2 (same API as 0.10.1): `run()`/`create()`
+> return handles (`RunHandle` / `MonitorHandle`), events are normalized
+> (`event.type`, camelCase `data`), and 1:1 wire methods live under
+> `qoni.<product>.api.*`. Install `@qoniai/qoni@^0.10.1`; older versions do not
+> match the code below.
+
+## Building A Personal Agent App
+
+If the task is an app that gives each of its users their own agent (chat,
+cloud browser, sign-in and confirmation cards, follow-ups, Track, files), read
+these two files before writing code; they are a production integration with its
+mistakes turned into rules:
+
+- `references/personal-agent.md` — the whole chain, twenty numbered rules, a
+  deployment checklist and a symptom → cause → fix table.
+- `references/personal-agent-server.ts` — the same integration as compilable
+  code (checked against the SDK on every build); copy its structure.
+
+The rules that break apps most often:
+
+1. The AccessKey lives in one server process; the browser gets only your own
+   session cookie and API.
+2. Sign people in with your own accounts and create one user in the
+   workspace's user pool per account (`genauth.users.create`, no email, no
+   password); grant tokens only for that stored id.
+3. `webAgentGrant` with one constant set of products and scopes for everyone.
+   A grant that asks a person for more scopes than before invalidates all their
+   older tokens: runs then fail in seconds with `terminalReason: "expired"` and
+   "original authority closed". Cache one token per person; renew a day early.
+4. Create runs with `taskScopes` (`SITE_LOGIN_REQUEST`, `SITE_LOGIN_CONFIRM`,
+   `BROWSER_USE_TAKE_CONTROL`) or they cannot ask for sign-ins or hand over the
+   browser. One conversation = one session; retry `409 task_in_progress`
+   instead of opening new sessions.
+5. Upsert messages by id (never render only `final`), dedupe cards by id, hand
+   the sign-in browser back after "signed in"/"skip", and re-`attach` running
+   runs after a restart.
+6. Live view URLs are credentials: owner only, never logged. Use `fit=1` only
+   on full-screen phone views and switch back before the next message.
 
 ## Limits To Respect
 

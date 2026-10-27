@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.10.2 - 2026-10-27
+
+No API changes. The bundled `qoni-sdk` Skill now covers building a personal agent app end to end.
+
+### Skill: personal agent apps
+
+- `skills/qoni-sdk/references/personal-agent.md`: the integration of a production personal agent app, step by step — your own sign-in and one user per account in the workspace's user pool, `webAgentGrant` per person, runs and sessions, streamed messages, sign-in / confirmation / take-over cards, live browser views, restarts, credits, follow-ups, Track, files — as twenty numbered rules, a deployment checklist and a symptom → cause → fix table.
+- It records what breaks such apps: a grant that asks a person for more scopes than before invalidates all their older tokens (runs then fail in seconds with `terminalReason: "expired"` and "original authority closed"); runs created without `taskScopes` cannot ask for sign-ins; the sign-in browser has to be handed back after "signed in" or "skip"; `confirmSignedIn()` needs the handle that opened the sign-in; `fit=1` changes the one browser the agent uses; an empty `browsers` list does not mean the computer is gone; Track event streams replay old checks.
+- `skills/qoni-sdk/references/personal-agent-server.ts`: the same integration as code. `pnpm typecheck` now also compiles it against the SDK source (`tsconfig.skills.json`), so an API change cannot leave the Skill's code behind.
+- `SKILL.md` routes personal agent work to these files and lists the six rules that break apps most often.
+
+### Installing the Skill
+
+- The README now installs the Skill from the package you depend on: `npx skills add ./node_modules/@qoniai/qoni --skill qoni-sdk`. It always matches the installed SDK version.
+
 ## 0.10.1 - 2026-10-27
 
 ### Apps that hold no AccessKey

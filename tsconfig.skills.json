@@ -1,0 +1,10 @@
+{
+  "//": "The Skill's reference code must compile against this SDK's own source, so a changed API breaks the build instead of the Skill.",
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "types": ["node"],
+    "paths": { "@qoniai/qoni": ["./src/index.ts"] }
+  },
+  "include": ["skills/**/*.ts"]
+}
