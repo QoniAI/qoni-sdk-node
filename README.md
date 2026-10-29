@@ -610,12 +610,21 @@ while that view is open the browser is laid out in its shape, so a phone held up
 gets the phone's pages filling it; when it closes, the browser is back at its own size.
 The agent works in whatever shape the browser has, so leave it off views that only watch.
 
+**Before the first message of a new conversation**: call
+`doAnything.sessions.prewarm({ token, model? })` when the person opens a new
+conversation or starts typing. Their computer and agent start while they type,
+and the first run takes them over instead of booting its own. Measured on hosted
+Qoni (2026-10-29), a new conversation's first words came after 6.0–6.4 s with a
+prewarm 10 s earlier, against 9.7–18.0 s without. Pass `model` when the first run
+will not use the default. An unused computer is removed after a few minutes.
+
 **Any time**, without a run:
 
 ```ts
 const { doAnything } = qoni;
 await doAnything.sessions.list({ token });                     // conversations, newest first
 await doAnything.sessions.credits({ token, sessionId });       // what each run cost
+await doAnything.sessions.prewarm({ token });                  // start their next conversation's computer now (see below)
 await doAnything.browsers.list({ token, sessionId });          // browsers open now (none while it sleeps)
 
 await doAnything.files.list({ token, sessionId, path: "workspace", depth: 2 });
@@ -875,7 +884,7 @@ const qoni = new Qoni({
 | Delegation | `delegateToken`, `completeDelegateToken`, `webAgentGrant` (0.10.1), deprecated aliases `delegateAgent`, `completeDelegateAgent` |
 | GenAuth | `userInfo`, `jwks`, `discovery`, `introspectDelegationToken`, `auth.createLoginUrl`, `auth.exchangeLoginCode`, `users.list`, `users.get`, `users.getBatch`, `users.create`, `users.createBatch`, `users.update`, `users.deleteBatch` |
 | GUMem | `createSession`, `addMessages`, `recall`, `recallContext`, `actions.record`, `actions.recall`, `actions.stream` |
-| Do Anything | `run`, `attach` → `RunHandle`; opt-in `runWithMemory`; `sessions.list/get/credits`, `browsers.list/control`, `files.list/read/watch/upload/move/mkdir/delete/listAll` (0.10.0) |
+| Do Anything | `run`, `attach` → `RunHandle`; opt-in `runWithMemory`; `sessions.list/get/credits/prewarm`, `browsers.list/control`, `files.list/read/watch/upload/move/mkdir/delete/listAll` (0.10.0) |
 | Deep Research | `run`, `attach` → `RunHandle` |
 | Web Search | `run`, `attach` → `RunHandle` |
 | Track | `create`, `attach` → `MonitorHandle`; `list` (0.10.0) |

@@ -155,6 +155,12 @@ hours later.
 
 ### Starting a turn
 
+Prewarm first: when the person opens a new conversation or starts typing in
+one, call `qoni.doAnything.sessions.prewarm({ token })` (with `model` if the
+first run will not use the default). Their computer boots while they type and
+the first run takes it over: on hosted Qoni the first words of a new
+conversation came after about 6 s with a prewarm, against 10–18 s without.
+
 ```ts
 const run = await qoni.doAnything.run({
   token,
@@ -438,6 +444,7 @@ await qoni.track.create({
 ## Deployment Checklist
 
 - One long-lived process; database on persistent storage.
+- New conversations prewarm (`doAnything.sessions.prewarm`) when the person starts typing.
 - Secrets only in the server environment; the key file mounted read-only.
 - Session cookie: `HttpOnly`, `SameSite=Lax`, `Secure` on https.
 - Every route other than sign-in and health returns 401 without a session.

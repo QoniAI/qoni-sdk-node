@@ -1,8 +1,12 @@
 # Changelog
 
-## 0.10.2 - 2026-10-27
+## 0.10.2 - 2026-10-29
 
-No API changes. The bundled `qoni-sdk` Skill now covers building a personal agent app end to end.
+The bundled `qoni-sdk` Skill now covers building a personal agent app end to end, and a new conversation can start its computer before its first message.
+
+### Prewarm
+
+- `doAnything.sessions.prewarm({ token, model? })` → `{ accepted }`: start the computer and agent of the person's next new conversation while they are still typing (`POST /do_anything/sessions/prewarm`, `webagent.do_anything:manage`). Their first run takes it over instead of booting one. On hosted Qoni (2026-10-29), a new conversation's first words came after 6.0–6.4 s with a prewarm 10 s ahead, against 9.7–18.0 s without. `model` must be a non-empty string when given; an unused computer is removed after a few minutes.
 
 ### Skill: personal agent apps
 

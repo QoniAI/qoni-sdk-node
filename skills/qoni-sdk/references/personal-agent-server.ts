@@ -125,6 +125,14 @@ export class PersonalAgent {
   // A turn: continue the conversation's session, or start one (rule 7)
   // -------------------------------------------------------------------------
 
+  /**
+   * The person opened a new conversation or started typing in one: boot its
+   * computer now, so the first run takes it over instead of booting one.
+   */
+  async prewarm(person: Person): Promise<void> {
+    await qoni.doAnything.sessions.prewarm({ token: await this.token(person) });
+  }
+
   async send(person: Person, conversationId: string, text: string): Promise<RunRecord> {
     const token = await this.token(person);
     const previous = await this.store.latestRun(conversationId);

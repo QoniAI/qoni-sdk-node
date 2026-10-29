@@ -47,11 +47,11 @@ describe("frozen contract surface", () => {
     expect(publicKeys(client.track)).toEqual(["api", "attach", "create", "list"]);
   });
 
-  it("the personal agent's follow-ups, notifications and workspace credits (0.10.0)", () => {
+  it("the personal agent's follow-ups, notifications and workspace credits (0.10.0; sessions.prewarm since 0.10.2)", () => {
     expect(publicKeys(client.proactive)).toEqual(["cancel", "create", "get", "list", "runNow"]);
     expect(publicKeys(client.notifications)).toEqual(["list", "markRead"]);
     expect(publicKeys(client.workspace)).toEqual(["billingUrl", "credits"]);
-    expect(publicKeys(client.doAnything.sessions)).toEqual(["credits", "get", "list"]);
+    expect(publicKeys(client.doAnything.sessions)).toEqual(["credits", "get", "list", "prewarm"]);
     expect(publicKeys(client.doAnything.browsers)).toEqual(["control", "list"]);
     expect(publicKeys(client.doAnything.files)).toEqual(["delete", "list", "listAll", "mkdir", "move", "read", "upload", "watch"]);
   });

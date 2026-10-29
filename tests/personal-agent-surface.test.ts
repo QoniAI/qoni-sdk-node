@@ -198,9 +198,23 @@ describe("a session's computer, conversations and browsers", () => {
     await expect(browsers.control({ token: "tok", sessionId: "s1", browserId: "main", action: "take" })).rejects.toBeInstanceOf(QoniValidationError);
   });
 
+  it("prewarms the computer of the person's next conversation", async () => {
+    const t = transport();
+    const { sessions } = createComputerNamespaces(t);
+    t.webAgentJson.mockResolvedValueOnce({ data: { accepted: true } });
+    expect(await sessions.prewarm({ token: "tok" })).toEqual({ accepted: true });
+    expect(t.webAgentJson).toHaveBeenLastCalledWith("POST", "/do_anything/sessions/prewarm", "tok", { query: undefined, signal: undefined, ...MANAGE });
+    // With the model the first run will use, its agent is started on that model.
+    t.webAgentJson.mockResolvedValueOnce({ data: { accepted: false } });
+    expect(await sessions.prewarm({ token: "tok", model: "deepseek-flash" })).toEqual({ accepted: false });
+    expect(t.webAgentJson).toHaveBeenLastCalledWith("POST", "/do_anything/sessions/prewarm", "tok", { query: { model: "deepseek-flash" }, signal: undefined, ...MANAGE });
+    await expect(sessions.prewarm({ token: "tok", model: "" })).rejects.toBeInstanceOf(QoniValidationError);
+  });
+
   it("is part of doAnything", () => {
     const api: any = createDoAnythingNamespace(transport());
     expect(typeof api.sessions.list).toBe("function");
+    expect(typeof api.sessions.prewarm).toBe("function");
     expect(typeof api.browsers.list).toBe("function");
     expect(typeof api.files.watch).toBe("function");
   });

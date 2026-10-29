@@ -105,6 +105,25 @@ export function createComputerNamespaces(transport: QoniTransport) {
       });
       return sessionFromWire(data);
     },
+    /**
+     * Start the computer of the person's next new conversation now, while they are
+     * still typing: their first run then takes it over instead of booting one, which
+     * saves several seconds before the first reply. Call it when they open a new
+     * conversation or start typing in one. Pass `model` if the first run will not use
+     * the default, so its agent starts on that model. An unused computer is removed
+     * after a few minutes; asking again replaces nothing. `accepted: false` means
+     * this deployment has nothing to start ahead of time.
+     */
+    prewarm: async (input: { token: string; model?: string; signal?: AbortSignal }): Promise<{ accepted: boolean }> => {
+      if (input.model !== undefined && (typeof input.model !== "string" || !input.model.trim())) {
+        throw new QoniValidationError("prewarm model must be a non-empty string when given");
+      }
+      const { data } = await transport.webAgentJson<JsonObject>("POST", "/do_anything/sessions/prewarm", input.token, {
+        query: input.model === undefined ? undefined : { model: input.model },
+        signal: input.signal, requiredScopes: MANAGE,
+      });
+      return { accepted: data?.accepted === true };
+    },
     /** What each run of the session cost. */
     credits: async (input: SessionInput): Promise<SessionCredits> => {
       const { data } = await transport.webAgentJson<JsonObject>("GET", at(input.sessionId, "/credits"), input.token, {
