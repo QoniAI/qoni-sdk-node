@@ -124,6 +124,13 @@ ask the person to sign in to a site and lets the person take over the browser.
 Add `deepResearch` or `webSearch` to the constant only if you use them, and
 then for everyone from that release on (see rule 5 for what changing it does).
 
+If one AccessKey serves several apps (a platform that hosts apps), also pass
+`agent: "<app id>"`, one constant per app. Qoni then shows each app only the
+sessions it made for a person, with everything under them (runs, files,
+Tracks, follow-ups, notifications); website sign-ins stay the person's own in
+every app. Grants without `agent` share the default `"sdk"`. Changing `agent`
+does not end the person's older tokens.
+
 ### Rule 5. A broader grant kills a person's older tokens
 
 When a grant for a person asks for scopes beyond what that person has had

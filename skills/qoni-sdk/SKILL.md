@@ -174,6 +174,7 @@ const run = await app.doAnything.run({ token: grant.token, prompt });
 - Only `webagent.*` scopes can be granted. The token is accepted until `expiresAt` (about 14 days); issue a new grant before then. Runs it starts are billed to the workspace.
 - The keyless client runs `doAnything`, `webSearch`, `deepResearch`, `track`, `proactive`, `notifications` and `workspace`. Delegation, token exchange, GenAuth management and GUMem throw `QoniValidationError` locally, before any request.
 - Never call `webAgentGrant` with a user id the app sent you; resolve the person from the platform's own session.
+- Name each app: pass `agent: "<app id>"` (one constant per app). Qoni shows an app only the sessions it made for a person, with their runs, files, Tracks, follow-ups and notifications; website sign-ins stay the person's own in every app. A grant without `agent` is "sdk", shared by every app that names none. Changing `agent` does not end older tokens.
 
 ## Management Plane Vs Runtime
 
