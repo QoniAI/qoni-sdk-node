@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.10.4 - 2026-10-30
+
+The bundled Skill's personal agent reference is now about the SDK's calls, one feature at a time, instead of one app's architecture. No API changes.
+
+- `skills/qoni-sdk/references/personal-agent.md`: one section per feature — who holds what, pool users, per-person tokens (constant scopes, a broader grant ending older tokens, `agent` per app), sessions and runs, following a run, cards, sign-in rounds, screens and live views, files, credits, follow-ups, Track — and a symptom → cause → fix table. Advice about how an app stores state, signs people in, writes prompts, deploys or lays out its UI is gone: that belongs to each app.
+- `skills/qoni-sdk/references/personal-agent-calls.ts` replaces `personal-agent-server.ts`: one exported function per call (`grantFor`, `startRun`, `followRun`, `act`, `SignInRounds`, `listFiles`, `createTrack`, …), still compiled against the SDK on every build. The Skill's bundle test checks that every function the reference names exists.
+
 ## 0.10.3 - 2026-10-30
 
 The token-only client now runs in a browser page as it is, and a platform can keep one person's sessions apart per app.

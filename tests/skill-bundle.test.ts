@@ -35,11 +35,14 @@ describe("bundled qoni-sdk skill", () => {
 
   it("routes personal agent work to the reference files it ships", () => {
     expect(skill).toContain("references/personal-agent.md");
-    expect(skill).toContain("references/personal-agent-server.ts");
+    expect(skill).toContain("references/personal-agent-calls.ts");
     const guide = readFileSync("skills/qoni-sdk/references/personal-agent.md", "utf8");
-    // Every rule the reference code cites exists in the guide.
-    const code = readFileSync("skills/qoni-sdk/references/personal-agent-server.ts", "utf8");
-    const cited = new Set([...code.matchAll(/rules? (\d+)/g)].map((m) => Number(m[1])));
-    for (const rule of cited) expect(guide).toMatch(new RegExp(`### Rule ${rule}\\. `));
+    const code = readFileSync("skills/qoni-sdk/references/personal-agent-calls.ts", "utf8");
+    // Every function a section names exists in the compiled calls file.
+    const named = [...guide.matchAll(/^Code: (.+)$/gm)].flatMap((m) => [...m[1].matchAll(/`(\w+)(?:\(\))?`/g)].map((n) => n[1]));
+    expect(named.length).toBeGreaterThan(10);
+    for (const name of named) {
+      expect(code).toMatch(new RegExp(`export (?:async function|function|const|class) ${name}\\b`));
+    }
   });
 });

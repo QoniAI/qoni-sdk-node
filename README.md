@@ -63,7 +63,7 @@ const { Qoni } = require("@qoniai/qoni");    // CommonJS
 
 ## AI Skill
 
-The npm package ships the `qoni-sdk` Skill, so Codex, Claude Code and other coding agents follow the same authorization model and the same API as the SDK version you installed. Besides the SDK reference it walks through building a personal agent app end to end: your own sign-in, one Qoni user per account, per-person tokens, chat runs, sign-in and confirmation cards, the live browser, follow-ups, Track, files and deployment, with the mistakes that break each step.
+The npm package ships the `qoni-sdk` Skill, so Codex, Claude Code and other coding agents follow the same authorization model and the same API as the SDK version you installed. Besides the SDK reference it covers the personal agent features one call at a time — pool users, per-person tokens, runs and sessions, streamed messages, sign-in and confirmation cards, the live browser, follow-ups, Track, files and credits — with what goes wrong when each is used wrong.
 
 Install it from the package you already depend on:
 

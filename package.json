@@ -1,6 +1,6 @@
 {
   "name": "@qoniai/qoni",
-  "version": "0.10.3",
+  "version": "0.10.4",
   "description": "Unified Node.js SDK for Qoni Agent delegation, GenAuth management, GUMem memory, and WebAgent automation.",
   "homepage": "https://github.com/QONIAI/qoni-sdk-node#readme",
   "bugs": {
