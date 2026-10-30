@@ -1,4 +1,5 @@
 import type { AgentBrowser } from "./browsers";
+import { base64Bytes } from "./encoding";
 import { normalizeInteraction, type Interaction } from "./interactions";
 import { isJsonObject, type QoniEvent, type JsonObject } from "./types";
 
@@ -207,7 +208,7 @@ export function decodeDataUri(uri: string): { bytes: Uint8Array; mime: string } 
   )) return undefined;
   try {
     const bytes = isBase64
-      ? new Uint8Array(Buffer.from(encoded, "base64"))
+      ? base64Bytes(encoded)
       : new TextEncoder().encode(decodeURIComponent(encoded));
     return bytes.length ? { bytes, mime: mime || "application/octet-stream" } : undefined;
   } catch {

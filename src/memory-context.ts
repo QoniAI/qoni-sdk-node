@@ -1,3 +1,4 @@
+import {utf8Bytes,utf8Length} from "./encoding";
 import {QoniValidationError} from "./errors";
 import {isJsonObject, type JsonObject} from "./types";
 
@@ -72,7 +73,7 @@ function storedSourceUrl(metadata:unknown,token?:string):string|undefined {
   } catch {return undefined;}
 }
 function clip(text:string, bytes:number):string {
-  const raw=Buffer.from(text);
+  const raw=utf8Bytes(text);
   let length=Math.min(raw.length,bytes);
   // At most three trailing bytes can be an incomplete UTF8 character.
   for (;;) {
@@ -180,7 +181,7 @@ export function projectMemoryContext(data:unknown, sessionId:string, limits:Requ
   // Source metadata is optional; reserve space for every content item first. If
   // typed IDs/item overhead itself costs content, use the original section with
   // no IDs or sources instead of combining unrelated records' provenance.
-  if (proposed.length>limits.maxItems || Buffer.byteLength(quoted(proposed.map(withoutSources)))>limits.maxContextBytes) {
+  if (proposed.length>limits.maxItems || utf8Length(quoted(proposed.map(withoutSources)))>limits.maxContextBytes) {
     const history=proposed.filter(item=>item.kind==="history");
     const compact:MemoryContextItem[]=[];
     for (const kind of kinds) {
@@ -194,11 +195,11 @@ export function projectMemoryContext(data:unknown, sessionId:string, limits:Requ
   let truncated=typedTruncated || c.history.length>limits.maxItems || proposed.length>limits.maxItems;
   for (const original of proposed.slice(0,limits.maxItems)) {
     const item=withoutSources(original);
-    let low=0,high=Math.min(Buffer.byteLength(item.text),limits.maxContextBytes),best:MemoryContextItem|undefined;
+    let low=0,high=Math.min(utf8Length(item.text),limits.maxContextBytes),best:MemoryContextItem|undefined;
     while (low<=high) {
       const middle=Math.floor((low+high)/2);
       const candidate={...item,text:clip(item.text,middle)};
-      if (Buffer.byteLength(quoted([...items,candidate]))<=limits.maxContextBytes) {
+      if (utf8Length(quoted([...items,candidate]))<=limits.maxContextBytes) {
         best=candidate;low=middle+1;
       } else high=middle-1;
     }
@@ -215,7 +216,7 @@ export function projectMemoryContext(data:unknown, sessionId:string, limits:Requ
     if (!original.sources.length) continue;
     const enriched={...items[i],sources:original.sources,sourceStatus:original.sourceStatus};
     const candidate=items.map((item,index)=>index===i?enriched:item);
-    if (Buffer.byteLength(quoted(candidate))<=limits.maxContextBytes) items[i]=enriched;
+    if (utf8Length(quoted(candidate))<=limits.maxContextBytes) items[i]=enriched;
     else truncated=true;
   }
   return {origin,items,referenceText:items.length?quoted(items):"",truncated};

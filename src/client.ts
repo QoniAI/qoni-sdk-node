@@ -1,3 +1,4 @@
+import { jwtPayload } from "./encoding";
 import { memoryRunLifecycle } from "./memory-run-lifecycle";
 import { performJsonRequest, readBody, readJson, urlWithBasePath, normalizePath, isConnectTimeoutError } from "./json-transport";
 import { buildSignedHeaders } from "./auth";
@@ -88,7 +89,10 @@ export class Qoni {
     this.accessKey = accessKey ?? "";
     this.secretKey = secretKey ?? "";
     this.host = normalizeBaseUrl(host);
-    this.fetchImpl = options.fetch ?? fetch;
+    // Called with no receiver: a browser's own fetch throws "Illegal invocation"
+    // when called as a method of this client.
+    const fetchImpl = options.fetch ?? globalThis.fetch;
+    this.fetchImpl = (input, init) => fetchImpl(input, init);
     this.timeoutMs = options.timeoutMs ?? 30_000;
     this.sseMaxRetries = options.sseMaxRetries ?? 5;
     const transport: QoniTransport = {
@@ -864,10 +868,15 @@ function nonSignatureHeaders(
 
 
 
+/** A local-development setting from the environment; a page has none. */
+function localSetting(name: string): string | undefined {
+  return (globalThis as { process?: { env?: Record<string, string | undefined> } }).process?.env?.[name];
+}
+
 function resolveLocalGenauthRequest(input: URL): { url: URL; hostHeader?: string } {
   const url = new URL(input.toString());
   if (
-    process.env.QONI_LOCAL_GENAUTH_REWRITE === "false" ||
+    localSetting("QONI_LOCAL_GENAUTH_REWRITE") === "false" ||
     url.protocol !== "http:" ||
     !url.hostname.endsWith(".genauth.localhost")
   ) {
@@ -875,7 +884,7 @@ function resolveLocalGenauthRequest(input: URL): { url: URL; hostHeader?: string
   }
 
   const hostHeader = url.host;
-  url.hostname = process.env.QONI_LOCAL_GENAUTH_TARGET_HOST || "127.0.0.1";
+  url.hostname = localSetting("QONI_LOCAL_GENAUTH_TARGET_HOST") || "127.0.0.1";
   return { url, hostHeader };
 }
 
@@ -1091,9 +1100,7 @@ function validateScopeFormat(scope: string): void {
 
 
 function decodeJwtPayload(token: string): JsonObject {
-  const [, payload] = token.split(".");
-  if (!payload) throw new Error("token is not a JWT");
-  return JSON.parse(Buffer.from(payload, "base64url").toString("utf8")) as JsonObject;
+  return jwtPayload(token) as JsonObject;
 }
 
 function safeDecodeJwtPayload(token: string): JsonObject | undefined {

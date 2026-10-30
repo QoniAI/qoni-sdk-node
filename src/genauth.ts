@@ -3,6 +3,7 @@ import type {
   DelegateTokenSilentInput, DelegateTokenInteractiveInput,
   DelegateTokenSilentResponse, InteractiveDelegationResponse, DelegateAgentResponse,
 } from "./types";
+import { utf8Length } from "./encoding";
 import { createGenAuthManagement, requestGenAuthManagement } from "./genauth-management";
 import type { GenAuthAdminTokenOverrideInput, GenAuthAdminTokenProvider, GenAuthManagementRequestOptions } from "./genauth-management";
 import type { GenAuthSdkUserDto, GenAuthListUsersInput, GenAuthGetUserInput, GenAuthGetUserBatchInput, GenAuthCreateUserInput, GenAuthUpdateUserInput, GenAuthManagementOperations } from "./generated/genauth-management-types";
@@ -468,7 +469,7 @@ function personalPageBody(input:unknown):JsonObject & {idempotencyKey:string} {
   const method='genauth.agents.create';
   const fields=assertDeclaredFields(method,input,['displayName','description','channels','idempotencyKey']);
   const name=opaqueField(method,'displayName',fields.displayName).trim().normalize('NFC');
-  if(Buffer.byteLength(name,'utf8')>128)throw new QoniValidationError(`${method}: displayName exceeds 128 UTF-8 bytes`);
+  if(utf8Length(name)>128)throw new QoniValidationError(`${method}: displayName exceeds 128 UTF-8 bytes`);
   const channels=assertDeclaredFields(method,fields.channels,['email']);
   if(typeof channels.email!=='string')throw new QoniValidationError(`${method}: channels.email must be a mailbox local part`);
   const local=channels.email.trim().toLowerCase();
@@ -478,7 +479,7 @@ function personalPageBody(input:unknown):JsonObject & {idempotencyKey:string} {
     if(typeof fields.description!=='string'||fields.description.includes('\0')||/[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/u.test(fields.description))throw new QoniValidationError(`${method}: description must be valid Unicode without NUL`);
     // Go unicode.White_Space / strings.TrimSpace; no NFC or body rewriting.
     description=trimGoWhiteSpace(fields.description);
-    if(Buffer.byteLength(description,'utf8')>1024)throw new QoniValidationError(`${method}: description exceeds 1024 UTF-8 bytes`);
+    if(utf8Length(description)>1024)throw new QoniValidationError(`${method}: description exceeds 1024 UTF-8 bytes`);
   }
   const key=fields.idempotencyKey===undefined?randomUUID():personalKey(fields.idempotencyKey);
   return {displayName:name,mailboxLocalPart:local,idempotencyKey:key,...(description?{description}:{})};

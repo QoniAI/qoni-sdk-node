@@ -1,3 +1,4 @@
+import { jwtPayload } from "./encoding";
 import { QoniValidationError } from "./errors";
 import { QoniScopes } from "./scopes";
 import { isJsonObject, type JsonObject, type QoniTransport } from "./types";
@@ -136,7 +137,7 @@ export function createWorkspaceNamespace(transport: QoniTransport, consoleUrl: s
 
 function tokenClaims(token: string): JsonObject | undefined {
   try {
-    const claims: unknown = JSON.parse(Buffer.from(token.split(".")[1] ?? "", "base64url").toString("utf8"));
+    const claims = jwtPayload(token);
     return isJsonObject(claims) ? claims : undefined;
   } catch {
     return undefined;

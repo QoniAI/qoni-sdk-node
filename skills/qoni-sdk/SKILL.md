@@ -5,7 +5,7 @@ description: Use when building, testing, debugging, or documenting Node.js integ
 
 # Qoni SDK
 
-> This guide documents `@qoniai/qoni` 0.10.2 (same API as 0.10.1): `run()`/`create()`
+> This guide documents `@qoniai/qoni` 0.10.3 (same API as 0.10.1): `run()`/`create()`
 > return handles (`RunHandle` / `MonitorHandle`), events are normalized
 > (`event.type`, camelCase `data`), and 1:1 wire methods live under
 > `qoni.<product>.api.*`. Install `@qoniai/qoni@^0.10.1`; older versions do not
@@ -174,6 +174,7 @@ const run = await app.doAnything.run({ token: grant.token, prompt });
 - Only `webagent.*` scopes can be granted. The token is accepted until `expiresAt` (about 14 days); issue a new grant before then. Runs it starts are billed to the workspace.
 - The keyless client runs `doAnything`, `webSearch`, `deepResearch`, `track`, `proactive`, `notifications` and `workspace`. Delegation, token exchange, GenAuth management and GUMem throw `QoniValidationError` locally, before any request.
 - Never call `webAgentGrant` with a user id the app sent you; resolve the person from the platform's own session.
+- The keyless client also runs in a page (0.10.3): bundlers pick the `browser` build, which needs no `Buffer`, `crypto` or `process` polyfill and no `fetch` binding, and WebAgent accepts token calls from any origin. AccessKey work in a page throws `QoniUnsupportedError`. The page then holds the person's token (about 14 days); relaying events and cards through your server keeps it off the page.
 - Name each app: pass `agent: "<app id>"` (one constant per app). Qoni shows an app only the sessions it made for a person, with their runs, files, Tracks, follow-ups and notifications; website sign-ins stay the person's own in every app. A grant without `agent` is "sdk", shared by every app that names none. Changing `agent` does not end older tokens.
 
 ## Management Plane Vs Runtime

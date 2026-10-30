@@ -44,7 +44,7 @@ yarn add @qoniai/qoni
 
 Requirements:
 
-- Node.js 18 or later.
+- Node.js 18 or later on the server. A page can use the token-only client (see [In a page](#in-a-page-0103)).
 - A server-side runtime with `fetch`.
 - Qoni `accessKey` and `secretKey` created in Qoni Console.
 - For silent runtime product calls, a real GenAuth user id from the userpool bound to the Qoni credential. For smoke tests, pass it as `QONI_USER_ID` or call `qoni.resolveAnyBoundUser()` to grab the first bound user; in application code, resolve it with `currentUser` or your existing server-side user session. Interactive delegation can start without `user` or `userId` because the Qoni Console/BFF resolves the GenAuth login during authorization.
@@ -358,6 +358,20 @@ await app.workspace.credits({ token: grant.token });
 ```
 
 Such a client runs `doAnything`, `webSearch`, `deepResearch`, `track`, `proactive`, `notifications` and `workspace` calls with the granted token. Anything that needs the AccessKey — delegation, token exchange, GenAuth management, GUMem — fails locally with `QoniValidationError` before a request is sent. A browser login or takeover a run asks for is completed by the person in the live view, as with any other token.
+
+#### In a page (0.10.3)
+
+The app can be a web page. Bundlers that honor the `browser` condition (webpack and Next.js, Vite, esbuild with `platform: "browser"`) pick `dist/browser.js`: the same SDK with no Node.js built-ins, so no `Buffer`, `crypto` or `process` polyfill and no `fetch` binding is needed:
+
+```ts
+import { Qoni } from "@qoniai/qoni";
+
+const app = new Qoni({ webAgentHost: grant.webAgentHost }); // the page's own fetch
+const run = await app.doAnything.attach(runId, { token: grant.token, session: { sessionId } });
+for await (const event of run.events()) render(event);
+```
+
+WebAgent accepts token calls from any origin (credentials are never allowed cross-origin). In a page, AccessKey work throws `QoniUnsupportedError`: keep `webAgentGrant` on your server. The token in the page acts for that person for about 14 days, so treat the page like any page holding a session token: no third-party scripts you do not trust. Routing events and cards through your server instead keeps the token off the page.
 
 ## Original delegation style (0.8.0+)
 

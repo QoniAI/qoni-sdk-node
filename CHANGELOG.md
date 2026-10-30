@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.10.3 - 2026-10-30
+
+The token-only client now runs in a browser page as it is, and a platform can keep one person's sessions apart per app.
+
+### In a page
+
+- A `browser` build (`dist/browser.js`, picked through the `browser` export condition and the `browser` field) carries no Node.js built-ins. A page needs no `Buffer`, `crypto` or `process` polyfill.
+- Tokens are decoded with Web APIs (`atob`, `TextDecoder`) everywhere, not `Buffer.from(…, "base64url")`, which browser `buffer` polyfills reject ("Unknown encoding: base64url"). UTF-8 lengths and inline data URIs use `TextEncoder` and the same decoder.
+- `fetch` is called with no receiver, so a browser's own `fetch` works whether it is the global or passed as `options.fetch`; before, it was called as a method of the client and threw "Illegal invocation".
+- In the browser build, AccessKey work (signing, delegation, GenAuth management, agent activation) throws `QoniUnsupportedError` saying it runs only on a server. The Node.js build is unchanged.
+- Local GenAuth development settings are read only where `process` exists.
+
+### One key, many apps
+
+- The Skill and README say to pass `agent: "<app id>"` to `webAgentGrant` when one AccessKey serves several apps: WebAgent then shows each app only the sessions it made for a person, with their runs, files, Tracks, follow-ups and notifications (WebAgent `sessions.agent_id`, live 2026-10-30). Website sign-ins stay the person's own in every app.
+
 ## 0.10.2 - 2026-10-29
 
 The bundled `qoni-sdk` Skill now covers building a personal agent app end to end, and a new conversation can start its computer before its first message.
